@@ -29,4 +29,17 @@ export function getUserIdFromJwt(token: string): string | null {
   return typeof sub === 'string' && sub.length > 0 ? sub : null;
 }
 
+// JWTが有効期限切れかどうかを確認
+export function isJwtExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload) return true;
+
+  const exp = payload.exp;
+  if (typeof exp !== 'number') return true;
+
+  // 現在時刻（秒）と比較。少し余裕を持たせる（30秒）
+  const nowSec = Math.floor(Date.now() / 1000);
+  return exp < nowSec + 30;
+}
+
 

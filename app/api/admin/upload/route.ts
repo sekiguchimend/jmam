@@ -4,13 +4,26 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 600; // 10分（Vercel）
 
-import { isAdmin } from '@/lib/supabase/server';
-import { parseCSVLine, parseDate, parseScore } from '@/lib/utils';
+import { getAccessToken, isAdmin } from '@/lib/supabase/server';
+import { iterateCsvRecordsFromBytes, parseCSVLine, parseDate, parseScore } from '@/lib/utils';
 import { upsertCase, upsertResponses } from '@/lib/supabase';
 import type { CsvRowData } from '@/types';
 
 const BATCH_SIZE = 1000;
 const REQUIRED_HEADERS = ['受注番号', 'Ⅱ　MC　題材コード'];
+
+function dedupeResponsesByKey(rows: CsvRowData[]): { deduped: CsvRowData[]; dropped: number } {
+  // upsertのonConflict(case_id,response_id)に対して、同一コマンド内で重複があると
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time" になるため、ここで除外する。
+  // 方針: 同一キーが複数回出た場合は「最後に出た行」を採用（CSVの後勝ち）
+  const map = new Map<string, CsvRowData>();
+  for (const row of rows) {
+    const key = `${row.case_id}__${row.response_id}`;
+    map.set(key, row);
+  }
+  const deduped = Array.from(map.values());
+  return { deduped, dropped: rows.length - deduped.length };
+}
 
 function validateHeaders(headers: string[]): { valid: boolean; missing: string[] } {
   const missing = REQUIRED_HEADERS.filter((h) => !headers.includes(h));
@@ -69,42 +82,6 @@ function parseRow(
     caseName,
     error: null,
   };
-}
-
-async function* iterateLinesFromBytes(
-  stream: ReadableStream<Uint8Array>,
-  encoding: string
-): AsyncGenerator<string> {
-  const reader = stream.getReader();
-  let buffer = '';
-
-  let decoder: TextDecoder;
-  try {
-    decoder = new TextDecoder(encoding as never, { fatal: false });
-  } catch {
-    decoder = new TextDecoder('utf-8', { fatal: false });
-  }
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    while (true) {
-      const idx = buffer.indexOf('\n');
-      if (idx === -1) break;
-      const line = buffer.slice(0, idx).replace(/\r$/, '');
-      buffer = buffer.slice(idx + 1);
-      yield line;
-    }
-  }
-
-  buffer += decoder.decode();
-  if (buffer.length > 0) {
-    yield buffer.replace(/\r$/, '');
-  }
 }
 
 async function detectEncodingAndRebuildStream(file: File): Promise<{
@@ -211,40 +188,56 @@ export async function POST(request: Request) {
         const fileName = file.name || 'upload.csv';
         send('start', { fileName });
 
+        const adminToken = await getAccessToken();
+        if (!adminToken) {
+          send('error', { error: '管理者トークンが見つかりません（再ログインしてください）' });
+          controller.close();
+          return;
+        }
+
         const { stream: byteStream, encoding } = await detectEncodingAndRebuildStream(file);
-        const lines = iterateLinesFromBytes(byteStream, encoding);
+        const records = iterateCsvRecordsFromBytes(byteStream, encoding);
 
         let headers: string[] | null = null;
-        let lineNo = 0;
+        let recordNo = 0;
+        let headerAttempts = 0;
 
         const caseSeen = new Set<string>();
         let batch: CsvRowData[] = [];
         let processedCount = 0;
         const errors: string[] = [];
 
-        for await (const line of lines) {
-          lineNo += 1;
-          if (!line.trim()) continue;
+        for await (const record of records) {
+          recordNo += 1;
+          if (!record.trim()) continue;
 
           if (!headers) {
-            headers = parseCSVLine(line);
-            const headerValidation = validateHeaders(headers);
-            if (!headerValidation.valid) {
-              const msg = `必須カラムが見つかりません: ${headerValidation.missing.join(', ')}`;
-              console.error('CSV header error:', { fileName, missing: headerValidation.missing });
-              send('error', { fileName, error: msg, errors: [msg] });
-              controller.close();
-              return;
+            const candidate = parseCSVLine(record);
+            const headerValidation = validateHeaders(candidate);
+            if (headerValidation.valid) {
+              headers = candidate;
+              continue;
             }
-            continue;
+
+            // 一部CSVは 1行目に項目ID（固定001...）があり、2行目以降が日本語ヘッダーのためスキップを許容
+            headerAttempts += 1;
+            if (headerAttempts < 5) {
+              continue;
+            }
+
+            const msg = `必須カラムが見つかりません: ${headerValidation.missing.join(', ')}`;
+            console.error('CSV header error:', { fileName, missing: headerValidation.missing });
+            send('error', { fileName, error: msg, errors: [msg] });
+            controller.close();
+            return;
           }
 
-          const values = parseCSVLine(line);
-          const result = parseRow(headers, values, lineNo);
+          const values = parseCSVLine(record);
+          const result = parseRow(headers, values, recordNo);
 
           if (result.error) {
             errors.push(result.error);
-            console.error('CSV row validation error:', { fileName, lineNo, error: result.error });
+            console.error('CSV row validation error:', { fileName, recordNo, error: result.error });
             if (errors.length >= 10) {
               send('error', {
                 fileName,
@@ -266,17 +259,25 @@ export async function POST(request: Request) {
             await upsertCase({
               case_id: caseId,
               case_name: result.data.case_name ?? null,
-            });
+            }, adminToken);
           }
 
           batch.push(result.data);
 
           if (batch.length >= BATCH_SIZE) {
-            const dbRecords = batch.map(({ case_name: _caseName, ...rest }) => {
+            const { deduped, dropped } = dedupeResponsesByKey(batch);
+            if (dropped > 0) {
+              console.warn('duplicate response keys found in batch; keeping last occurrences', {
+                fileName,
+                dropped,
+              });
+            }
+
+            const dbRecords = deduped.map(({ case_name: _caseName, ...rest }) => {
               void _caseName;
               return rest;
             });
-            await upsertResponses(dbRecords);
+            await upsertResponses(dbRecords, adminToken);
             processedCount += batch.length;
             batch = [];
 
@@ -296,11 +297,19 @@ export async function POST(request: Request) {
 
         // 残りをフラッシュ
         if (batch.length > 0) {
-          const dbRecords = batch.map(({ case_name: _caseName, ...rest }) => {
+          const { deduped, dropped } = dedupeResponsesByKey(batch);
+          if (dropped > 0) {
+            console.warn('duplicate response keys found in final batch; keeping last occurrences', {
+              fileName,
+              dropped,
+            });
+          }
+
+          const dbRecords = deduped.map(({ case_name: _caseName, ...rest }) => {
             void _caseName;
             return rest;
           });
-          await upsertResponses(dbRecords);
+          await upsertResponses(dbRecords, adminToken);
           processedCount += batch.length;
           send('progress', {
             fileName,

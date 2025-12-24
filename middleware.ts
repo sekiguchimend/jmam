@@ -14,14 +14,13 @@ export const MFA_PENDING_ACCESS_TOKEN_COOKIE = 'mfa_pending_access_token';
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  const mfaPending = request.cookies.get(MFA_PENDING_ACCESS_TOKEN_COOKIE)?.value;
+  const isDev = process.env.NODE_ENV !== 'production';
+  const mfaPending = isDev ? undefined : request.cookies.get(MFA_PENDING_ACCESS_TOKEN_COOKIE)?.value;
 
   // /login は認証不要
   if (pathname === '/login') {
     // MFA途中ならMFA画面へ
-    if (mfaPending) {
-      return NextResponse.redirect(new URL('/mfa', request.url));
-    }
+    // 開発中はMFAをスキップするため、pendingがあっても /mfa へ飛ばさない
     const userToken = request.cookies.get(USER_TOKEN_COOKIE);
     const adminToken = request.cookies.get(ADMIN_TOKEN_COOKIE);
     if (adminToken?.value) {
@@ -35,6 +34,12 @@ export function middleware(request: NextRequest) {
 
   // /mfa はMFA途中のみアクセス可
   if (pathname === '/mfa') {
+    // 開発中はMFA画面自体を使わない（戻して通常ログイン）
+    if (isDev) {
+      const res = NextResponse.redirect(new URL('/login', request.url));
+      res.cookies.delete(MFA_PENDING_ACCESS_TOKEN_COOKIE);
+      return res;
+    }
     if (!mfaPending) {
       return NextResponse.redirect(new URL('/login', request.url));
     }

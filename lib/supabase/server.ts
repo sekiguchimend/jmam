@@ -6,14 +6,17 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database, AdminUser } from '@/types/database';
 import { getUserIdFromJwt, decodeJwtPayload } from '@/lib/jwt';
+import { createAuthedAnonServerClient } from './authed-anon-server';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // 管理者認証用クッキー名
 export const ADMIN_TOKEN_COOKIE = 'admin_access_token';
+export const ADMIN_REFRESH_TOKEN_COOKIE = 'admin_refresh_token';
 // 一般ユーザー認証用クッキー名
 export const USER_TOKEN_COOKIE = 'user_access_token';
+export const USER_REFRESH_TOKEN_COOKIE = 'user_refresh_token';
 
 // MFA（2段階認証）完了前の一時トークン
 export const MFA_PENDING_ACCESS_TOKEN_COOKIE = 'mfa_pending_access_token';
@@ -43,18 +46,95 @@ export async function createSupabaseServerClient() {
   });
 }
 
-// クッキーからアクセストークンを取得
+// クッキーからアクセストークンを取得（期限切れなら自動更新）
 export async function getAccessToken(): Promise<string | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_TOKEN_COOKIE);
-  return token?.value ?? null;
+  const token = cookieStore.get(ADMIN_TOKEN_COOKIE)?.value;
+  if (!token) return null;
+
+  // トークンが期限切れかチェック
+  const { isJwtExpired } = await import('@/lib/jwt');
+  if (!isJwtExpired(token)) {
+    return token;
+  }
+
+  // 期限切れならリフレッシュを試みる
+  const refreshToken = cookieStore.get(ADMIN_REFRESH_TOKEN_COOKIE)?.value;
+  if (!refreshToken) return null;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+
+  if (error || !data.session) {
+    console.error('Token refresh failed:', error);
+    return null;
+  }
+
+  // 新しいトークンをクッキーに保存
+  const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+  const commonCookie = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    maxAge: COOKIE_MAX_AGE,
+    path: '/',
+  };
+
+  try {
+    cookieStore.set(ADMIN_TOKEN_COOKIE, data.session.access_token, commonCookie);
+    cookieStore.set(ADMIN_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
+    // user_access_token も同時に更新
+    cookieStore.set(USER_TOKEN_COOKIE, data.session.access_token, commonCookie);
+    cookieStore.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
+  } catch {
+    // Server Componentからの呼び出し時はクッキー更新できない
+  }
+
+  return data.session.access_token;
 }
 
-// クッキーから一般ユーザーのアクセストークンを取得
+// クッキーから一般ユーザーのアクセストークンを取得（期限切れなら自動更新）
 export async function getUserAccessToken(): Promise<string | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get(USER_TOKEN_COOKIE);
-  return token?.value ?? null;
+  const token = cookieStore.get(USER_TOKEN_COOKIE)?.value;
+  if (!token) return null;
+
+  // トークンが期限切れかチェック
+  const { isJwtExpired } = await import('@/lib/jwt');
+  if (!isJwtExpired(token)) {
+    return token;
+  }
+
+  // 期限切れならリフレッシュを試みる
+  const refreshToken = cookieStore.get(USER_REFRESH_TOKEN_COOKIE)?.value;
+  if (!refreshToken) return null;
+
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+
+  if (error || !data.session) {
+    console.error('User token refresh failed:', error);
+    return null;
+  }
+
+  // 新しいトークンをクッキーに保存
+  const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+  const commonCookie = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    maxAge: COOKIE_MAX_AGE,
+    path: '/',
+  };
+
+  try {
+    cookieStore.set(USER_TOKEN_COOKIE, data.session.access_token, commonCookie);
+    cookieStore.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
+  } catch {
+    // Server Componentからの呼び出し時はクッキー更新できない
+  }
+
+  return data.session.access_token;
 }
 
 // admin/user のいずれかのアクセストークンを取得（存在する方）
@@ -187,37 +267,49 @@ export async function getUserWithRole(): Promise<{
   const adminToken = await getAccessToken();
   const isAdmin = !!adminToken;
 
-  // ユーザー情報はJWTから取得を試みる（API呼び出しを避ける）
+  // ユーザー情報はJWTから取得しつつ、表示名は profiles から取得して最新化する
   const token = adminToken || (await getUserAccessToken());
 
   if (!token) {
-    // トークンがない場合はデフォルト値を返す
-    return {
-      id: '',
-      email: '',
-      name: 'ゲスト',
-      isAdmin: false,
-    };
+    return { id: '', email: '', name: 'ゲスト', isAdmin: false };
   }
 
-  // JWTをデコードしてユーザー情報を取得（API呼び出しなし）
+  let id = '';
+  let email = '';
+  let fallbackName: string | null = null;
+
   try {
     const payload = decodeJwtPayload(token) ?? {};
-    return {
-      id: typeof payload.sub === 'string' ? payload.sub : '',
-      email: typeof payload.email === 'string' ? payload.email : '',
-      name: typeof payload.email === 'string' ? payload.email.split('@')[0] : null,
-      isAdmin,
-    };
+    id = typeof payload.sub === 'string' ? payload.sub : '';
+    email = typeof payload.email === 'string' ? payload.email : '';
+    fallbackName = email ? email.split('@')[0] : null;
   } catch {
-    // デコード失敗時はデフォルト値
-    return {
-      id: '',
-      email: '',
-      name: isAdmin ? '管理者' : 'ユーザー',
-      isAdmin,
-    };
+    return { id: '', email: '', name: isAdmin ? '管理者' : 'ユーザー', isAdmin };
   }
+
+  if (!id) {
+    return { id: '', email: '', name: isAdmin ? '管理者' : 'ユーザー', isAdmin };
+  }
+
+  try {
+    // RLSのauth.uid()を効かせるため、anon + Authorization(JWT) で profiles を参照する
+    const db = createAuthedAnonServerClient(token);
+    const { data } = await db.from('profiles').select('email, name').eq('id', id).maybeSingle();
+    const profile = data as { email: string | null; name: string | null } | null;
+
+    if (profile) {
+      return {
+        id,
+        email: profile.email ?? email,
+        name: profile.name ?? fallbackName,
+        isAdmin,
+      };
+    }
+  } catch (e) {
+    console.error('getUserWithRole profile fetch error:', e);
+  }
+
+  return { id, email, name: fallbackName, isAdmin };
 }
 
 // クッキーに入っている admin/user いずれかのJWTからユーザーIDを取得

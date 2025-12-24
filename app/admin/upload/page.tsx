@@ -66,7 +66,7 @@ export default async function UploadPage() {
             </li>
             <li className="flex items-start gap-2 lg:gap-3">
               <Check className="w-4 lg:w-5 h-4 lg:h-5 flex-shrink-0 mt-0.5" style={{ color: "var(--success)" }} />
-              1行目はヘッダー行として処理されます
+              ヘッダー行（固定行がある場合は2行目）が必要です
             </li>
             <li className="flex items-start gap-2 lg:gap-3">
               <Check className="w-4 lg:w-5 h-4 lg:h-5 flex-shrink-0 mt-0.5" style={{ color: "var(--success)" }} />

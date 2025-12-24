@@ -11,7 +11,9 @@ import {
   MFA_PENDING_IS_ADMIN_COOKIE,
   MFA_PENDING_REDIRECT_COOKIE,
   ADMIN_TOKEN_COOKIE,
+  ADMIN_REFRESH_TOKEN_COOKIE,
   USER_TOKEN_COOKIE,
+  USER_REFRESH_TOKEN_COOKIE,
   getMfaPendingTokens,
 } from '@/lib/supabase/server';
 
@@ -182,10 +184,13 @@ export async function verifyTotp(params: { factorId: string; code: string }): Pr
     path: '/',
   };
   cookieStore.set(USER_TOKEN_COOKIE, session.access_token, commonCookie);
+  cookieStore.set(USER_REFRESH_TOKEN_COOKIE, session.refresh_token!, commonCookie);
   if (pending.isAdmin) {
     cookieStore.set(ADMIN_TOKEN_COOKIE, session.access_token, commonCookie);
+    cookieStore.set(ADMIN_REFRESH_TOKEN_COOKIE, session.refresh_token!, commonCookie);
   } else {
     cookieStore.delete(ADMIN_TOKEN_COOKIE);
+    cookieStore.delete(ADMIN_REFRESH_TOKEN_COOKIE);
   }
 
   // pendingを削除

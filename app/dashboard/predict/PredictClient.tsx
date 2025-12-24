@@ -4,15 +4,15 @@ import { useState, useTransition } from "react";
 import { predictAnswer } from "@/actions/predict";
 import type { Case, Scores, PredictionResponse } from "@/types";
 import { defaultScores } from "@/types";
-import { ClipboardList, SlidersHorizontal, AlertCircle, Lightbulb, Loader2, Zap, Search, ClipboardCheck, Info } from "lucide-react";
+import { AlertCircle, ChevronRight, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
 
 const scoreLabels = [
-  { key: "problem", label: "問題把握", description: "問題を正確に理解し分析する力" },
-  { key: "solution", label: "対策立案", description: "効果的な解決策を立案する力" },
-  { key: "role", label: "役割理解", description: "自身の役割を理解し遂行する力" },
-  { key: "leadership", label: "主導", description: "チームを率いて成果を出す力" },
-  { key: "collaboration", label: "連携", description: "他者と協力して目標を達成する力" },
-  { key: "development", label: "育成", description: "メンバーの成長を支援する力" },
+  { key: "problem", label: "問題把握" },
+  { key: "solution", label: "対策立案" },
+  { key: "role", label: "役割理解" },
+  { key: "leadership", label: "主導" },
+  { key: "collaboration", label: "連携" },
+  { key: "development", label: "育成" },
 ] as const;
 
 interface PredictClientProps {
@@ -25,6 +25,19 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(["problem", "solution"]));
+
+  const toggleAccordion = (key: string) => {
+    setOpenAccordions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const selectedCase = cases.find((c) => c.case_id === selectedCaseId);
 
@@ -50,263 +63,316 @@ export function PredictClient({ cases }: PredictClientProps) {
     });
   };
 
-  const averageScore = Object.values(scores).reduce((a, b) => a + b, 0) / 6;
-
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-6">
-      {/* 左側: 設定パネル */}
-      <div className="xl:col-span-1 space-y-4 lg:space-y-6">
-        {/* ケース選択 */}
-        <div
-          className="rounded-xl p-4 lg:p-6"
-          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+    <div className="space-y-6">
+      {/* ケース選択 */}
+      <div
+        className="rounded-xl p-5"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+      >
+        <label className="block text-sm font-black mb-2" style={{ color: "#323232" }}>
+          ケース
+        </label>
+        <select
+          value={selectedCaseId}
+          onChange={(e) => {
+            setSelectedCaseId(e.target.value);
+            setResult(null);
+          }}
+          className="w-full px-4 py-2.5 rounded-lg text-sm font-bold appearance-none cursor-pointer"
+          style={{
+            border: "1px solid var(--border)",
+            background: `var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23323232' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center`,
+            color: "#323232",
+            paddingRight: "36px",
+          }}
         >
-          <h2 className="text-base lg:text-lg font-black mb-3 lg:mb-4 flex items-center gap-2" style={{ color: "#323232" }}>
-            <ClipboardList className="w-5 h-5" />
-            ケース選択
-          </h2>
-          <select
-            value={selectedCaseId}
-            onChange={(e) => setSelectedCaseId(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg text-base font-bold transition-all cursor-pointer"
-            style={{
-              border: "1px solid var(--border)",
-              background: "var(--surface)",
-              color: "#323232",
-            }}
-          >
-            <option value="">ケースを選択...</option>
-            {cases.map((c) => (
-              <option key={c.case_id} value={c.case_id}>
-                {c.case_name || c.case_id}
-              </option>
-            ))}
-          </select>
+          <option value="">選択してください</option>
+          {cases.map((c) => (
+            <option key={c.case_id} value={c.case_id}>
+              {c.case_name || c.case_id}
+            </option>
+          ))}
+        </select>
 
-          {/* シチュエーション表示 */}
-          {selectedCase?.situation_text && (
-            <div className="mt-4 p-4 rounded-lg" style={{ background: "var(--background)" }}>
-              <p className="text-xs font-black uppercase tracking-wider mb-2" style={{ color: "#323232" }}>
-                シチュエーション
-              </p>
-              <p className="text-sm leading-relaxed font-bold" style={{ color: "#323232" }}>
-                {selectedCase.situation_text}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* スコア設定 */}
-        <div
-          className="rounded-xl p-4 lg:p-6"
-          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-        >
-          <div className="flex items-center justify-between mb-3 lg:mb-4">
-            <h2 className="text-base lg:text-lg font-black flex items-center gap-2" style={{ color: "#323232" }}>
-              <SlidersHorizontal className="w-5 h-5" />
-              目標スコア
-            </h2>
-            <div
-              className="px-3 py-1 rounded-full text-sm font-black text-white"
-              style={{ background: "var(--primary)" }}
-            >
-              平均 {averageScore.toFixed(1)}
-            </div>
+        {selectedCase?.situation_text && (
+          <div className="mt-4 p-4 rounded-lg" style={{ background: "var(--background)" }}>
+            <p className="text-xs font-black mb-1" style={{ color: "var(--text-muted)" }}>
+              シチュエーション
+            </p>
+            <p className="text-sm leading-relaxed" style={{ color: "#323232" }}>
+              {selectedCase.situation_text}
+            </p>
           </div>
+        )}
+      </div>
 
-          <div className="space-y-4 lg:space-y-5">
-            {scoreLabels.map(({ key, label, description }) => (
-              <div key={key}>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <span className="text-sm font-black" style={{ color: "#323232" }}>
-                      {label}
-                    </span>
-                    <p className="text-xs font-bold hidden sm:block" style={{ color: "#323232" }}>
-                      {description}
-                    </p>
-                  </div>
-                  <span
-                    className="text-sm font-black px-2 py-1 rounded-md min-w-[48px] text-center text-white"
-                    style={{ background: "var(--primary)" }}
+      {/* 目標スコア設定 - テーブル形式 */}
+      <div
+        className="rounded-xl p-5"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+      >
+        <label className="block text-sm font-black mb-3" style={{ color: "#323232" }}>
+          目標スコア
+        </label>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm" style={{ minWidth: "500px" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                {scoreLabels.map(({ label }) => (
+                  <th
+                    key={label}
+                    className="pb-2 text-center font-bold"
+                    style={{ color: "var(--text-muted)" }}
                   >
-                    {scores[key].toFixed(1)}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="1.0"
-                  max="4.0"
-                  step="0.1"
-                  value={scores[key]}
-                  onChange={(e) => handleScoreChange(key, parseFloat(e.target.value))}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-xs mt-1 font-bold" style={{ color: "#323232" }}>
-                  <span>1.0</span>
-                  <span>4.0</span>
-                </div>
-              </div>
-            ))}
-          </div>
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {scoreLabels.map(({ key }) => (
+                  <td key={key} className="pt-3 px-1">
+                    <input
+                      type="number"
+                      min="1.0"
+                      max="4.0"
+                      step="0.1"
+                      value={scores[key]}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val) && val >= 1.0 && val <= 4.0) {
+                          handleScoreChange(key, val);
+                        }
+                      }}
+                      className="w-full text-center py-2 rounded-lg font-bold text-sm"
+                      style={{
+                        border: "1px solid var(--border)",
+                        background: "var(--background)",
+                        color: "#323232",
+                      }}
+                    />
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
+        <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+          1.0〜4.0の範囲で入力
+        </p>
+      </div>
 
-        {/* 予測実行ボタン */}
+      {/* 実行ボタン */}
+      <div className="flex justify-end">
         <button
           onClick={handlePredict}
           disabled={!selectedCaseId || isPending}
-          className="w-full py-4 rounded-xl font-black text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg active:scale-[0.98] text-white"
+          className="px-6 py-2.5 rounded-lg text-sm font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
           style={{ background: "var(--primary)" }}
         >
           {isPending ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              AIが予測中...
-            </span>
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              予測中...
+            </>
           ) : (
-            <span className="flex items-center justify-center gap-2">
-              <Zap className="w-5 h-5" />
+            <>
+              <Send className="w-4 h-4" />
               予測を実行
-            </span>
+            </>
           )}
         </button>
       </div>
 
-      {/* 右側: 結果表示 */}
-      <div className="xl:col-span-2">
-        {error && (
-          <div
-            className="p-4 rounded-xl mb-6 flex items-center gap-3 animate-slide-up font-bold"
-            style={{ background: "var(--error-light)", color: "#323232" }}
-          >
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            {error}
-          </div>
-        )}
+      {/* エラー */}
+      {error && (
+        <div
+          className="p-4 rounded-xl flex items-center gap-3"
+          style={{ background: "var(--error-light)", color: "var(--error)" }}
+        >
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span className="font-bold text-sm">{error}</span>
+        </div>
+      )}
 
-        {!result && !isPending && (
+      {/* 結果 - アコーディオン形式 */}
+      {result && !isPending && (
+        <div className="space-y-3">
+          {/* 問題把握 */}
           <div
-            className="rounded-xl p-8 lg:p-12 min-h-[200px] lg:min-h-[500px] flex items-center justify-center"
-            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+            className="rounded-xl overflow-hidden"
+            style={{
+              background: "var(--surface)",
+              border: openAccordions.has("problem") ? "1px solid var(--primary)" : "1px solid var(--border)",
+              transition: "border-color 0.2s ease",
+            }}
           >
-            <div className="text-center">
-              <Lightbulb className="w-10 lg:w-12 h-10 lg:h-12 mx-auto mb-4 lg:mb-6" style={{ color: "var(--text-muted)" }} />
-              <h3 className="text-lg lg:text-xl font-black mb-2" style={{ color: "#323232" }}>
-                予測結果がここに表示されます
-              </h3>
-              <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
-                ケースを選択し、スコアを設定して<br />
-                「予測を実行」をクリックしてください
-              </p>
-            </div>
-          </div>
-        )}
-
-        {isPending && (
-          <div
-            className="rounded-xl p-8 lg:p-12 min-h-[200px] lg:min-h-[500px] flex items-center justify-center"
-            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-          >
-            <div className="text-center">
-              <Loader2 className="w-10 lg:w-12 h-10 lg:h-12 mx-auto mb-4 lg:mb-6 animate-spin" style={{ color: "var(--primary)" }} />
-              <h3 className="text-lg lg:text-xl font-black mb-2" style={{ color: "#323232" }}>
-                AIが回答を生成中...
-              </h3>
-              <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
-                しばらくお待ちください
-              </p>
-            </div>
-          </div>
-        )}
-
-        {result && !isPending && (
-          <div className="space-y-4 lg:space-y-6 animate-slide-up">
-            {/* スコアサマリー */}
-            <div
-              className="rounded-xl p-4 lg:p-6"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+            <button
+              onClick={() => toggleAccordion("problem")}
+              className="w-full px-4 py-3.5 flex items-center gap-3 text-left hover:opacity-80 transition-opacity"
             >
-              <h3 className="text-xs lg:text-sm font-black uppercase tracking-wider mb-3 lg:mb-4" style={{ color: "#323232" }}>
-                入力スコア
-              </h3>
-              <div className="flex flex-wrap gap-2 lg:gap-3">
-                {scoreLabels.map(({ key, label }) => (
-                  <div
-                    key={key}
-                    className="px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg"
-                    style={{ background: "var(--background)" }}
-                  >
-                    <span className="text-xs font-bold" style={{ color: "#323232" }}>{label}</span>
-                    <span className="ml-1 lg:ml-2 font-black" style={{ color: "#323232" }}>
-                      {scores[key].toFixed(1)}
-                    </span>
-                  </div>
-                ))}
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: openAccordions.has("problem") ? "var(--primary)" : "var(--background)" }}
+              >
+                <Target
+                  className="w-4 h-4"
+                  style={{ color: openAccordions.has("problem") ? "#fff" : "var(--text-muted)" }}
+                />
               </div>
-            </div>
-
-            {/* 問題把握 */}
+              <span className="text-sm font-black flex-1" style={{ color: "#323232" }}>
+                問題把握
+              </span>
+              <ChevronRight
+                className="w-4 h-4 transition-transform duration-200"
+                style={{
+                  color: "var(--text-muted)",
+                  transform: openAccordions.has("problem") ? "rotate(90deg)" : "rotate(0deg)",
+                }}
+              />
+            </button>
             <div
-              className="rounded-xl overflow-hidden"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+              className="overflow-hidden transition-all duration-200"
+              style={{
+                maxHeight: openAccordions.has("problem") ? "1000px" : "0",
+                opacity: openAccordions.has("problem") ? 1 : 0,
+              }}
             >
-              <div className="px-4 lg:px-6 py-3 lg:py-4 flex items-center gap-2 lg:gap-3 text-white" style={{ background: "var(--primary)" }}>
-                <Search className="w-4 lg:w-5 h-4 lg:h-5" />
-                <h3 className="text-sm lg:text-base font-black">問題把握</h3>
-              </div>
-              <div className="p-4 lg:p-6">
-                <p className="text-sm lg:text-base leading-relaxed whitespace-pre-wrap font-bold" style={{ color: "#323232" }}>
+              <div
+                className="px-4 pb-4 pt-0"
+                style={{ marginLeft: "44px" }}
+              >
+                <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
                   {result.problemAnswer}
                 </p>
               </div>
             </div>
+          </div>
 
-            {/* 対策立案 */}
-            <div
-              className="rounded-xl overflow-hidden"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          {/* 対策立案 */}
+          <div
+            className="rounded-xl overflow-hidden"
+            style={{
+              background: "var(--surface)",
+              border: openAccordions.has("solution") ? "1px solid var(--primary)" : "1px solid var(--border)",
+              transition: "border-color 0.2s ease",
+            }}
+          >
+            <button
+              onClick={() => toggleAccordion("solution")}
+              className="w-full px-4 py-3.5 flex items-center gap-3 text-left hover:opacity-80 transition-opacity"
             >
-              <div className="px-4 lg:px-6 py-3 lg:py-4 flex items-center gap-2 lg:gap-3 text-white" style={{ background: "var(--primary)" }}>
-                <ClipboardCheck className="w-4 lg:w-5 h-4 lg:h-5" />
-                <h3 className="text-sm lg:text-base font-black">対策立案</h3>
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: openAccordions.has("solution") ? "var(--primary)" : "var(--background)" }}
+              >
+                <MessageSquare
+                  className="w-4 h-4"
+                  style={{ color: openAccordions.has("solution") ? "#fff" : "var(--text-muted)" }}
+                />
               </div>
-              <div className="p-4 lg:p-6">
-                <p className="text-sm lg:text-base leading-relaxed whitespace-pre-wrap font-bold" style={{ color: "#323232" }}>
+              <span className="text-sm font-black flex-1" style={{ color: "#323232" }}>
+                対策立案
+              </span>
+              <ChevronRight
+                className="w-4 h-4 transition-transform duration-200"
+                style={{
+                  color: "var(--text-muted)",
+                  transform: openAccordions.has("solution") ? "rotate(90deg)" : "rotate(0deg)",
+                }}
+              />
+            </button>
+            <div
+              className="overflow-hidden transition-all duration-200"
+              style={{
+                maxHeight: openAccordions.has("solution") ? "1000px" : "0",
+                opacity: openAccordions.has("solution") ? 1 : 0,
+              }}
+            >
+              <div
+                className="px-4 pb-4 pt-0"
+                style={{ marginLeft: "44px" }}
+              >
+                <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
                   {result.solutionAnswer}
                 </p>
               </div>
             </div>
-
-            {/* 理由 */}
-            {(() => {
-              const reasonText = [
-                result.problemReason ? `【問題把握】\n${result.problemReason}` : null,
-                result.solutionReason ? `【対策立案】\n${result.solutionReason}` : null,
-              ]
-                .filter(Boolean)
-                .join("\n\n");
-
-              if (!reasonText) return null;
-              return (
-                <div
-                  className="rounded-xl overflow-hidden"
-                  style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-                >
-                  <div className="px-4 lg:px-6 py-3 lg:py-4 flex items-center gap-2 lg:gap-3 text-white" style={{ background: "var(--info)" }}>
-                    <Info className="w-4 lg:w-5 h-4 lg:h-5" />
-                    <h3 className="text-sm lg:text-base font-black">予測の理由</h3>
-                  </div>
-                  <div className="p-4 lg:p-6">
-                    <p className="text-sm lg:text-base leading-relaxed whitespace-pre-wrap font-bold" style={{ color: "#323232" }}>
-                      {reasonText}
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
           </div>
-        )}
-      </div>
+
+          {/* 理由 */}
+          {(result.problemReason || result.solutionReason) && (
+            <div
+              className="rounded-xl overflow-hidden"
+              style={{
+                background: "var(--surface)",
+                border: openAccordions.has("reason") ? "1px solid var(--primary)" : "1px solid var(--border)",
+                transition: "border-color 0.2s ease",
+              }}
+            >
+              <button
+                onClick={() => toggleAccordion("reason")}
+                className="w-full px-4 py-3.5 flex items-center gap-3 text-left hover:opacity-80 transition-opacity"
+              >
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: openAccordions.has("reason") ? "var(--primary)" : "var(--background)" }}
+                >
+                  <Lightbulb
+                    className="w-4 h-4"
+                    style={{ color: openAccordions.has("reason") ? "#fff" : "var(--text-muted)" }}
+                  />
+                </div>
+                <span className="text-sm font-black flex-1" style={{ color: "#323232" }}>
+                  予測の理由
+                </span>
+                <ChevronRight
+                  className="w-4 h-4 transition-transform duration-200"
+                  style={{
+                    color: "var(--text-muted)",
+                    transform: openAccordions.has("reason") ? "rotate(90deg)" : "rotate(0deg)",
+                  }}
+                />
+              </button>
+              <div
+                className="overflow-hidden transition-all duration-200"
+                style={{
+                  maxHeight: openAccordions.has("reason") ? "2000px" : "0",
+                  opacity: openAccordions.has("reason") ? 1 : 0,
+                }}
+              >
+                <div
+                  className="px-4 pb-4 pt-0 space-y-4"
+                  style={{ marginLeft: "44px" }}
+                >
+                  {result.problemReason && (
+                    <div>
+                      <p className="text-xs font-bold mb-1.5" style={{ color: "var(--primary)" }}>
+                        問題把握について
+                      </p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
+                        {result.problemReason}
+                      </p>
+                    </div>
+                  )}
+                  {result.solutionReason && (
+                    <div>
+                      <p className="text-xs font-bold mb-1.5" style={{ color: "var(--primary)" }}>
+                        対策立案について
+                      </p>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
+                        {result.solutionReason}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

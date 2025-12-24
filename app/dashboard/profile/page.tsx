@@ -2,6 +2,7 @@
 import { getUserWithRole } from "@/lib/supabase/server";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { User, Mail, Shield, Calendar, Settings, Key } from "lucide-react";
+import { DisplayNameEditor } from "./DisplayNameEditor";
 
 export default async function ProfilePage() {
   const userInfo = await getUserWithRole();
@@ -56,7 +57,7 @@ export default async function ProfilePage() {
             <InfoRow
               icon={<User className="w-4 lg:w-5 h-4 lg:h-5" />}
               label="表示名"
-              value={userInfo.name || "未設定"}
+              value={<DisplayNameEditor initialName={userInfo.name} />}
             />
             <InfoRow
               icon={<Shield className="w-4 lg:w-5 h-4 lg:h-5" />}
@@ -88,7 +89,7 @@ export default async function ProfilePage() {
         </div>
 
         <p className="text-center text-xs lg:text-sm font-bold mt-4 lg:mt-6" style={{ color: "var(--text-muted)" }}>
-          ※ 設定変更機能は現在準備中です
+          ※ パスワード変更など一部機能は現在準備中です
         </p>
       </div>
     </DashboardLayout>
@@ -102,7 +103,7 @@ function InfoRow({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  value: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 lg:gap-4 py-2.5 lg:py-3 border-b" style={{ borderColor: "var(--border)" }}>
@@ -111,9 +112,13 @@ function InfoRow({
         <p className="text-xs font-bold" style={{ color: "var(--text-muted)" }}>
           {label}
         </p>
-        <p className="text-sm lg:text-base font-bold truncate" style={{ color: "#323232" }}>
-          {value}
-        </p>
+        {typeof value === "string" ? (
+          <p className="text-sm lg:text-base font-bold truncate" style={{ color: "#323232" }}>
+            {value}
+          </p>
+        ) : (
+          value
+        )}
       </div>
     </div>
   );

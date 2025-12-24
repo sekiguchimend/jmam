@@ -4,6 +4,8 @@
 import 'server-only';
 
 import { createSupabaseServerClient } from './server';
+import { createAuthedAnonServerClient } from './authed-anon-server';
+import { getAccessToken } from './server';
 import type { Case, Response, Scores, DatasetStats } from '@/types';
 import type { Database } from '@/types/database';
 
@@ -191,11 +193,14 @@ export async function getTotalResponseCount(): Promise<number> {
 
 // ============================================
 // データ登録クエリ（Server Action用）
+// anon key + 管理者JWT(Authorization) でRLSを通して書き込み
 // ============================================
 
 // ケースをupsert
-export async function upsertCase(caseData: CaseInsert): Promise<void> {
-  const supabase = await createSupabaseServerClient();
+export async function upsertCase(caseData: CaseInsert, accessToken?: string): Promise<void> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
   const res = await (supabase.from('cases') as any).upsert(caseData satisfies CaseInsert, { onConflict: 'case_id' });
   const { error } = res as { error: any };
 
@@ -206,8 +211,10 @@ export async function upsertCase(caseData: CaseInsert): Promise<void> {
 }
 
 // 回答データをバッチupsert（FR-09: 1000件単位）
-export async function upsertResponses(responses: ResponseInsert[]): Promise<void> {
-  const supabase = await createSupabaseServerClient();
+export async function upsertResponses(responses: ResponseInsert[], accessToken?: string): Promise<void> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
   const res = await (supabase.from('responses') as any).upsert(responses satisfies ResponseInsert[], {
     onConflict: 'case_id,response_id',
   });
@@ -220,8 +227,10 @@ export async function upsertResponses(responses: ResponseInsert[]): Promise<void
 }
 
 // ケースの回答を全削除（データセット削除用）
-export async function deleteResponsesByCaseId(caseId: string): Promise<number> {
-  const supabase = await createSupabaseServerClient();
+export async function deleteResponsesByCaseId(caseId: string, accessToken?: string): Promise<number> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
   const { data, error } = await supabase
     .from('responses')
     .delete()

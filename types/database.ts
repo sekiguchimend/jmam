@@ -4,6 +4,37 @@
 export type Database = {
   public: {
     Tables: {
+      case_assignments: {
+        Row: {
+          user_id: string;
+          case_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          case_id: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          case_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "case_assignments_case_id_fkey";
+            columns: ["case_id"];
+            referencedRelation: "cases";
+            referencedColumns: ["case_id"];
+          },
+          {
+            foreignKeyName: "case_assignments_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       cases: {
         Row: {
           case_id: string;

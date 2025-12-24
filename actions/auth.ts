@@ -8,7 +8,13 @@ import {
   createSupabaseServerClient,
   getAccessToken,
   ADMIN_TOKEN_COOKIE,
-  USER_TOKEN_COOKIE
+  ADMIN_REFRESH_TOKEN_COOKIE,
+  USER_TOKEN_COOKIE,
+  USER_REFRESH_TOKEN_COOKIE,
+  MFA_PENDING_ACCESS_TOKEN_COOKIE,
+  MFA_PENDING_REFRESH_TOKEN_COOKIE,
+  MFA_PENDING_IS_ADMIN_COOKIE,
+  MFA_PENDING_REDIRECT_COOKIE,
 } from '@/lib/supabase/server';
 import type { Database } from '@/types/database';
 import { cookies } from 'next/headers';
@@ -16,9 +22,17 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { setMfaPendingCookies } from '@/actions/mfa';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
+import { headers } from 'next/headers';
 
 // クッキーの有効期限（7日間）
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
+
+function isDevMfaBypass(host: string | null): boolean {
+  // 開発中（localhost）だけMFA必須を無効化
+  if (process.env.NODE_ENV === 'production') return false;
+  const h = (host ?? '').toLowerCase();
+  return h.includes('localhost') || h.includes('127.0.0.1');
+}
 
 // ログイン
 export async function login(formData: FormData): Promise<{
@@ -96,6 +110,41 @@ export async function login(formData: FormData): Promise<{
 
   const isAdmin = !!adminUser && !adminError;
 
+  // 開発環境（localhost）ではMFAをスキップしてログイン可能にする
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host');
+  if (isDevMfaBypass(host)) {
+    const cookieStore = await cookies();
+
+    // pendingが残っていると /mfa に飛び続けるので確実に消す
+    cookieStore.delete(MFA_PENDING_ACCESS_TOKEN_COOKIE);
+    cookieStore.delete(MFA_PENDING_REFRESH_TOKEN_COOKIE);
+    cookieStore.delete(MFA_PENDING_IS_ADMIN_COOKIE);
+    cookieStore.delete(MFA_PENDING_REDIRECT_COOKIE);
+
+    const commonCookie = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
+      maxAge: COOKIE_MAX_AGE,
+      path: '/',
+    };
+
+    cookieStore.set(USER_TOKEN_COOKIE, data.session.access_token, commonCookie);
+    cookieStore.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
+    if (isAdmin) {
+      cookieStore.set(ADMIN_TOKEN_COOKIE, data.session.access_token, commonCookie);
+      cookieStore.set(ADMIN_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
+    } else {
+      cookieStore.delete(ADMIN_TOKEN_COOKIE);
+      cookieStore.delete(ADMIN_REFRESH_TOKEN_COOKIE);
+    }
+
+    const resolvedRedirect = redirectTo ?? (isAdmin ? '/admin' : '/dashboard');
+    revalidatePath('/', 'layout');
+    return { success: true, redirectTo: resolvedRedirect };
+  }
+
   // MFA必須：AAL2（2段階認証完了）になるまでアプリのログインCookieを発行しない
   const aal = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (aal.error) {
@@ -131,10 +180,13 @@ export async function login(formData: FormData): Promise<{
 
   // 一般ユーザーは user_access_token、管理者は admin_access_token も付与
   cookieStore.set(USER_TOKEN_COOKIE, data.session.access_token, commonCookie);
+  cookieStore.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
   if (isAdmin) {
     cookieStore.set(ADMIN_TOKEN_COOKIE, data.session.access_token, commonCookie);
+    cookieStore.set(ADMIN_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
   } else {
     cookieStore.delete(ADMIN_TOKEN_COOKIE);
+    cookieStore.delete(ADMIN_REFRESH_TOKEN_COOKIE);
   }
 
   const resolvedRedirect = redirectTo ?? (isAdmin ? '/admin' : '/dashboard');
@@ -150,12 +202,14 @@ export async function logout(): Promise<void> {
   // クッキーを削除
   const cookieStore = await cookies();
   cookieStore.delete(ADMIN_TOKEN_COOKIE);
+  cookieStore.delete(ADMIN_REFRESH_TOKEN_COOKIE);
   cookieStore.delete(USER_TOKEN_COOKIE);
+  cookieStore.delete(USER_REFRESH_TOKEN_COOKIE);
   // MFA途中のクッキーも削除
-  cookieStore.delete('mfa_pending_access_token');
-  cookieStore.delete('mfa_pending_refresh_token');
-  cookieStore.delete('mfa_pending_is_admin');
-  cookieStore.delete('mfa_pending_redirect');
+  cookieStore.delete(MFA_PENDING_ACCESS_TOKEN_COOKIE);
+  cookieStore.delete(MFA_PENDING_REFRESH_TOKEN_COOKIE);
+  cookieStore.delete(MFA_PENDING_IS_ADMIN_COOKIE);
+  cookieStore.delete(MFA_PENDING_REDIRECT_COOKIE);
 
   revalidatePath('/', 'layout');
   redirect('/login');

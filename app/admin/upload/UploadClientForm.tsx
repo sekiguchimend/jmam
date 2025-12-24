@@ -3,10 +3,11 @@
 
 "use client";
 
-import { useState, useRef, useTransition } from "react";
+import { useEffect, useState, useRef, useTransition } from "react";
 import Link from "next/link";
 import { ProgressBar } from "@/components/ui";
 import { CloudUpload, Loader2, Check, X } from "lucide-react";
+import { iterateCsvRecordsFromBytes, parseCSVLine } from "@/lib/utils";
 
 type UploadState = "idle" | "uploading" | "completed" | "error";
 
@@ -16,7 +17,49 @@ type SseEvent =
   | { event: "completed"; data: { fileName: string; processed: number; status: string } }
   | { event: "error"; data: { fileName?: string; error: string; errors?: string[] } };
 
-async function countCsvDataLines(file: File): Promise<number> {
+const REQUIRED_HEADERS = ["受注番号", "Ⅱ　MC　題材コード"] as const;
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function LoadingDots() {
+  return (
+    <span className="inline-flex items-center gap-1 ml-1" aria-hidden="true">
+      <span className="w-1.5 h-1.5 rounded-full bg-[#323232] animate-bounce" style={{ animationDelay: "0ms" }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-[#323232] animate-bounce" style={{ animationDelay: "150ms" }} />
+      <span className="w-1.5 h-1.5 rounded-full bg-[#323232] animate-bounce" style={{ animationDelay: "300ms" }} />
+    </span>
+  );
+}
+
+async function detectEncodingForCsv(file: File): Promise<string> {
+  const prefix = new Uint8Array(await file.slice(0, 64 * 1024).arrayBuffer());
+
+  const tryDecode = (encoding: string) => {
+    try {
+      return new TextDecoder(encoding as never, { fatal: false }).decode(prefix);
+    } catch {
+      return "";
+    }
+  };
+
+  const looksOk = (text: string) =>
+    text.includes("受注番号") || text.includes("題材コード") || text.includes("Ⅱ") || text.includes("MC");
+
+  const utf8 = tryDecode("utf-8");
+  if (looksOk(utf8)) return "utf-8";
+
+  const sjis = tryDecode("shift-jis");
+  if (looksOk(sjis)) return "shift-jis";
+
+  return "utf-8";
+}
+
+async function countCsvDataLinesFallback(file: File): Promise<number> {
   // 行数（改行コード）をバイトで数える。文字コードに依存しない。
   const reader = file.stream().getReader();
   let newlines = 0;
@@ -35,6 +78,38 @@ async function countCsvDataLines(file: File): Promise<number> {
   const totalLines = hasAnyByte ? newlines + 1 : 0;
   // 1行目はヘッダー想定。負数にならないようにガード。
   return Math.max(0, totalLines - 1);
+}
+
+async function countCsvDataRecords(file: File): Promise<number> {
+  // セル内改行があるCSVだと、改行数ベースのカウントはズレるためレコード単位で数える。
+  // ただしヘッダーが見つからない等の異常系ではフォールバックする。
+  const encoding = await detectEncodingForCsv(file);
+
+  let headersFound = false;
+  let headerAttempts = 0;
+  let total = 0;
+
+  for await (const record of iterateCsvRecordsFromBytes(file.stream(), encoding)) {
+    if (!record.trim()) continue;
+
+    if (!headersFound) {
+      const headers = parseCSVLine(record);
+      const valid = REQUIRED_HEADERS.every((h) => headers.includes(h));
+      if (valid) {
+        headersFound = true;
+        continue;
+      }
+
+      headerAttempts += 1;
+      if (headerAttempts < 5) continue;
+      return await countCsvDataLinesFallback(file);
+    }
+
+    total += 1;
+  }
+
+  if (!headersFound) return await countCsvDataLinesFallback(file);
+  return total;
 }
 
 async function readSseStream(
@@ -89,10 +164,23 @@ export function UploadClientForm() {
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [processedCount, setProcessedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [errors, setErrors] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (uploadState !== "uploading") {
+      setElapsedMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      setElapsedMs(Date.now() - startedAt);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [uploadState]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -129,8 +217,8 @@ export function UploadClientForm() {
 
     startTransition(async () => {
       try {
-        // 進捗バー用に総行数（データ行）を事前に算出
-        const total = await countCsvDataLines(file);
+        // 進捗バー用に総件数（データレコード）を事前に算出
+        const total = await countCsvDataRecords(file);
         setTotalCount(total);
 
         const formData = new FormData();
@@ -224,22 +312,22 @@ export function UploadClientForm() {
           </div>
 
           {file && (
-            <div className="mt-4 lg:mt-6 flex flex-col sm:flex-row gap-3 lg:gap-4">
-              <button
-                onClick={handleUpload}
-                disabled={isPending}
-                className="flex-1 py-3 lg:py-4 rounded-xl font-black text-base lg:text-lg transition-all hover:opacity-90 disabled:opacity-50"
-                style={{ background: "#323232", color: "#fff" }}
-              >
-                アップロード開始
-              </button>
+            <div className="mt-4 lg:mt-6 flex justify-end gap-3">
               <button
                 onClick={resetUpload}
                 disabled={isPending}
-                className="px-6 py-3 lg:py-4 rounded-xl font-bold transition-all disabled:opacity-50"
-                style={{ border: "2px solid #e5e5e5", color: "#323232" }}
+                className="px-4 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 hover:bg-gray-100"
+                style={{ color: "var(--text-muted)" }}
               >
                 キャンセル
+              </button>
+              <button
+                onClick={handleUpload}
+                disabled={isPending}
+                className="px-5 py-2 rounded-lg text-sm font-black transition-all hover:opacity-90 disabled:opacity-50"
+                style={{ background: "var(--primary)", color: "#fff" }}
+              >
+                アップロード
               </button>
             </div>
           )}
@@ -256,7 +344,7 @@ export function UploadClientForm() {
             <Loader2 className="w-5 lg:w-6 h-5 lg:h-6 animate-spin flex-shrink-0" style={{ color: "#323232" }} />
             <div>
               <p className="text-sm lg:text-base font-black" style={{ color: "#323232" }}>
-                アップロード中...
+                アップロード中<LoadingDots />
               </p>
               <p className="text-xs lg:text-sm font-bold break-all" style={{ color: "#323232" }}>
                 {file?.name}
@@ -265,11 +353,19 @@ export function UploadClientForm() {
           </div>
 
           <div className="mb-3 lg:mb-4">
-            <ProgressBar current={processedCount} total={Math.max(totalCount, 1)} />
+            <ProgressBar current={processedCount} total={Math.max(totalCount, 1)} animated />
           </div>
 
           <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
-            データを検証・登録しています。このページを閉じないでください。
+            {totalCount > 0 ? (
+              <>
+                進捗: {processedCount.toLocaleString()} / {totalCount.toLocaleString()} 件（
+                {Math.max(0, Math.min(100, Math.round((processedCount / totalCount) * 100)))}%）・経過{" "}
+                {formatElapsed(elapsedMs)}
+              </>
+            ) : (
+              <>総件数を計算中です。少しお待ちください（経過 {formatElapsed(elapsedMs)}）</>
+            )}
           </p>
         </div>
       )}
@@ -287,21 +383,21 @@ export function UploadClientForm() {
           <p className="text-sm lg:text-base mb-4 lg:mb-6 font-bold" style={{ color: "#323232" }}>
             {processedCount.toLocaleString()}件のデータが正常に登録されました
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 lg:gap-4 justify-center">
-            <Link
-              href="/admin"
-              className="px-5 lg:px-6 py-2.5 lg:py-3 rounded-xl font-black text-sm lg:text-base transition-all hover:opacity-90"
-              style={{ background: "#323232", color: "#fff" }}
-            >
-              学習データへ
-            </Link>
+          <div className="flex gap-3 justify-center">
             <button
               onClick={resetUpload}
-              className="px-5 lg:px-6 py-2.5 lg:py-3 rounded-xl font-bold text-sm lg:text-base transition-all"
-              style={{ border: "2px solid #323232", color: "#323232" }}
+              className="px-4 py-2 rounded-lg text-sm font-bold transition-all hover:bg-gray-100"
+              style={{ color: "var(--text-muted)" }}
             >
               続けてアップロード
             </button>
+            <Link
+              href="/admin"
+              className="px-5 py-2 rounded-lg text-sm font-black transition-all hover:opacity-90"
+              style={{ background: "var(--primary)", color: "#fff" }}
+            >
+              学習データへ
+            </Link>
           </div>
         </div>
       )}
@@ -346,13 +442,15 @@ export function UploadClientForm() {
             </div>
           )}
 
-          <button
-            onClick={resetUpload}
-            className="w-full py-2.5 lg:py-3 rounded-xl font-black text-sm lg:text-base transition-all"
-            style={{ border: "2px solid #dc2626", color: "#dc2626" }}
-          >
-            やり直す
-          </button>
+          <div className="flex justify-end">
+            <button
+              onClick={resetUpload}
+              className="px-5 py-2 rounded-lg text-sm font-black transition-all hover:opacity-90"
+              style={{ background: "var(--error)", color: "#fff" }}
+            >
+              やり直す
+            </button>
+          </div>
         </div>
       )}
     </>
