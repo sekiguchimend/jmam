@@ -5,7 +5,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, Button } from '@/components/ui';
-import { adminDeleteUser, adminListUsers, adminSetUserStatus } from '@/actions/adminUsers';
+import { adminDeleteUser, adminListUsers, adminSetUserAdmin, adminSetUserStatus } from '@/actions/adminUsers';
 import { Search } from 'lucide-react';
 import { CreateUserInline } from './CreateUserInline';
 
@@ -16,6 +16,7 @@ type AuthUser = {
   last_sign_in_at: string | null;
   user_metadata: Record<string, unknown>;
   status: 'active' | 'suspended' | 'deleted';
+  is_admin: boolean;
 };
 
 export function AdminUsersClient(props: {
@@ -79,6 +80,20 @@ export function AdminUsersClient(props: {
     });
   };
 
+  const toggleAdmin = (u: AuthUser) => {
+    const next = !u.is_admin;
+    const label = next ? '管理者にする' : '一般に戻す';
+    if (!confirm(`${u.email ?? u.id} を「${label}」でよろしいですか？`)) return;
+    startTransition(async () => {
+      const res = await adminSetUserAdmin({ userId: u.id, makeAdmin: next });
+      if (!res.success) {
+        alert(res.error ?? '更新に失敗しました');
+        return;
+      }
+      await reloadFirstPage();
+    });
+  };
+
   return (
     <div className="max-w-7xl mx-auto animate-fade-in space-y-6">
       <div className="mb-2">
@@ -130,6 +145,7 @@ export function AdminUsersClient(props: {
             <thead>
               <tr className="text-left" style={{ color: '#323232' }}>
                 <th className="py-2 pr-4">メール</th>
+                <th className="py-2 pr-4">権限</th>
                 <th className="py-2 pr-4">状態</th>
                 <th className="py-2 pr-4">作成日</th>
                 <th className="py-2 pr-4">最終ログイン</th>
@@ -144,6 +160,14 @@ export function AdminUsersClient(props: {
                   <tr key={u.id} className="border-t" style={{ borderColor: 'var(--border)', color: '#323232' }}>
                     <td className="py-3 pr-4 font-bold">{u.email ?? '-'}</td>
                     <td className="py-3 pr-4">
+                      <span
+                        className="inline-flex items-center px-2 py-1 rounded-full text-xs font-black text-white"
+                        style={{ background: u.is_admin ? '#2563eb' : '#6b7280' }}
+                      >
+                        {u.is_admin ? '管理者' : '一般'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-black text-white" style={{ background: statusBg }}>
                         {statusLabel}
                       </span>
@@ -154,6 +178,14 @@ export function AdminUsersClient(props: {
                     </td>
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => toggleAdmin(u)}
+                          disabled={isPending || u.status === 'deleted'}
+                        >
+                          {u.is_admin ? '一般に戻す' : '管理者にする'}
+                        </Button>
                         <Button
                           variant="secondary"
                           size="sm"
@@ -172,7 +204,7 @@ export function AdminUsersClient(props: {
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center font-bold" style={{ color: 'var(--text-muted)' }}>
+                  <td colSpan={6} className="py-8 text-center font-bold" style={{ color: 'var(--text-muted)' }}>
                     ユーザーが見つかりません
                   </td>
                 </tr>

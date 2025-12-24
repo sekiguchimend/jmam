@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/actions/auth";
 import { useTransition } from "react";
 import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, Link2 } from "lucide-react";
+import Image from "next/image";
 
 interface SidebarProps {
   isAdmin: boolean;
@@ -87,11 +88,8 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
       >
         {/* ロゴ */}
         <div className="p-6 border-b flex items-center justify-between" style={{ borderColor: "var(--sidebar-border)" }}>
-          <Link href="/dashboard" className="flex items-center gap-3" onClick={handleNavClick}>
-            <Lightbulb className="w-6 h-6" style={{ color: "var(--primary)" }} />
-            <span className="text-lg font-black" style={{ color: "var(--text-inverse)" }}>
-              ScorePredict
-            </span>
+          <Link href="/dashboard" onClick={handleNavClick}>
+            <Image src="/jlogo.png" alt="JMAM" width={120} height={48} />
           </Link>
           {/* モバイル用閉じるボタン */}
           <button
@@ -111,7 +109,9 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
             </p>
             <div className="space-y-2">
               {navItems.map((item) => {
-                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                const isActive = item.href === "/dashboard"
+                  ? pathname === "/dashboard"
+                  : pathname === item.href || pathname.startsWith(item.href + "/");
                 return (
                   <Link
                     key={item.href}

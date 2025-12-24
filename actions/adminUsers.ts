@@ -12,6 +12,13 @@ import type { Database } from '@/types/database';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { getAuthedUserId } from '@/lib/supabase/server';
 
+type PostgrestErrorLike = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+};
+
 type AuthUser = {
   id: string;
   email: string | null;
@@ -19,6 +26,7 @@ type AuthUser = {
   last_sign_in_at: string | null;
   user_metadata: Record<string, unknown>;
   status: 'active' | 'suspended' | 'deleted';
+  is_admin: boolean;
 };
 
 async function ensureAdmin(): Promise<void> {
@@ -58,36 +66,101 @@ export async function adminListUsers(params?: {
     .select('id, email, name, status, created_at', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to);
-  const { data, error, status, statusText } = res as any;
+  const { data, error } = res;
 
   if (error) {
     // supabase-jsのerrorは列挙不可プロパティが多いので、見える形でログを出す
-    const e = error as any;
+    const e = error as unknown as PostgrestErrorLike;
     console.error('adminListUsers error:', {
-      status,
-      statusText,
+      status: res.status,
+      statusText: res.statusText,
       message: e?.message,
       details: e?.details,
       hint: e?.hint,
       code: e?.code,
     });
-    if (status === 401 || status === 403) {
+    if (res.status === 401 || res.status === 403) {
       throw new Error('権限がありません。再ログインしてください。');
     }
     throw new Error('ユーザー一覧の取得に失敗しました');
   }
 
-  const users: AuthUser[] =
-    (data as ProfileRow[] | null)?.map((p) => ({
-      id: p.id,
-      email: p.email ?? null,
-      created_at: p.created_at,
-      last_sign_in_at: null, // anon key運用ではAuthの最終ログインは取得しない
-      user_metadata: { name: p.name ?? '' },
-      status: p.status,
-    })) ?? [];
+  const profileRows = (data as ProfileRow[] | null) ?? [];
+  const userIds = profileRows.map((p) => p.id);
+
+  // 同ページ内の管理者IDをまとめて取得
+  const adminIdSet = new Set<string>();
+  if (userIds.length > 0) {
+    const adminsRes = await supabase
+      .from('admin_users')
+      .select('id')
+      .in('id', userIds)
+      .eq('is_active', true);
+    if (!adminsRes.error) {
+      for (const a of adminsRes.data ?? []) adminIdSet.add(a.id);
+    }
+  }
+
+  const users: AuthUser[] = profileRows.map((p) => ({
+    id: p.id,
+    email: p.email ?? null,
+    created_at: p.created_at,
+    last_sign_in_at: null, // anon key運用ではAuthの最終ログインは取得しない
+    user_metadata: { name: p.name ?? '' },
+    status: p.status,
+    is_admin: adminIdSet.has(p.id),
+  }));
 
   return { users, page, perPage };
+}
+
+export async function adminSetUserAdmin(params: {
+  userId: string;
+  makeAdmin: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  await ensureAdmin();
+  const token = await getAccessToken();
+  if (!token) return { success: false, error: '管理者権限が必要です' };
+
+  const currentAdminId = await getAuthedUserId();
+  if (currentAdminId && params.userId === currentAdminId && !params.makeAdmin) {
+    return { success: false, error: '自分自身の管理者権限は外せません' };
+  }
+
+  const supabase = createAuthedAnonServerClient(token);
+
+  if (!params.makeAdmin) {
+    const { error } = await supabase.from('admin_users').update({ is_active: false }).eq('id', params.userId);
+    if (error) {
+      console.error('adminSetUserAdmin demote error:', error);
+      return { success: false, error: '権限変更に失敗しました' };
+    }
+    return { success: true };
+  }
+
+  // 昇格：admin_users へ upsert（表示用にemail/nameも保存）
+  const prof = await supabase.from('profiles').select('email, name').eq('id', params.userId).maybeSingle();
+  const email = prof.data?.email ?? null;
+  const name = prof.data?.name ?? null;
+  if (!email) return { success: false, error: 'メールアドレスが見つかりません' };
+
+  type AdminInsert = Database['public']['Tables']['admin_users']['Insert'];
+  const { error } = await supabase.from('admin_users').upsert(
+    {
+      id: params.userId,
+      email,
+      name,
+      role: 'admin',
+      is_active: true,
+    } satisfies AdminInsert,
+    { onConflict: 'id' }
+  );
+  if (error) {
+    console.error('adminSetUserAdmin promote error:', error);
+    return { success: false, error: '権限変更に失敗しました' };
+  }
+
+  return { success: true };
 }
 
 export async function adminGetUserById(params: { userId: string }): Promise<AuthUser | null> {
@@ -179,9 +252,10 @@ export async function adminDeleteUser(params: {
 
   // ブロックテーブルに登録（Authユーザー自体はanon keyでは消せないため、再ログイン防止）
   const profile = await supabase.from('profiles').select('email').eq('id', params.userId).maybeSingle();
+  const blockedEmail = profile.data?.email ?? null;
   await supabase.from('user_blocks').insert({
     user_id: params.userId,
-    email: (profile.data as any)?.email ?? null,
+    email: blockedEmail,
     reason: 'deleted',
   });
 
@@ -201,6 +275,7 @@ export async function adminCreateUser(formData: FormData): Promise<{
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '').trim();
   const name = String(formData.get('name') ?? '').trim();
+  const role = String(formData.get('role') ?? 'user').trim(); // 'user' | 'admin'
 
   if (!email || !password) {
     return { success: false, error: 'メールアドレスとパスワードを入力してください' };
@@ -208,7 +283,7 @@ export async function adminCreateUser(formData: FormData): Promise<{
 
   // anon keyのみの方針では、Auth Admin API(=service_role)が使えないため signUp を利用する。
   // その場合、メール確認が必要（プロジェクト設定に依存）で、即時の強制確認はできない。
-  const { error } = await supabaseAnonServer.auth.signUp({
+  const { data, error } = await supabaseAnonServer.auth.signUp({
     email,
     password,
     options: {
@@ -219,6 +294,29 @@ export async function adminCreateUser(formData: FormData): Promise<{
   if (error) {
     console.error('adminCreateUser error:', error);
     return { success: false, error: `ユーザー作成に失敗しました: ${error.message}` };
+  }
+
+  // 作成時に「管理者」を選んだ場合は admin_users に登録
+  if (role === 'admin' && data?.user?.id) {
+    const token = await getAccessToken();
+    if (!token) return { success: false, error: '管理者権限が必要です' };
+    const supabase = createAuthedAnonServerClient(token);
+    type AdminInsert = Database['public']['Tables']['admin_users']['Insert'];
+    const res = await supabase.from('admin_users').upsert(
+      {
+        id: data.user.id,
+        email,
+        name: name || null,
+        role: 'admin',
+        is_active: true,
+      } satisfies AdminInsert,
+      { onConflict: 'id' }
+    );
+    const adminUpsertError = res.error;
+    if (adminUpsertError) {
+      console.error('adminCreateUser admin_users upsert error:', adminUpsertError);
+      return { success: false, error: 'ユーザー作成後の権限付与に失敗しました' };
+    }
   }
 
   return { success: true };

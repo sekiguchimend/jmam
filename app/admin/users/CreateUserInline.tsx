@@ -74,8 +74,10 @@ export function CreateUserInline({
   disabled?: boolean;
 }) {
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState<'user' | 'admin'>('user');
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -91,8 +93,10 @@ export function CreateUserInline({
 
   const reset = () => {
     setEmail('');
+    setName('');
     setPassword('');
     setShowPassword(false);
+    setRole('user');
   };
 
   const ensurePassword = () => {
@@ -119,6 +123,8 @@ export function CreateUserInline({
       const fd = new FormData();
       fd.set('email', email.trim());
       fd.set('password', password);
+      if (name.trim()) fd.set('name', name.trim());
+      fd.set('role', role);
       const result = await adminCreateUser(fd);
       if (!result.success) {
         setToast({ message: result.error ?? 'ユーザー作成に失敗しました', tone: 'error' });
@@ -148,7 +154,7 @@ export function CreateUserInline({
         </div>
 
         <div className="px-4 lg:px-6 py-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-xs font-black" style={{ color: '#323232' }}>
                   メール
@@ -171,6 +177,40 @@ export function CreateUserInline({
                     placeholder="user@example.com"
                     className="w-full outline-none bg-transparent text-sm font-bold h-full"
                     style={{ color: '#323232' }}
+                  />
+                </div>
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-black" style={{ color: '#323232' }}>
+                  権限
+                </span>
+                <div className="mt-1 border rounded-lg px-3 h-11 flex items-center" style={{ borderColor: 'var(--border)' }}>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value === 'admin' ? 'admin' : 'user')}
+                    className="w-full outline-none bg-transparent text-sm font-bold h-full"
+                    style={{ color: '#323232' }}
+                    disabled={isPending || disabled}
+                  >
+                    <option value="user">一般ユーザー</option>
+                    <option value="admin">管理者</option>
+                  </select>
+                </div>
+              </label>
+
+              <label className="block md:col-span-2">
+                <span className="text-xs font-black" style={{ color: '#323232' }}>
+                  表示名（任意）
+                </span>
+                <div className="mt-1 flex items-center gap-2 border rounded-lg px-3 h-11" style={{ borderColor: 'var(--border)' }}>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="未設定も可"
+                    className="w-full outline-none bg-transparent text-sm font-bold h-full"
+                    style={{ color: '#323232' }}
+                    disabled={isPending || disabled}
                   />
                 </div>
               </label>
