@@ -245,20 +245,21 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
 
   await deleteTypicalExamplesForBucket(caseId, question, scoreBucket, adminToken);
 
-  const rows: Database['public']['Tables']['typical_examples']['Insert'][] = reps
+  type TypicalExampleInsert = Database['public']['Tables']['typical_examples']['Insert'];
+  const rows: TypicalExampleInsert[] = reps
     .map((r, clusterId) => {
       const embRow = embeddings[r.idx];
       const resp = textMap.get(`${embRow.case_id}__${embRow.response_id}`);
       const repText = question === 'problem' ? resp?.answer_q1 : resp?.answer_q2;
       const repScore = question === 'problem' ? resp?.score_problem : resp?.score_solution;
       if (!repText || !String(repText).trim()) return null;
-      return {
+      const row: TypicalExampleInsert = {
         case_id: caseId,
         question,
         score_bucket: scoreBucket,
         cluster_id: clusterId,
         cluster_size: r.clusterSize,
-        centroid: r.centroid,
+        centroid: r.centroid as unknown,
         rep_case_id: caseId,
         rep_response_id: embRow.response_id,
         rep_text: String(repText),
@@ -267,8 +268,9 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
         embedding_model: EMBEDDING_MODEL,
         embedding_dim: EMBEDDING_DIM,
       };
+      return row;
     })
-    .filter((x): x is Database['public']['Tables']['typical_examples']['Insert'] => x !== null);
+    .filter((x): x is TypicalExampleInsert => x !== null);
 
   if (rows.length) {
     await upsertTypicalExamples(rows, adminToken);

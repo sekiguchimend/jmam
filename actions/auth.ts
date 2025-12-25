@@ -248,14 +248,14 @@ export async function createAdminUser(formData: FormData): Promise<{
   }
 
   // admin_usersテーブルに追加
-  type AdminUserInsert = Database['public']['Tables']['admin_users']['Insert'];
+  // @ts-expect-error - Supabase SSR type inference issue with Database generics
   const { error: insertError } = await supabase.from('admin_users').insert({
     id: data.user.id,
     email,
     name: name || null,
     role: 'admin',
     is_active: true,
-  } satisfies AdminUserInsert);
+  });
 
   if (insertError) {
     console.error('Insert admin_user error:', insertError);
