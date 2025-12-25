@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { startTotpEnroll, verifyTotp, cancelMfa } from '@/actions/mfa';
 import { Mail, ShieldCheck, QrCode, AlertCircle, ArrowRight, Loader2, Copy } from 'lucide-react';
@@ -13,7 +13,7 @@ type MfaStatus =
 
 export function MfaClient({ initial }: { initial: MfaStatus }) {
   const router = useRouter();
-  const [status, setStatus] = useState<MfaStatus>(initial);
+  const [status] = useState<MfaStatus>(initial);
   const [code, setCode] = useState('');
   const [enroll, setEnroll] = useState<{ factorId: string; qrCode: string; secret: string } | null>(null);
   const [error, setError] = useState<string | null>(initial.ok ? null : initial.error);
@@ -21,10 +21,7 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
 
   const effectiveFactorId = useMemo(() => enroll?.factorId ?? (status.ok ? status.factorId : undefined), [enroll, status]);
 
-  useEffect(() => {
-    if (!status.ok) return;
-    setError(null);
-  }, [status]);
+  // status更新でエラーを自動クリアしない（react-hooks/set-state-in-effect対策）
 
   const handleStartEnroll = () => {
     startTransition(async () => {
@@ -153,6 +150,8 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
           </div>
 
           <div className="rounded-lg p-3 flex items-center justify-center" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
+            {/* data URL のSVG/PNGを表示するだけなので img を使用 */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={enroll.qrCode} alt="TOTP QR code" className="w-48 h-48" />
           </div>
 

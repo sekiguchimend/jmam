@@ -139,8 +139,7 @@ async function readSseStream(
       const event = eventLine.replace("event:", "").trim();
       const dataJson = dataLine.replace("data:", "").trim();
       try {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const data = JSON.parse(dataJson);
+        const data = JSON.parse(dataJson) as unknown;
         onEvent({ event: event as SseEvent["event"], data } as SseEvent);
       } catch {
         // パースできない場合は無視

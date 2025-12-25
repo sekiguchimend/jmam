@@ -10,6 +10,7 @@ import {
   MFA_PENDING_REDIRECT_COOKIE,
 } from '@/lib/supabase/server';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
+import type { EmailOtpType } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -28,10 +29,11 @@ export async function GET(req: Request) {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 
+  const otpType = (type as EmailOtpType) ?? 'email';
   const { data, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
-    type: type as any,
-  } as any);
+    type: otpType,
+  });
 
   if (error || !data.session || !data.user) {
     return NextResponse.redirect(new URL('/login', url));
@@ -45,7 +47,7 @@ export async function GET(req: Request) {
       return NextResponse.redirect(new URL('/login', url));
     }
     const profile = await db.from('profiles').select('status').eq('id', data.user.id).maybeSingle();
-    const status = (profile.data as any)?.status as string | undefined;
+    const status = (profile.data as { status?: string } | null)?.status;
     if (!profile.data || (status && status !== 'active')) {
       return NextResponse.redirect(new URL('/login', url));
     }

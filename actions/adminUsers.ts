@@ -187,6 +187,15 @@ export async function adminGetUserById(params: { userId: string }): Promise<Auth
   }
   if (!data) return null;
 
+  // 管理者かどうかをチェック
+  const adminRes = await supabase
+    .from('admin_users')
+    .select('id')
+    .eq('id', userId)
+    .eq('is_active', true)
+    .maybeSingle();
+  const isAdmin = !adminRes.error && adminRes.data !== null;
+
   return {
     id: data.id,
     email: data.email ?? null,
@@ -194,6 +203,7 @@ export async function adminGetUserById(params: { userId: string }): Promise<Auth
     last_sign_in_at: null,
     user_metadata: { name: data.name ?? '' },
     status: data.status,
+    is_admin: isAdmin,
   };
 }
 

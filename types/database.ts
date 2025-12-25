@@ -293,6 +293,162 @@ export type Database = {
           }
         ];
       };
+      embedding_queue: {
+        Row: {
+          case_id: string;
+          response_id: string;
+          question: 'problem' | 'solution';
+          status: 'pending' | 'processing' | 'done' | 'error';
+          attempts: number;
+          last_error: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          case_id: string;
+          response_id: string;
+          question: 'problem' | 'solution';
+          status?: 'pending' | 'processing' | 'done' | 'error';
+          attempts?: number;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          case_id?: string;
+          response_id?: string;
+          question?: 'problem' | 'solution';
+          status?: 'pending' | 'processing' | 'done' | 'error';
+          attempts?: number;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'embedding_queue_response_fkey';
+            columns: ['case_id', 'response_id'];
+            referencedRelation: 'responses';
+            referencedColumns: ['case_id', 'response_id'];
+          }
+        ];
+      };
+      response_embeddings: {
+        Row: {
+          case_id: string;
+          response_id: string;
+          question: 'problem' | 'solution';
+          score: number | null;
+          score_bucket: number;
+          embedding: unknown;
+          embedding_model: string;
+          embedding_dim: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          case_id: string;
+          response_id: string;
+          question: 'problem' | 'solution';
+          score?: number | null;
+          score_bucket: number;
+          embedding: unknown;
+          embedding_model?: string;
+          embedding_dim?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          case_id?: string;
+          response_id?: string;
+          question?: 'problem' | 'solution';
+          score?: number | null;
+          score_bucket?: number;
+          embedding?: unknown;
+          embedding_model?: string;
+          embedding_dim?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'response_embeddings_response_fkey';
+            columns: ['case_id', 'response_id'];
+            referencedRelation: 'responses';
+            referencedColumns: ['case_id', 'response_id'];
+          }
+        ];
+      };
+      typical_examples: {
+        Row: {
+          id: string;
+          case_id: string;
+          question: 'problem' | 'solution';
+          score_bucket: number;
+          cluster_id: number;
+          cluster_size: number;
+          centroid: unknown;
+          rep_case_id: string;
+          rep_response_id: string;
+          rep_text: string;
+          rep_score: number | null;
+          rep_distance: number | null;
+          embedding_model: string;
+          embedding_dim: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          case_id: string;
+          question: 'problem' | 'solution';
+          score_bucket: number;
+          cluster_id: number;
+          cluster_size: number;
+          centroid: unknown;
+          rep_case_id: string;
+          rep_response_id: string;
+          rep_text: string;
+          rep_score?: number | null;
+          rep_distance?: number | null;
+          embedding_model?: string;
+          embedding_dim?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          case_id?: string;
+          question?: 'problem' | 'solution';
+          score_bucket?: number;
+          cluster_id?: number;
+          cluster_size?: number;
+          centroid?: unknown;
+          rep_case_id?: string;
+          rep_response_id?: string;
+          rep_text?: string;
+          rep_score?: number | null;
+          rep_distance?: number | null;
+          embedding_model?: string;
+          embedding_dim?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'typical_examples_case_id_fkey';
+            columns: ['case_id'];
+            referencedRelation: 'cases';
+            referencedColumns: ['case_id'];
+          },
+          {
+            foreignKeyName: 'typical_examples_rep_response_fkey';
+            columns: ['rep_case_id', 'rep_response_id'];
+            referencedRelation: 'responses';
+            referencedColumns: ['case_id', 'response_id'];
+          }
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

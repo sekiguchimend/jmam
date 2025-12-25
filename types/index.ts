@@ -63,6 +63,16 @@ export interface PredictionResponse {
   similarResponses?: Response[];
 }
 
+export type TypicalExample = {
+  case_id: string;
+  question: 'problem' | 'solution';
+  score_bucket: number;
+  cluster_id: number;
+  cluster_size: number;
+  rep_text: string;
+  rep_score: number | null;
+};
+
 // アップロード進捗
 export interface UploadProgress {
   fileName: string;

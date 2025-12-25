@@ -23,6 +23,7 @@ import { revalidatePath } from 'next/cache';
 import { setMfaPendingCookies } from '@/actions/mfa';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { headers } from 'next/headers';
+import type { AuthError } from '@supabase/supabase-js';
 
 // クッキーの有効期限（7日間）
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -60,11 +61,12 @@ export async function login(formData: FormData): Promise<{
   });
 
   if (error) {
+    const e = error as AuthError;
     console.error('signInWithPassword error:', {
-      message: error.message,
-      status: (error as any).status,
-      code: (error as any).code,
-      name: (error as any).name,
+      message: e.message,
+      status: e.status,
+      code: e.code,
+      name: e.name,
     });
     return { success: false, error: 'ログインに失敗しました（メールまたはパスワードをご確認ください）' };
   }
@@ -86,7 +88,7 @@ export async function login(formData: FormData): Promise<{
       await supabase.auth.signOut();
       return { success: false, error: 'このアカウントは利用できません' };
     }
-    const status = (profile.data as any)?.status as string | undefined;
+    const status = (profile.data as { status?: string } | null)?.status;
     if (status && status !== 'active') {
       await supabase.auth.signOut();
       return {
@@ -247,14 +249,13 @@ export async function createAdminUser(formData: FormData): Promise<{
 
   // admin_usersテーブルに追加
   type AdminUserInsert = Database['public']['Tables']['admin_users']['Insert'];
-  const res = await (supabase.from('admin_users') as any).insert({
+  const { error: insertError } = await supabase.from('admin_users').insert({
     id: data.user.id,
     email,
     name: name || null,
     role: 'admin',
     is_active: true,
   } satisfies AdminUserInsert);
-  const { error: insertError } = res as { error: any };
 
   if (insertError) {
     console.error('Insert admin_user error:', insertError);

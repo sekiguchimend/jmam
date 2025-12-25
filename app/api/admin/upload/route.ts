@@ -6,11 +6,16 @@ export const maxDuration = 600; // 10分（Vercel）
 
 import { getAccessToken, isAdmin } from '@/lib/supabase/server';
 import { iterateCsvRecordsFromBytes, parseCSVLine, parseDate, parseScore } from '@/lib/utils';
-import { upsertCase, upsertResponses } from '@/lib/supabase';
+import { enqueueEmbeddingJobs, upsertCase, upsertResponses } from '@/lib/supabase';
 import type { CsvRowData } from '@/types';
+import { toScoreBucket } from '@/lib/scoring';
+import { processEmbeddingQueueBatchWithToken, rebuildTypicalExamplesForBucketWithToken } from '@/lib/prepare/worker';
 
 const BATCH_SIZE = 1000;
 const REQUIRED_HEADERS = ['受注番号', 'Ⅱ　MC　題材コード'];
+// 5000行程度のアップロードを想定し、アップロード後の自動準備に使う上限を少し長めに確保
+// （maxDuration=600秒のため、アップロード処理そのものの時間も考慮して余裕を残す）
+const AUTO_PREPARE_MAX_MS = 420_000; // 7分
 
 function dedupeResponsesByKey(rows: CsvRowData[]): { deduped: CsvRowData[]; dropped: number } {
   // upsertのonConflict(case_id,response_id)に対して、同一コマンド内で重複があると
@@ -128,7 +133,7 @@ async function detectEncodingAndRebuildStream(file: File): Promise<{
   };
 
   const utf8 = tryDecode('utf-8');
-  const sjis = tryDecode('shift-jis');
+  // Shift_JISの判定は不要（utf8LooksOk=falseの場合にshift-jisへフォールバックするため）
   const utf8LooksOk =
     utf8.includes('受注番号') || utf8.includes('題材コード') || utf8.includes('Ⅱ') || utf8.includes('MC');
 
@@ -203,6 +208,8 @@ export async function POST(request: Request) {
         let headerAttempts = 0;
 
         const caseSeen = new Set<string>();
+        // 典型例の再計算対象（このアップロードで触れたスコア帯だけ）
+        const touchedBuckets = new Set<string>(); // `${caseId}__${question}__${bucket}`
         let batch: CsvRowData[] = [];
         let processedCount = 0;
         const errors: string[] = [];
@@ -278,6 +285,27 @@ export async function POST(request: Request) {
               return rest;
             });
             await upsertResponses(dbRecords, adminToken);
+
+            // embeddingキュー投入（事前準備用）
+            await enqueueEmbeddingJobs(
+              deduped.flatMap((r) => {
+                const jobs: { case_id: string; response_id: string; question: 'problem' | 'solution' }[] = [];
+                if (r.answer_q1 && r.answer_q1.trim()) jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'problem' });
+                if (r.answer_q2 && r.answer_q2.trim()) jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'solution' });
+                return jobs;
+              }),
+              adminToken
+            );
+
+            // 典型例再計算用の「触れたスコア帯」を記録
+            for (const r of deduped) {
+              if (typeof r.score_problem === 'number') {
+                touchedBuckets.add(`${r.case_id}__problem__${toScoreBucket(r.score_problem)}`);
+              }
+              if (typeof r.score_solution === 'number') {
+                touchedBuckets.add(`${r.case_id}__solution__${toScoreBucket(r.score_solution)}`);
+              }
+            }
             processedCount += batch.length;
             batch = [];
 
@@ -310,6 +338,23 @@ export async function POST(request: Request) {
             return rest;
           });
           await upsertResponses(dbRecords, adminToken);
+          await enqueueEmbeddingJobs(
+            deduped.flatMap((r) => {
+              const jobs: { case_id: string; response_id: string; question: 'problem' | 'solution' }[] = [];
+              if (r.answer_q1 && r.answer_q1.trim()) jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'problem' });
+              if (r.answer_q2 && r.answer_q2.trim()) jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'solution' });
+              return jobs;
+            }),
+            adminToken
+          );
+          for (const r of deduped) {
+            if (typeof r.score_problem === 'number') {
+              touchedBuckets.add(`${r.case_id}__problem__${toScoreBucket(r.score_problem)}`);
+            }
+            if (typeof r.score_solution === 'number') {
+              touchedBuckets.add(`${r.case_id}__solution__${toScoreBucket(r.score_solution)}`);
+            }
+          }
           processedCount += batch.length;
           send('progress', {
             fileName,
@@ -318,7 +363,59 @@ export async function POST(request: Request) {
           });
         }
 
+        // アップロード完了
         send('completed', { fileName, processed: processedCount, status: 'completed' });
+
+        // ここから「アップロード時にすべき」自動準備を実施（時間制限付き）
+        // - まずEmbeddingを作る（キュー処理）
+        // - その後、触れたスコア帯だけ典型例を再計算
+        const prepareStartedAt = Date.now();
+        let totalProcessed = 0;
+        let totalSucceeded = 0;
+        let totalFailed = 0;
+        send('prepare_start', { status: 'started' });
+
+        while (Date.now() - prepareStartedAt < AUTO_PREPARE_MAX_MS) {
+          const res = await processEmbeddingQueueBatchWithToken(adminToken, 200);
+          if (res.processed === 0) break;
+          totalProcessed += res.processed;
+          totalSucceeded += res.succeeded;
+          totalFailed += res.failed;
+          send('prepare_progress', {
+            phase: 'embeddings',
+            processed: totalProcessed,
+            succeeded: totalSucceeded,
+            failed: totalFailed,
+          });
+        }
+
+        // 典型例生成（このアップロードで触れた範囲だけ）
+        const items = Array.from(touchedBuckets.values()).slice(0, 200); // 大量アップロード対策
+        let typicalDone = 0;
+        for (const key of items) {
+          if (Date.now() - prepareStartedAt >= AUTO_PREPARE_MAX_MS) break;
+          const [caseId, question, bucketStr] = key.split('__');
+          const scoreBucket = Number(bucketStr);
+          if (!caseId || (question !== 'problem' && question !== 'solution') || !Number.isFinite(scoreBucket)) continue;
+          await rebuildTypicalExamplesForBucketWithToken({
+            adminToken: adminToken,
+            caseId,
+            question,
+            scoreBucket,
+            maxClusters: 3,
+          });
+          typicalDone += 1;
+          if (typicalDone % 10 === 0) {
+            send('prepare_progress', { phase: 'typicals', done: typicalDone, total: items.length });
+          }
+        }
+
+        send('prepare_done', {
+          status: 'done',
+          embeddings: { processed: totalProcessed, succeeded: totalSucceeded, failed: totalFailed },
+          typicals: { done: typicalDone, scheduled: items.length },
+          timeMs: Date.now() - prepareStartedAt,
+        });
         controller.close();
       } catch (error) {
         console.error('upload route error:', error);

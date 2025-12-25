@@ -165,7 +165,7 @@ export async function verifyTotp(params: { factorId: string; code: string }): Pr
     if (!profile.data) {
       return { ok: false, error: 'このアカウントは利用できません' };
     }
-    const status = (profile.data as any)?.status as string | undefined;
+    const status = (profile.data as { status?: string } | null)?.status;
     if (status && status !== 'active') {
       return { ok: false, error: status === 'suspended' ? 'このアカウントは停止中です' : 'このアカウントは利用できません' };
     }

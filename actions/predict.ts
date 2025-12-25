@@ -4,15 +4,17 @@
 
 'use server';
 
-import { 
-  findSimilarResponsesWithFallback, 
-  getCases, 
-  getCaseById 
+import {
+  findResponsesForRAG,
+  getTypicalExamples,
+  getCases,
+  getCaseById
 } from '@/lib/supabase';
-import { generatePrediction } from '@/lib/gemini';
-import type { Scores, PredictionResponse, Case } from '@/types';
+import { generatePrediction, type FewShotContext } from '@/lib/gemini';
+import type { Scores, PredictionResponse, Case, Response } from '@/types';
 import { hasAccessToken, hasUserAccessToken } from '@/lib/supabase/server';
 import { recordUserScores } from '@/actions/userScore';
+import { toScoreBucket } from '@/lib/scoring';
 
 async function ensureAuthenticated(): Promise<boolean> {
   // 管理者 or 一般のいずれかのトークンがあればOK
@@ -58,34 +60,53 @@ export async function predictAnswer(
     }
     const situationText = targetCase.situation_text ?? '';
 
-    // 2. 類似スコアの回答を検索（RAG）
-    // フォールバック付きで最低3件は取得
-    const similarResponses = await findSimilarResponsesWithFallback(
-      caseId,
-      scores,
-      3,  // 最低3件
-      10  // 最大10件
-    );
+    // 2. 目標スコア帯の「典型例」を取得（few-shot用）
+    const problemBucket = toScoreBucket(scores.problem);
+    const solutionBucket = toScoreBucket(scores.solution);
+    const [problemTypical, solutionTypical] = await Promise.all([
+      getTypicalExamples(caseId, 'problem', problemBucket, 2),
+      getTypicalExamples(caseId, 'solution', solutionBucket, 2),
+    ]);
 
-    if (similarResponses.length === 0) {
-      return { success: false, error: '参考となる回答データが見つかりません' };
+    const fewShot: FewShotContext = {
+      problemScoreBucket: problemBucket,
+      solutionScoreBucket: solutionBucket,
+      problemExamples: problemTypical.map((t) => t.rep_text),
+      solutionExamples: solutionTypical.map((t) => t.rep_text),
+    };
+
+    // 典型例が未生成の場合のフォールバック（既存RAG）
+    let ragResponses: Response[] = [];
+    if (fewShot.problemExamples.length === 0 || fewShot.solutionExamples.length === 0) {
+      ragResponses = await findResponsesForRAG(caseId, scores, 5);
+      if (ragResponses.length === 0) {
+        return { success: false, error: '参考となる回答データが見つかりません（典型例も未生成です）' };
+      }
+      if (fewShot.problemExamples.length === 0) {
+        fewShot.problemExamples = ragResponses
+          .map((r) => r.answer_q1)
+          .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+          .slice(0, 2);
+      }
+      if (fewShot.solutionExamples.length === 0) {
+        fewShot.solutionExamples = ragResponses
+          .map((r) => r.answer_q2)
+          .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+          .slice(0, 2);
+      }
     }
 
-    // 3. LLMで予測回答を生成
-    const prediction = await generatePrediction(
-      situationText,
-      similarResponses,
-      scores
-    );
+    // 3. LLMで予測回答を生成（典型例few-shotに沿って生成）
+    const prediction = await generatePrediction(situationText, fewShot, scores);
 
     // 4. スコア履歴を保存（失敗しても予測は成功扱い）
     await recordUserScores({ caseId, scores });
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: {
         ...prediction,
-        similarResponses, // 類似回答も返す（比較用）
+        similarResponses: ragResponses.length ? ragResponses : undefined, // フォールバック時のみ返す
       }
     };
   } catch (error) {
