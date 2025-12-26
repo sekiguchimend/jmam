@@ -3,7 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database';
 import {
   ADMIN_TOKEN_COOKIE,
+  ADMIN_REFRESH_TOKEN_COOKIE,
   USER_TOKEN_COOKIE,
+  USER_REFRESH_TOKEN_COOKIE,
   MFA_PENDING_ACCESS_TOKEN_COOKIE,
   MFA_PENDING_REFRESH_TOKEN_COOKIE,
   MFA_PENDING_IS_ADMIN_COOKIE,
@@ -125,8 +127,22 @@ export async function GET(req: Request) {
     maxAge: 60 * 60 * 24 * 7,
     path: '/',
   });
+  res.cookies.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 7,
+    path: '/',
+  });
   if (isAdmin) {
     res.cookies.set(ADMIN_TOKEN_COOKIE, data.session.access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+      path: '/',
+    });
+    res.cookies.set(ADMIN_REFRESH_TOKEN_COOKIE, data.session.refresh_token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

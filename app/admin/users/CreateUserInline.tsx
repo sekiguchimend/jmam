@@ -199,7 +199,7 @@ export function CreateUserInline({
                 </div>
               </label>
 
-              <label className="block md:col-span-2">
+              <label className="block">
                 <span className="text-xs font-black" style={{ color: '#323232' }}>
                   表示名（任意）
                 </span>

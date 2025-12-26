@@ -141,15 +141,15 @@ export function AdminUsersClient(props: {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table className="w-full text-sm table-fixed">
             <thead>
-              <tr className="text-left" style={{ color: '#323232' }}>
-                <th className="py-2 pr-4">メール</th>
-                <th className="py-2 pr-4">権限</th>
-                <th className="py-2 pr-4">状態</th>
-                <th className="py-2 pr-4">作成日</th>
-                <th className="py-2 pr-4">最終ログイン</th>
-                <th className="py-2 pr-4">操作</th>
+              <tr style={{ color: '#323232' }}>
+                <th className="py-2 pr-4 text-left w-[20%]">メール</th>
+                <th className="py-2 pr-4 text-center w-[10%]">権限</th>
+                <th className="py-2 pr-4 text-center w-[10%]">状態</th>
+                <th className="py-2 pr-4 text-left w-[16%]">作成日</th>
+                <th className="py-2 pr-4 text-left w-[16%]">最終ログイン</th>
+                <th className="py-2 pr-4 text-left w-[28%]">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -158,8 +158,8 @@ export function AdminUsersClient(props: {
                 const statusBg = u.status === 'active' ? '#16a34a' : u.status === 'suspended' ? '#f59e0b' : '#6b7280';
                 return (
                   <tr key={u.id} className="border-t" style={{ borderColor: 'var(--border)', color: '#323232' }}>
-                    <td className="py-3 pr-4 font-bold">{u.email ?? '-'}</td>
-                    <td className="py-3 pr-4">
+                    <td className="py-3 pr-4 font-bold text-left truncate" title={u.email ?? '-'}>{u.email ?? '-'}</td>
+                    <td className="py-3 pr-4 text-center">
                       <span
                         className="inline-flex items-center px-2 py-1 rounded-full text-xs font-black text-white"
                         style={{ background: u.is_admin ? '#2563eb' : '#6b7280' }}
@@ -167,17 +167,17 @@ export function AdminUsersClient(props: {
                         {u.is_admin ? '管理者' : '一般'}
                       </span>
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="py-3 pr-4 text-center">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-black text-white" style={{ background: statusBg }}>
                         {statusLabel}
                       </span>
                     </td>
-                    <td className="py-3 pr-4 font-bold">{new Date(u.created_at).toLocaleString()}</td>
-                    <td className="py-3 pr-4 font-bold">
+                    <td className="py-3 pr-4 font-bold text-left truncate" title={new Date(u.created_at).toLocaleString()}>{new Date(u.created_at).toLocaleString()}</td>
+                    <td className="py-3 pr-4 font-bold text-left truncate" title={u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : '-'}>
                       {u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : '-'}
                     </td>
-                    <td className="py-3 pr-4">
-                      <div className="flex items-center gap-2">
+                    <td className="py-3 pr-4 text-left">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Button
                           variant="secondary"
                           size="sm"

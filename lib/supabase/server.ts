@@ -7,6 +7,7 @@ import { cookies } from 'next/headers';
 import type { Database, AdminUser } from '@/types/database';
 import { getUserIdFromJwt, decodeJwtPayload } from '@/lib/jwt';
 import { createAuthedAnonServerClient } from './authed-anon-server';
+import { cache } from 'react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -23,6 +24,41 @@ export const MFA_PENDING_ACCESS_TOKEN_COOKIE = 'mfa_pending_access_token';
 export const MFA_PENDING_REFRESH_TOKEN_COOKIE = 'mfa_pending_refresh_token';
 export const MFA_PENDING_IS_ADMIN_COOKIE = 'mfa_pending_is_admin';
 export const MFA_PENDING_REDIRECT_COOKIE = 'mfa_pending_redirect';
+
+// refresh連打を避けるためのバックオフ（短時間）
+const ADMIN_REFRESH_BACKOFF_UNTIL_COOKIE = 'admin_refresh_backoff_until';
+const USER_REFRESH_BACKOFF_UNTIL_COOKIE = 'user_refresh_backoff_until';
+
+function nowSec(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+function parseSec(v: string | undefined): number | null {
+  if (!v) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function isOverRequestRateLimit(error: unknown): boolean {
+  const e = error as { status?: number; code?: string } | null;
+  return !!e && (e.status === 429 || e.code === 'over_request_rate_limit');
+}
+
+async function canWriteCookies(cookieStore: Awaited<ReturnType<typeof cookies>>): Promise<boolean> {
+  try {
+    // Server Componentでは set が例外になるので判定用に軽い書き込みを試す
+    cookieStore.set('__sb_cookie_write_probe', '1', { path: '/', maxAge: 1 });
+    cookieStore.delete('__sb_cookie_write_probe');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const refreshSessionCached = cache(async (refreshToken: string) => {
+  const supabase = await createSupabaseServerClient();
+  return await supabase.auth.refreshSession({ refresh_token: refreshToken });
+});
 
 // Server Components用のSupabaseクライアントを作成
 export async function createSupabaseServerClient() {
@@ -58,15 +94,39 @@ export async function getAccessToken(): Promise<string | null> {
     return token;
   }
 
+  const writable = await canWriteCookies(cookieStore);
+
+  // 直近でレート制限になった場合は一定時間refreshしない
+  const backoffUntil = parseSec(cookieStore.get(ADMIN_REFRESH_BACKOFF_UNTIL_COOKIE)?.value);
+  if (backoffUntil && nowSec() < backoffUntil) {
+    return writable ? null : token;
+  }
+
   // 期限切れならリフレッシュを試みる
   const refreshToken = cookieStore.get(ADMIN_REFRESH_TOKEN_COOKIE)?.value;
   if (!refreshToken) return null;
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+  const { data, error } = await refreshSessionCached(refreshToken);
 
   if (error || !data.session) {
     console.error('Token refresh failed:', error);
+    if (isOverRequestRateLimit(error)) {
+      if (writable) {
+        try {
+        cookieStore.set(ADMIN_REFRESH_BACKOFF_UNTIL_COOKIE, String(nowSec() + 60), {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 60,
+          path: '/',
+        });
+        } catch {
+          // no-op
+        }
+      }
+      // レート制限中に権限が落ちないよう、既存（期限切れの）トークンを返す
+      return token;
+    }
     return null;
   }
 
@@ -80,14 +140,18 @@ export async function getAccessToken(): Promise<string | null> {
     path: '/',
   };
 
-  try {
+  if (writable) {
+    try {
     cookieStore.set(ADMIN_TOKEN_COOKIE, data.session.access_token, commonCookie);
     cookieStore.set(ADMIN_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
     // user_access_token も同時に更新
     cookieStore.set(USER_TOKEN_COOKIE, data.session.access_token, commonCookie);
     cookieStore.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
-  } catch {
-    // Server Componentからの呼び出し時はクッキー更新できない
+    cookieStore.delete(ADMIN_REFRESH_BACKOFF_UNTIL_COOKIE);
+    cookieStore.delete(USER_REFRESH_BACKOFF_UNTIL_COOKIE);
+    } catch {
+      // no-op
+    }
   }
 
   return data.session.access_token;
@@ -105,15 +169,39 @@ export async function getUserAccessToken(): Promise<string | null> {
     return token;
   }
 
+  const writable = await canWriteCookies(cookieStore);
+
+  // 直近でレート制限になった場合は一定時間refreshしない
+  const backoffUntil = parseSec(cookieStore.get(USER_REFRESH_BACKOFF_UNTIL_COOKIE)?.value);
+  if (backoffUntil && nowSec() < backoffUntil) {
+    return writable ? null : token;
+  }
+
   // 期限切れならリフレッシュを試みる
   const refreshToken = cookieStore.get(USER_REFRESH_TOKEN_COOKIE)?.value;
   if (!refreshToken) return null;
 
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+  const { data, error } = await refreshSessionCached(refreshToken);
 
   if (error || !data.session) {
     console.error('User token refresh failed:', error);
+    if (isOverRequestRateLimit(error)) {
+      if (writable) {
+        try {
+        cookieStore.set(USER_REFRESH_BACKOFF_UNTIL_COOKIE, String(nowSec() + 60), {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 60,
+          path: '/',
+        });
+        } catch {
+          // no-op
+        }
+      }
+      // レート制限中にログイン状態が落ちないよう、既存（期限切れの）トークンを返す
+      return token;
+    }
     return null;
   }
 
@@ -127,11 +215,14 @@ export async function getUserAccessToken(): Promise<string | null> {
     path: '/',
   };
 
-  try {
+  if (writable) {
+    try {
     cookieStore.set(USER_TOKEN_COOKIE, data.session.access_token, commonCookie);
     cookieStore.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, commonCookie);
-  } catch {
-    // Server Componentからの呼び出し時はクッキー更新できない
+    cookieStore.delete(USER_REFRESH_BACKOFF_UNTIL_COOKIE);
+    } catch {
+      // no-op
+    }
   }
 
   return data.session.access_token;
@@ -263,12 +354,13 @@ export async function getUserWithRole(): Promise<{
   name: string | null;
   isAdmin: boolean;
 }> {
-  // 管理者トークンがあれば管理者（ミドルウェアで検証済み）
-  const adminToken = await getAccessToken();
-  const isAdmin = !!adminToken;
+  // 管理者判定は「cookieの存在」で行う（refresh失敗や期限切れで表示上の権限が落ちるのを防ぐ）
+  const cookieStore = await cookies();
+  const adminTokenCookie = cookieStore.get(ADMIN_TOKEN_COOKIE)?.value ?? null;
+  const isAdmin = !!adminTokenCookie;
 
   // ユーザー情報はJWTから取得しつつ、表示名は profiles から取得して最新化する
-  const token = adminToken || (await getUserAccessToken());
+  const token = adminTokenCookie || (await getUserAccessToken());
 
   if (!token) {
     return { id: '', email: '', name: 'ゲスト', isAdmin: false };

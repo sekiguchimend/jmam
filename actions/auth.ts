@@ -16,7 +16,6 @@ import {
   MFA_PENDING_IS_ADMIN_COOKIE,
   MFA_PENDING_REDIRECT_COOKIE,
 } from '@/lib/supabase/server';
-import type { Database } from '@/types/database';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
