@@ -29,6 +29,30 @@ type AuthUser = {
   is_admin: boolean;
 };
 
+async function upsertAdminUser(params: {
+  supabase: ReturnType<typeof createAuthedAnonServerClient>;
+  userId: string;
+  email: string;
+  name: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  type AdminInsert = Database['public']['Tables']['admin_users']['Insert'];
+  const adminRes = await params.supabase.from('admin_users').upsert(
+    {
+      id: params.userId,
+      email: params.email,
+      name: params.name,
+      role: 'admin',
+      is_active: true,
+    } satisfies AdminInsert,
+    { onConflict: 'id' }
+  );
+  if (adminRes.error) {
+    console.error('admin_users upsert error:', adminRes.error);
+    return { ok: false, error: '管理者登録に失敗しました' };
+  }
+  return { ok: true };
+}
+
 async function ensureAdmin(): Promise<void> {
   // middlewareで /admin は保護済みだが、念のためServer Action単体でもチェック
   if (!(await hasAccessToken())) {
@@ -282,7 +306,7 @@ export async function adminCreateUser(formData: FormData): Promise<{
 }> {
   await ensureAdmin();
 
-  const email = String(formData.get('email') ?? '').trim();
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
   const password = String(formData.get('password') ?? '').trim();
   const name = String(formData.get('name') ?? '').trim();
   const role = String(formData.get('role') ?? 'user').trim(); // 'user' | 'admin'
@@ -309,7 +333,11 @@ export async function adminCreateUser(formData: FormData): Promise<{
     // 既存ユーザーの場合、管理者として登録するなら admin_users に追加
     if (error.code === 'user_already_exists') {
       if (role === 'admin') {
-        // profiles からユーザーIDを取得
+        // このメールアドレスは Auth 上で既に存在している（=新規作成はできない）。
+        // ただし、運用上 profiles を削除しても Auth ユーザーは残るため、
+        // 「Auth にはいるが profiles が無い」状態が起こり得る。
+        //
+        // まず profiles からユーザーIDを取得し、見つかったら admin_users に登録する。
         const existingUser = await supabase
           .from('profiles')
           .select('id')
@@ -317,26 +345,58 @@ export async function adminCreateUser(formData: FormData): Promise<{
           .maybeSingle();
 
         if (existingUser.data?.id) {
-          type AdminInsert = Database['public']['Tables']['admin_users']['Insert'];
-          const adminRes = await supabase.from('admin_users').upsert(
-            {
-              id: existingUser.data.id,
-              email,
-              name: name || null,
-              role: 'admin',
-              is_active: true,
-            } satisfies AdminInsert,
-            { onConflict: 'id' }
-          );
-          if (adminRes.error) {
-            console.error('adminCreateUser admin_users upsert error:', adminRes.error);
-            return { success: false, error: '既存ユーザーの管理者登録に失敗しました' };
-          }
+          const promoted = await upsertAdminUser({
+            supabase,
+            userId: existingUser.data.id,
+            email,
+            name: name || null,
+          });
+          if (!promoted.ok) return { success: false, error: promoted.error };
           return { success: true };
         }
-        return { success: false, error: '既存ユーザーが見つかりませんでした' };
+
+        // profiles が見つからない場合：削除済み or 未同期の可能性がある。
+        // 管理者のみが使えるDB関数で profiles を復元できるので、それを試す。
+        const restored = await supabase.rpc('admin_restore_profile_by_email', {
+          p_email: email,
+          p_name: name || null,
+        });
+        const restoredId = restored.data as string | null;
+        if (restored.error) {
+          console.error('admin_restore_profile_by_email error:', restored.error);
+        }
+        if (restoredId) {
+          const promoted = await upsertAdminUser({
+            supabase,
+            userId: restoredId,
+            email,
+            name: name || null,
+          });
+          if (!promoted.ok) return { success: false, error: promoted.error };
+          return { success: true };
+        }
+
+        // 復元できなかった場合：ブロック済み or Auth上にも見つからない等
+        const blocked = await supabase.from('user_blocks').select('email').eq('email', email).maybeSingle();
+        if (blocked.data?.email) {
+          return {
+            success: false,
+            error:
+              'このメールアドレスは「消去済みユーザー」として登録されています（Auth には残っているため再作成できません）。SupabaseのAuthユーザーを削除するか、別のメールアドレスを使用してください。',
+          };
+        }
+
+        return {
+          success: false,
+          error:
+            'このメールアドレスは既に登録されていますが、ユーザー情報の復元に失敗しました（profilesが存在しない可能性があります）。過去に消去された可能性があります。SupabaseのAuthユーザーを削除するか、別のメールアドレスを使用してください。',
+        };
       }
-      return { success: false, error: 'このメールアドレスは既に登録されています' };
+      return {
+        success: false,
+        error:
+          'このメールアドレスは既に登録されています（Auth上にユーザーが存在するため、新規作成できません）。別のメールアドレスを使用してください。',
+      };
     }
 
     console.error('adminCreateUser error:', error);
@@ -345,22 +405,13 @@ export async function adminCreateUser(formData: FormData): Promise<{
 
   // 作成時に「管理者」を選んだ場合は admin_users に登録
   if (role === 'admin' && data?.user?.id) {
-    type AdminInsert = Database['public']['Tables']['admin_users']['Insert'];
-    const res = await supabase.from('admin_users').upsert(
-      {
-        id: data.user.id,
-        email,
-        name: name || null,
-        role: 'admin',
-        is_active: true,
-      } satisfies AdminInsert,
-      { onConflict: 'id' }
-    );
-    const adminUpsertError = res.error;
-    if (adminUpsertError) {
-      console.error('adminCreateUser admin_users upsert error:', adminUpsertError);
-      return { success: false, error: 'ユーザー作成後の権限付与に失敗しました' };
-    }
+    const promoted = await upsertAdminUser({
+      supabase,
+      userId: data.user.id,
+      email,
+      name: name || null,
+    });
+    if (!promoted.ok) return { success: false, error: 'ユーザー作成後の権限付与に失敗しました' };
   }
 
   return { success: true };
