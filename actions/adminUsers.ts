@@ -291,6 +291,10 @@ export async function adminCreateUser(formData: FormData): Promise<{
     return { success: false, error: 'メールアドレスとパスワードを入力してください' };
   }
 
+  const token = await getAccessToken();
+  if (!token) return { success: false, error: '管理者権限が必要です' };
+  const supabase = createAuthedAnonServerClient(token);
+
   // anon keyのみの方針では、Auth Admin API(=service_role)が使えないため signUp を利用する。
   // その場合、メール確認が必要（プロジェクト設定に依存）で、即時の強制確認はできない。
   const { data, error } = await supabaseAnonServer.auth.signUp({
@@ -302,15 +306,45 @@ export async function adminCreateUser(formData: FormData): Promise<{
   });
 
   if (error) {
+    // 既存ユーザーの場合、管理者として登録するなら admin_users に追加
+    if (error.code === 'user_already_exists') {
+      if (role === 'admin') {
+        // profiles からユーザーIDを取得
+        const existingUser = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle();
+
+        if (existingUser.data?.id) {
+          type AdminInsert = Database['public']['Tables']['admin_users']['Insert'];
+          const adminRes = await supabase.from('admin_users').upsert(
+            {
+              id: existingUser.data.id,
+              email,
+              name: name || null,
+              role: 'admin',
+              is_active: true,
+            } satisfies AdminInsert,
+            { onConflict: 'id' }
+          );
+          if (adminRes.error) {
+            console.error('adminCreateUser admin_users upsert error:', adminRes.error);
+            return { success: false, error: '既存ユーザーの管理者登録に失敗しました' };
+          }
+          return { success: true };
+        }
+        return { success: false, error: '既存ユーザーが見つかりませんでした' };
+      }
+      return { success: false, error: 'このメールアドレスは既に登録されています' };
+    }
+
     console.error('adminCreateUser error:', error);
     return { success: false, error: `ユーザー作成に失敗しました: ${error.message}` };
   }
 
   // 作成時に「管理者」を選んだ場合は admin_users に登録
   if (role === 'admin' && data?.user?.id) {
-    const token = await getAccessToken();
-    if (!token) return { success: false, error: '管理者権限が必要です' };
-    const supabase = createAuthedAnonServerClient(token);
     type AdminInsert = Database['public']['Tables']['admin_users']['Insert'];
     const res = await supabase.from('admin_users').upsert(
       {

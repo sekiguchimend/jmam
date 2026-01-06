@@ -57,6 +57,14 @@ function parseRow(
   }
 
   const caseName = getVal('Ⅱ　MC　題材名') || null;
+  const commentProblem =
+    getVal('Ⅱ　MC　問題把握コメント') ||
+    [getVal('Ⅱ　MC　問題把握コメント1'), getVal('Ⅱ　MC　問題把握コメント2')]
+      .filter(Boolean)
+      .join('\n') ||
+    undefined;
+  const commentSolution =
+    getVal('Ⅱ　MC　対策立案コメント') || getVal('Ⅱ　MC　対策立案コメント1') || undefined;
 
   return {
     data: {
@@ -72,8 +80,8 @@ function parseRow(
       score_collaboration: parseScore(getVal('Ⅱ　MC　連携評点')) ?? undefined,
       score_development: parseScore(getVal('Ⅱ　MC　育成評点')) ?? undefined,
       comment_overall: getVal('Ⅱ　MC　総合コメント') || undefined,
-      comment_problem: getVal('Ⅱ　MC　問題把握コメント') || undefined,
-      comment_solution: getVal('Ⅱ　MC　対策立案コメント') || undefined,
+      comment_problem: commentProblem,
+      comment_solution: commentSolution,
       answer_q1: getVal('【設問ID】　1') || undefined,
       answer_q2: getVal('【設問ID】　2') || undefined,
       answer_q3: getVal('【設問ID】　3') || undefined,
