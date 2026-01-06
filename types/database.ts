@@ -451,7 +451,15 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      admin_restore_profile_by_email: {
+        Args: {
+          p_email: string;
+          p_name: string | null;
+        };
+        Returns: string | null;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
