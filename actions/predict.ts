@@ -5,16 +5,14 @@
 'use server';
 
 import {
-  findResponsesForRAG,
-  getTypicalExamples,
+  findSimilarResponsesByEuclidean,
   getCases,
   getCaseById
 } from '@/lib/supabase';
-import { generatePrediction, type FewShotContext } from '@/lib/gemini';
+import { generatePredictionFromSimilar } from '@/lib/gemini';
 import type { Scores, PredictionResponse, Case, Response } from '@/types';
 import { hasAccessToken, hasUserAccessToken } from '@/lib/supabase/server';
 import { recordUserScores } from '@/actions/userScore';
-import { toScoreBucket } from '@/lib/scoring';
 
 async function ensureAuthenticated(): Promise<boolean> {
   // 管理者 or 一般のいずれかのトークンがあればOK
@@ -44,7 +42,7 @@ export async function fetchCaseById(caseId: string): Promise<Case | null> {
   }
 }
 
-// スコアに基づいて回答を予測
+// スコアに基づいて回答を予測（6指標ユークリッド距離で類似回答者を検索）
 export async function predictAnswer(
   caseId: string,
   scores: Scores
@@ -53,6 +51,7 @@ export async function predictAnswer(
     if (!(await ensureAuthenticated())) {
       return { success: false, error: 'ログインが必要です' };
     }
+
     // 1. ケースのシチュエーション情報を取得
     const targetCase = await getCaseById(caseId);
     if (!targetCase) {
@@ -60,44 +59,20 @@ export async function predictAnswer(
     }
     const situationText = targetCase.situation_text ?? '';
 
-    // 2. 目標スコア帯の「典型例」を取得（few-shot用）
-    const problemBucket = toScoreBucket(scores.problem);
-    const solutionBucket = toScoreBucket(scores.solution);
-    const [problemTypical, solutionTypical] = await Promise.all([
-      getTypicalExamples(caseId, 'problem', problemBucket, 2),
-      getTypicalExamples(caseId, 'solution', solutionBucket, 2),
-    ]);
-
-    const fewShot: FewShotContext = {
-      problemScoreBucket: problemBucket,
-      solutionScoreBucket: solutionBucket,
-      problemExamples: problemTypical.map((t) => t.rep_text),
-      solutionExamples: solutionTypical.map((t) => t.rep_text),
-    };
-
-    // 典型例が未生成の場合のフォールバック（既存RAG）
-    let ragResponses: Response[] = [];
-    if (fewShot.problemExamples.length === 0 || fewShot.solutionExamples.length === 0) {
-      ragResponses = await findResponsesForRAG(caseId, scores, 5);
-      if (ragResponses.length === 0) {
-        return { success: false, error: '参考となる回答データが見つかりません（典型例も未生成です）' };
-      }
-      if (fewShot.problemExamples.length === 0) {
-        fewShot.problemExamples = ragResponses
-          .map((r) => r.answer_q1)
-          .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-          .slice(0, 2);
-      }
-      if (fewShot.solutionExamples.length === 0) {
-        fewShot.solutionExamples = ragResponses
-          .map((r) => r.answer_q2)
-          .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
-          .slice(0, 2);
-      }
+    // 2. 6指標のユークリッド距離で類似回答者を検索
+    const similarResults = await findSimilarResponsesByEuclidean(caseId, scores, 5);
+    if (similarResults.length === 0) {
+      return { success: false, error: '参考となる回答データが見つかりません' };
     }
 
-    // 3. LLMで予測回答を生成（典型例few-shotに沿って生成）
-    const prediction = await generatePrediction(situationText, fewShot, scores);
+    const similarResponses = similarResults.map((r) => r.response);
+
+    // 3. LLMで予測回答を生成（類似回答者の回答をfew-shotとして使用）
+    const prediction = await generatePredictionFromSimilar(
+      situationText,
+      similarResponses,
+      scores
+    );
 
     // 4. スコア履歴を保存（失敗しても予測は成功扱い）
     await recordUserScores({ caseId, scores });
@@ -106,13 +81,13 @@ export async function predictAnswer(
       success: true,
       data: {
         ...prediction,
-        similarResponses: ragResponses.length ? ragResponses : undefined, // フォールバック時のみ返す
+        similarResponses,
       }
     };
   } catch (error) {
     console.error('predictAnswer error:', error);
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: error instanceof Error ? error.message : '予測処理中にエラーが発生しました'
     };
   }

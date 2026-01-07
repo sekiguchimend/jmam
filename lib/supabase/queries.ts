@@ -84,6 +84,144 @@ export async function findSimilarResponses(
   return (data ?? []) as Response[];
 }
 
+// ユークリッド距離を計算
+function euclideanDistance(target: Scores, response: Response): number {
+  const t = [target.problem, target.solution, target.role, target.leadership, target.collaboration, target.development];
+  const r = [
+    response.score_problem ?? 0,
+    response.score_solution ?? 0,
+    response.score_role ?? 0,
+    response.score_leadership ?? 0,
+    response.score_collaboration ?? 0,
+    response.score_development ?? 0,
+  ];
+  let sum = 0;
+  for (let i = 0; i < 6; i++) {
+    sum += (t[i] - r[i]) ** 2;
+  }
+  return Math.sqrt(sum);
+}
+
+// ベクトルの重心を計算
+function computeCentroid(vectors: number[][]): number[] {
+  if (vectors.length === 0) return [];
+  const dim = vectors[0].length;
+  const centroid = new Array(dim).fill(0);
+  for (const v of vectors) {
+    for (let i = 0; i < dim; i++) {
+      centroid[i] += v[i];
+    }
+  }
+  for (let i = 0; i < dim; i++) {
+    centroid[i] /= vectors.length;
+  }
+  return centroid;
+}
+
+// コサイン類似度を計算
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+// 6指標のユークリッド距離で類似回答を検索
+// ケース内の全回答からスコアが最も近い人を取得
+// トップタイ（同距離）が複数ある場合はエンベディング重心で最も典型的なものを選ぶ
+export async function findSimilarResponsesByEuclidean(
+  caseId: string,
+  scores: Scores,
+  limit: number = 5
+): Promise<{ response: Response; distance: number }[]> {
+  const supabase = await createSupabaseServerClient();
+
+  // ケースで絞って必要なカラムだけ取得
+  const { data, error } = await supabase
+    .from('responses')
+    .select('id, response_id, case_id, answer_q1, answer_q2, score_problem, score_solution, score_role, score_leadership, score_collaboration, score_development')
+    .eq('case_id', caseId)
+    .not('answer_q1', 'is', null);
+
+  if (error) {
+    console.error('findSimilarResponsesByEuclidean error:', error);
+    throw new Error(`類似回答の検索に失敗しました: ${error.message}`);
+  }
+
+  if (!data || data.length === 0) {
+    return [];
+  }
+
+  // 全件に対してユークリッド距離を計算してソート
+  const withDistance = (data as Response[]).map((r) => ({
+    response: r,
+    distance: euclideanDistance(scores, r),
+  }));
+  withDistance.sort((a, b) => a.distance - b.distance);
+
+  // トップタイ（最小距離と同じ距離を持つもの）を抽出
+  const minDistance = withDistance[0].distance;
+  const topTied = withDistance.filter((r) => r.distance === minDistance);
+
+  // トップタイが1件ならそのまま、複数ならエンベディング重心で選ぶ
+  if (topTied.length <= 1) {
+    return withDistance.slice(0, limit);
+  }
+
+  // トップタイが複数ある場合、エンベディング重心に最も近いものを選ぶ
+  const { embedText } = await import('@/lib/gemini/embeddings');
+
+  try {
+    // 各回答のエンベディングを計算
+    const embeddings: { response: Response; distance: number; embedding: number[] }[] = [];
+    for (const item of topTied) {
+      const text = `${item.response.answer_q1 || ''}\n${item.response.answer_q2 || ''}`;
+      const result = await embedText(text);
+      embeddings.push({ ...item, embedding: result.values });
+    }
+
+    // 重心を計算
+    const centroid = computeCentroid(embeddings.map((e) => e.embedding));
+
+    // 重心に最も近いものを選ぶ
+    let bestIdx = 0;
+    let bestSim = -Infinity;
+    for (let i = 0; i < embeddings.length; i++) {
+      const sim = cosineSimilarity(embeddings[i].embedding, centroid);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestIdx = i;
+      }
+    }
+
+    // 結果を構築: 重心に最も近いもの + 残りを距離順で埋める
+    const result: { response: Response; distance: number }[] = [
+      { response: embeddings[bestIdx].response, distance: embeddings[bestIdx].distance }
+    ];
+
+    // 残りの枠を埋める（トップタイ以外から距離順）
+    const remaining = withDistance.filter(
+      (r) => r.distance !== minDistance || r.response.id === embeddings[bestIdx].response.id
+    );
+    for (const r of remaining) {
+      if (result.length >= limit) break;
+      if (r.response.id !== embeddings[bestIdx].response.id) {
+        result.push(r);
+      }
+    }
+
+    return result.slice(0, limit);
+  } catch (e) {
+    console.error('Embedding centroid calculation failed, falling back to simple sort:', e);
+    // エンベディング失敗時は単純ソートにフォールバック
+    return withDistance.slice(0, limit);
+  }
+}
+
 // 拡張検索：スコアが近い順に取得（許容範囲を段階的に広げる）
 export async function findSimilarResponsesWithFallback(
   caseId: string,

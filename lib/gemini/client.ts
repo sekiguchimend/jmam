@@ -138,6 +138,130 @@ ${formatExamples(`以下は「対策立案 ${fewShot.solutionScoreBucket}点帯�
   }
 }
 
+// 類似回答者の回答を参考にLLMで新たな回答を生成（ユークリッド距離ベース）
+export async function generatePredictionFromSimilar(
+  situationText: string,
+  similarResponses: { answer_q1: string | null; answer_q2: string | null; score_problem: number | null; score_solution: number | null; score_role: number | null; score_leadership: number | null; score_collaboration: number | null; score_development: number | null }[],
+  targetScores: Scores
+): Promise<PredictionResponse> {
+  // 類似回答者の回答をフォーマット
+  const formatSimilarExamples = () => {
+    if (!similarResponses.length) return '（類似回答者が見つかりませんでした）';
+    return similarResponses.map((r, i) => {
+      const scores = `[問題把握:${r.score_problem ?? '-'}, 対策立案:${r.score_solution ?? '-'}, 役割理解:${r.score_role ?? '-'}, 主導:${r.score_leadership ?? '-'}, 連携:${r.score_collaboration ?? '-'}, 育成:${r.score_development ?? '-'}]`;
+      return `【類似回答者${i + 1}】${scores}
+問題把握の回答: ${r.answer_q1 || '（なし）'}
+対策立案の回答: ${r.answer_q2 || '（なし）'}`;
+    }).join('\n\n');
+  };
+
+  const prompt = `あなたは職場改善のスコア評価に精通した専門家です。
+
+以下のシチュエーションについて、指定された目標スコアに相当する回答を生成してください。
+参考として、6指標のスコアが目標に近い「類似回答者」の実際の回答を提示します。
+これらの回答者は目標スコアと似た特性（問題把握力、対策立案力、役割理解、主導力、連携力、育成力）を持つ人物です。
+
+## シチュエーション
+${situationText || '（シチュエーション情報なし）'}
+
+## 目標スコア
+- 問題把握: ${targetScores.problem}
+- 対策立案: ${targetScores.solution}
+- 役割理解: ${targetScores.role}
+- 主導: ${targetScores.leadership}
+- 連携: ${targetScores.collaboration}
+- 育成: ${targetScores.development}
+
+## 類似回答者の実際の回答（6指標が目標に近い人物）
+${formatSimilarExamples()}
+
+## 指示（重要）
+上記の類似回答者の回答パターン（観点・粒度・具体性・文体）を参考に、目標スコアを達成しうる回答を生成してください。
+類似回答者の回答の良い点を取り入れつつ、目標スコアのレベルに合った内容にしてください。
+
+## 出力形式
+以下のJSON形式で出力してください。
+
+\`\`\`json
+{
+  "problemAnswer": "問題把握についての予測回答（200文字程度）",
+  "problemReason": "問題把握の回答の理由（箇条書き3点まで）",
+  "solutionAnswer": "対策立案についての予測回答（200文字程度）",
+  "solutionReason": "対策立案の回答の理由（箇条書き3点まで）"
+}
+\`\`\``;
+
+  // Gemini API呼び出し
+  if (!GEMINI_API_KEY) {
+    console.warn('GEMINI_API_KEY (or GOOGLE_API_KEY) is not set. Returning mock response.');
+    return generateMockPrediction(targetScores);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutMs = 15000; // 15秒に延長
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 512,
+        },
+      }),
+    });
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Gemini API error:', errorText);
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // JSONを抽出してパース
+    const jsonMatch = generatedText.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[1]);
+      return {
+        problemAnswer: parsed.problemAnswer || '予測回答を生成できませんでした',
+        problemReason: parsed.problemReason || undefined,
+        solutionAnswer: parsed.solutionAnswer || '予測回答を生成できませんでした',
+        solutionReason: parsed.solutionReason || undefined,
+      };
+    }
+
+    // JSONブロックがない場合は直接パースを試みる
+    try {
+      const parsed = JSON.parse(generatedText);
+      return {
+        problemAnswer: parsed.problemAnswer || '予測回答を生成できませんでした',
+        problemReason: parsed.problemReason || undefined,
+        solutionAnswer: parsed.solutionAnswer || '予測回答を生成できませんでした',
+        solutionReason: parsed.solutionReason || undefined,
+      };
+    } catch {
+      return {
+        problemAnswer: generatedText.substring(0, 500),
+        solutionAnswer: '（回答の分離に失敗しました）',
+      };
+    }
+  } catch (error) {
+    console.error('generatePredictionFromSimilar error:', error);
+    return generateMockPrediction(targetScores);
+  }
+}
+
 // モック予測回答を生成（API未設定時やエラー時用）
 function generateMockPrediction(
   targetScores: Scores
