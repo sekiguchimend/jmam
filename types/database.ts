@@ -459,6 +459,20 @@ export type Database = {
         };
         Returns: string | null;
       };
+      find_similar_responses_for_scoring: {
+        Args: {
+          p_embedding: string;
+          p_case_id: string;
+          p_question: string;
+          p_limit?: number;
+        };
+        Returns: Array<{
+          response_id: string;
+          score: number;
+          similarity: number;
+          answer_text: string;
+        }>;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

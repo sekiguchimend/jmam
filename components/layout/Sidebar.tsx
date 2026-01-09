@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/actions/auth";
 import { useTransition } from "react";
-import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, Link2 } from "lucide-react";
+import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, Link2, Calculator } from "lucide-react";
 import Image from "next/image";
 
 interface SidebarProps {
@@ -40,6 +40,11 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
       name: "回答予測",
       href: "/dashboard/predict",
       icon: <Lightbulb className="w-5 h-5" />,
+    },
+    {
+      name: "スコア予測",
+      href: "/dashboard/score-predict",
+      icon: <Calculator className="w-5 h-5" />,
     },
   ];
 
