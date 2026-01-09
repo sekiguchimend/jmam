@@ -176,6 +176,15 @@ export async function verifyTotp(params: { factorId: string; code: string }): Pr
 
   // 最終ログインCookieを発行（ここで初めてアプリへ入れる）
   const cookieStore = await cookies();
+
+  // 古いSupabase SSRのデフォルトクッキーを削除（sb-で始まるもの）
+  const allCookies = cookieStore.getAll();
+  for (const cookie of allCookies) {
+    if (cookie.name.startsWith('sb-')) {
+      cookieStore.delete(cookie.name);
+    }
+  }
+
   const commonCookie = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

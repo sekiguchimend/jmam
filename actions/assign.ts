@@ -43,12 +43,26 @@ async function ensureAdmin(): Promise<string> {
   // middlewareはcookie有無のみなので、DB上でも「有効な管理者」かを確認する
   // （RLSの is_admin() が false のままだと、以降のクエリが403になり得るため）
   const supabase = createAuthedAnonServerClient(token);
-  const adminRes = await supabase.from('admin_users').select('id, is_active').maybeSingle();
+
+  // トークンからユーザーIDを取得
+  const { getUserIdFromJwt } = await import('@/lib/jwt');
+  const userId = getUserIdFromJwt(token);
+  if (!userId) {
+    throw new Error('管理者権限が必要です（トークンが無効です）');
+  }
+
+  const adminRes = await supabase
+    .from('admin_users')
+    .select('id, is_active')
+    .eq('id', userId)
+    .eq('is_active', true)
+    .maybeSingle();
+
   if (adminRes.error) {
     console.error('ensureAdmin admin_users check error:', adminRes.error);
     throw new Error('管理者権限の確認に失敗しました（再ログインしてください）');
   }
-  if (!adminRes.data?.id || adminRes.data.is_active !== true) {
+  if (!adminRes.data?.id) {
     throw new Error('管理者権限がありません');
   }
 

@@ -172,16 +172,44 @@ export async function findSimilarResponsesByEuclidean(
     return withDistance.slice(0, limit);
   }
 
-  // トップタイが複数ある場合、エンベディング重心に最も近いものを選ぶ
-  const { embedText } = await import('@/lib/gemini/embeddings');
-
+  // トップタイが複数ある場合、DBに保存済みのエンベディング重心に最も近いものを選ぶ
   try {
-    // 各回答のエンベディングを計算
+    // トップタイのresponse_idリストを作成
+    const responseIds = topTied.map((t) => t.response.response_id);
+
+    // DBから保存済みエンベディングを取得（problemを使用）
+    const { data: embeddingData, error: embError } = await supabase
+      .from('response_embeddings')
+      .select('response_id, embedding')
+      .eq('case_id', caseId)
+      .eq('question', 'problem')
+      .in('response_id', responseIds) as { data: { response_id: string; embedding: number[] | null }[] | null; error: unknown };
+
+    if (embError || !embeddingData || embeddingData.length === 0) {
+      // エンベディングがない場合は単純ソートにフォールバック
+      console.warn('No embeddings found for top tied responses, falling back to simple sort');
+      return withDistance.slice(0, limit);
+    }
+
+    // エンベディングをマップ化
+    const embeddingMap = new Map<string, number[]>();
+    for (const row of embeddingData) {
+      if (Array.isArray(row.embedding)) {
+        embeddingMap.set(row.response_id, row.embedding);
+      }
+    }
+
+    // エンベディングがある回答のみ抽出
     const embeddings: { response: Response; distance: number; embedding: number[] }[] = [];
     for (const item of topTied) {
-      const text = `${item.response.answer_q1 || ''}\n${item.response.answer_q2 || ''}`;
-      const result = await embedText(text);
-      embeddings.push({ ...item, embedding: result.values });
+      const emb = embeddingMap.get(item.response.response_id);
+      if (emb) {
+        embeddings.push({ ...item, embedding: emb });
+      }
+    }
+
+    if (embeddings.length === 0) {
+      return withDistance.slice(0, limit);
     }
 
     // 重心を計算

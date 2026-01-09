@@ -7,7 +7,6 @@ import { cookies } from 'next/headers';
 import type { Database, AdminUser } from '@/types/database';
 import { getUserIdFromJwt, decodeJwtPayload } from '@/lib/jwt';
 import { createAuthedAnonServerClient } from './authed-anon-server';
-import { cache } from 'react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -55,28 +54,58 @@ async function canWriteCookies(cookieStore: Awaited<ReturnType<typeof cookies>>)
   }
 }
 
-const refreshSessionCached = cache(async (refreshToken: string) => {
-  const supabase = await createSupabaseServerClient();
-  return await supabase.auth.refreshSession({ refresh_token: refreshToken });
-});
+// リフレッシュトークンを使って新しいセッションを取得
+// IMPORTANT: キャッシュは使わない（リフレッシュごとに新しいトークンが発行されるため）
+async function refreshSession(refreshToken: string) {
+  // Supabase Auth APIを直接呼び出す（クッキーに依存しない）
+  const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+    },
+    body: JSON.stringify({
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    return { data: { session: null }, error };
+  }
+
+  const data = await response.json();
+  return {
+    data: {
+      session: {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        expires_in: data.expires_in,
+        expires_at: data.expires_at,
+        token_type: data.token_type,
+        user: data.user,
+      },
+    },
+    error: null,
+  };
+}
 
 // Server Components用のSupabaseクライアントを作成
+// IMPORTANT: Supabase SSRのデフォルトのクッキー管理を無効化し、手動管理のみを使用
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
 
   return createServerClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
-        return cookieStore.getAll();
+        // Supabase SSRのデフォルトクッキーは無視し、空配列を返す
+        // これにより、Supabaseは自動的にクッキーを読み書きしない
+        return [];
       },
       setAll(cookiesToSet: { name: string; value: string; options?: Record<string, unknown> }[]) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
-          );
-        } catch {
-          // Server Componentからの呼び出し時は無視
-        }
+        // Supabase SSRの自動クッキー書き込みを無効化
+        // 手動で管理するクッキーのみを使用
+        // no-op
       },
     },
   });
@@ -89,7 +118,7 @@ export async function getAccessToken(): Promise<string | null> {
   if (!token) return null;
 
   // トークンが期限切れかチェック
-  const { isJwtExpired } = await import('@/lib/jwt');
+  const { isJwtExpired, decodeJwtPayload } = await import('@/lib/jwt');
   if (!isJwtExpired(token)) {
     return token;
   }
@@ -104,12 +133,20 @@ export async function getAccessToken(): Promise<string | null> {
 
   // 期限切れならリフレッシュを試みる
   const refreshToken = cookieStore.get(ADMIN_REFRESH_TOKEN_COOKIE)?.value;
-  if (!refreshToken) return null;
+  if (!refreshToken) {
+    return null;
+  }
 
-  const { data, error } = await refreshSessionCached(refreshToken);
+  const { data, error } = await refreshSession(refreshToken);
 
   if (error || !data.session) {
-    console.error('Token refresh failed:', error);
+    console.error('Admin token refresh failed:', {
+      error: error?.message,
+      status: (error as any)?.status,
+      code: (error as any)?.code,
+      hasRefreshToken: !!refreshToken,
+      refreshTokenLength: refreshToken?.length,
+    });
     if (isOverRequestRateLimit(error)) {
       if (writable) {
         try {
@@ -126,6 +163,15 @@ export async function getAccessToken(): Promise<string | null> {
       }
       // レート制限中に権限が落ちないよう、既存（期限切れの）トークンを返す
       return token;
+    }
+    // リフレッシュ失敗時はクッキーを削除
+    if (writable) {
+      try {
+        cookieStore.delete(ADMIN_TOKEN_COOKIE);
+        cookieStore.delete(ADMIN_REFRESH_TOKEN_COOKIE);
+      } catch {
+        // no-op
+      }
     }
     return null;
   }
@@ -164,7 +210,7 @@ export async function getUserAccessToken(): Promise<string | null> {
   if (!token) return null;
 
   // トークンが期限切れかチェック
-  const { isJwtExpired } = await import('@/lib/jwt');
+  const { isJwtExpired, decodeJwtPayload } = await import('@/lib/jwt');
   if (!isJwtExpired(token)) {
     return token;
   }
@@ -179,12 +225,20 @@ export async function getUserAccessToken(): Promise<string | null> {
 
   // 期限切れならリフレッシュを試みる
   const refreshToken = cookieStore.get(USER_REFRESH_TOKEN_COOKIE)?.value;
-  if (!refreshToken) return null;
+  if (!refreshToken) {
+    return null;
+  }
 
-  const { data, error } = await refreshSessionCached(refreshToken);
+  const { data, error } = await refreshSession(refreshToken);
 
   if (error || !data.session) {
-    console.error('User token refresh failed:', error);
+    console.error('User token refresh failed:', {
+      error: error?.message,
+      status: (error as any)?.status,
+      code: (error as any)?.code,
+      hasRefreshToken: !!refreshToken,
+      refreshTokenLength: refreshToken?.length,
+    });
     if (isOverRequestRateLimit(error)) {
       if (writable) {
         try {
@@ -201,6 +255,15 @@ export async function getUserAccessToken(): Promise<string | null> {
       }
       // レート制限中にログイン状態が落ちないよう、既存（期限切れの）トークンを返す
       return token;
+    }
+    // リフレッシュ失敗時はクッキーを削除
+    if (writable) {
+      try {
+        cookieStore.delete(USER_TOKEN_COOKIE);
+        cookieStore.delete(USER_REFRESH_TOKEN_COOKIE);
+      } catch {
+        // no-op
+      }
     }
     return null;
   }
@@ -354,13 +417,27 @@ export async function getUserWithRole(): Promise<{
   name: string | null;
   isAdmin: boolean;
 }> {
-  // 管理者判定は「cookieの存在」で行う（refresh失敗や期限切れで表示上の権限が落ちるのを防ぐ）
+  // 管理者判定：クッキーが存在するかで判定するが、トークンは必ずgetAccessToken()経由で取得してリフレッシュを確実に行う
   const cookieStore = await cookies();
   const adminTokenCookie = cookieStore.get(ADMIN_TOKEN_COOKIE)?.value ?? null;
-  const isAdmin = !!adminTokenCookie;
+  const hasAdminCookie = !!adminTokenCookie;
 
-  // ユーザー情報はJWTから取得しつつ、表示名は profiles から取得して最新化する
-  const token = adminTokenCookie || (await getUserAccessToken());
+  // トークンを取得（期限切れなら自動リフレッシュされる）
+  let token: string | null = null;
+  let isAdmin = false;
+
+  if (hasAdminCookie) {
+    // 管理者クッキーがある場合、getAccessToken()を呼んでリフレッシュを試みる
+    token = await getAccessToken();
+    // リフレッシュ成功した場合のみ管理者扱い
+    isAdmin = !!token;
+  }
+
+  // 管理者トークンがない場合、一般ユーザートークンを試す
+  if (!token) {
+    token = await getUserAccessToken();
+    isAdmin = false;
+  }
 
   if (!token) {
     return { id: '', email: '', name: 'ゲスト', isAdmin: false };

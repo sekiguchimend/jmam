@@ -123,6 +123,14 @@ export async function login(formData: FormData): Promise<{
     cookieStore.delete(MFA_PENDING_IS_ADMIN_COOKIE);
     cookieStore.delete(MFA_PENDING_REDIRECT_COOKIE);
 
+    // 古いSupabase SSRのデフォルトクッキーも削除（sb-で始まるもの）
+    const allCookies = cookieStore.getAll();
+    for (const cookie of allCookies) {
+      if (cookie.name.startsWith('sb-')) {
+        cookieStore.delete(cookie.name);
+      }
+    }
+
     const commonCookie = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -171,6 +179,15 @@ export async function login(formData: FormData): Promise<{
 
   // アクセストークンをクッキーに保存
   const cookieStore = await cookies();
+
+  // 古いSupabase SSRのデフォルトクッキーを削除（sb-で始まるもの）
+  const allCookies = cookieStore.getAll();
+  for (const cookie of allCookies) {
+    if (cookie.name.startsWith('sb-')) {
+      cookieStore.delete(cookie.name);
+    }
+  }
+
   const commonCookie = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -211,6 +228,14 @@ export async function logout(): Promise<void> {
   cookieStore.delete(MFA_PENDING_REFRESH_TOKEN_COOKIE);
   cookieStore.delete(MFA_PENDING_IS_ADMIN_COOKIE);
   cookieStore.delete(MFA_PENDING_REDIRECT_COOKIE);
+
+  // Supabase SSRのデフォルトクッキーも削除（sb-で始まるもの）
+  const allCookies = cookieStore.getAll();
+  for (const cookie of allCookies) {
+    if (cookie.name.startsWith('sb-')) {
+      cookieStore.delete(cookie.name);
+    }
+  }
 
   revalidatePath('/', 'layout');
   redirect('/login');
