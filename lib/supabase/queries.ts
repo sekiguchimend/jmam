@@ -6,8 +6,8 @@ import 'server-only';
 import { createSupabaseServerClient } from './server';
 import { createAuthedAnonServerClient } from './authed-anon-server';
 import { getAccessToken } from './server';
-import type { Case, Response, Scores, DatasetStats, TypicalExample } from '@/types';
-import type { Database } from '@/types/database';
+import type { Case, Response, Scores, DatasetStats, TypicalExample, Question } from '@/types';
+import type { Database, QuestionInsert } from '@/types/database';
 
 type CaseInsert = Database['public']['Tables']['cases']['Insert'];
 type ResponseInsert = Database['public']['Tables']['responses']['Insert'];
@@ -497,7 +497,7 @@ export async function fetchPendingEmbeddingJobs(
   limit: number,
   accessToken?: string
 ): Promise<
-  { case_id: string; response_id: string; question: 'problem' | 'solution'; attempts: number }[]
+  { case_id: string; response_id: string; question: 'q1' | 'q2'; attempts: number }[]
 > {
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
@@ -513,14 +513,14 @@ export async function fetchPendingEmbeddingJobs(
     console.error('fetchPendingEmbeddingJobs error:', error);
     throw new Error(`embedding_queue の取得に失敗しました: ${error.message}`);
   }
-  return (data ?? []) as { case_id: string; response_id: string; question: 'problem' | 'solution'; attempts: number }[];
+  return (data ?? []) as { case_id: string; response_id: string; question: 'q1' | 'q2'; attempts: number }[];
 }
 
 export async function markEmbeddingJobs(
   updates: {
     case_id: string;
     response_id: string;
-    question: 'problem' | 'solution';
+    question: 'q1' | 'q2';
     status: 'pending' | 'processing' | 'done' | 'error';
     attempts?: number;
     last_error?: string | null;
@@ -549,13 +549,19 @@ export async function markEmbeddingJobs(
 }
 
 export async function fetchResponsesForEmbeddingJobs(
-  jobs: { case_id: string; response_id: string; question: 'problem' | 'solution' }[]
+  jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[]
 ): Promise<
   {
     case_id: string;
     response_id: string;
     answer_q1: string | null;
     answer_q2: string | null;
+    answer_q3: string | null;
+    answer_q4: string | null;
+    answer_q5: string | null;
+    answer_q6: string | null;
+    answer_q7: string | null;
+    answer_q8: string | null;
     score_problem: number | null;
     score_solution: number | null;
   }[]
@@ -566,7 +572,7 @@ export async function fetchResponsesForEmbeddingJobs(
   const or = jobs.map((j) => `and(case_id.eq.${j.case_id},response_id.eq.${j.response_id})`).join(',');
   const { data, error } = await supabase
     .from('responses')
-    .select('case_id,response_id,answer_q1,answer_q2,score_problem,score_solution')
+    .select('case_id,response_id,answer_q1,answer_q2,answer_q3,answer_q4,answer_q5,answer_q6,answer_q7,answer_q8,score_problem,score_solution')
     .or(or);
 
   if (error) {
@@ -578,6 +584,12 @@ export async function fetchResponsesForEmbeddingJobs(
     response_id: string;
     answer_q1: string | null;
     answer_q2: string | null;
+    answer_q3: string | null;
+    answer_q4: string | null;
+    answer_q5: string | null;
+    answer_q6: string | null;
+    answer_q7: string | null;
+    answer_q8: string | null;
     score_problem: number | null;
     score_solution: number | null;
   }[];
@@ -619,7 +631,7 @@ export async function upsertTypicalExamples(
 
 export async function deleteTypicalExamplesForBucket(
   caseId: string,
-  question: 'problem' | 'solution',
+  question: 'q1' | 'q2',
   scoreBucket: number,
   accessToken?: string
 ): Promise<void> {
@@ -640,7 +652,7 @@ export async function deleteTypicalExamplesForBucket(
 
 export async function getTypicalExamples(
   caseId: string,
-  question: 'problem' | 'solution',
+  question: 'q1' | 'q2',
   scoreBucket: number,
   limit: number = 2
 ): Promise<TypicalExample[]> {
@@ -663,14 +675,14 @@ export async function getTypicalExamples(
 
 export async function fetchEmbeddingsForBucket(
   caseId: string,
-  question: 'problem' | 'solution',
+  question: 'q1' | 'q2',
   scoreBucket: number,
   limit: number = 5000
 ): Promise<
   {
     case_id: string;
     response_id: string;
-    question: 'problem' | 'solution';
+    question: 'q1' | 'q2';
     score: number | null;
     score_bucket: number;
     embedding: unknown;
@@ -692,9 +704,88 @@ export async function fetchEmbeddingsForBucket(
   return (data ?? []) as {
     case_id: string;
     response_id: string;
-    question: 'problem' | 'solution';
+    question: 'q1' | 'q2';
     score: number | null;
     score_bucket: number;
     embedding: unknown;
   }[];
+}
+
+// ============================================
+// 設問管理クエリ
+// ============================================
+
+// 設問を取得
+export async function getQuestionsByCase(caseId: string, accessToken?: string): Promise<Question[]> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+
+  const { data, error } = await supabase
+    .from('questions')
+    .select('id, case_id, question_key, question_text, question_embedding, order_index')
+    .eq('case_id', caseId)
+    .order('order_index', { ascending: true });
+
+  if (error) {
+    console.error('getQuestionsByCase error:', error);
+    throw new Error(`設問の取得に失敗しました: ${error.message}`);
+  }
+  return (data ?? []) as Question[];
+}
+
+// 設問を保存（upsert）
+export async function upsertQuestion(
+  data: {
+    case_id: string;
+    question_key: 'q1' | 'q2';
+    question_text: string;
+    question_embedding: number[];
+    embedding_model: string;
+  },
+  accessToken?: string
+): Promise<void> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+
+  const insertData: QuestionInsert = {
+    case_id: data.case_id,
+    question_key: data.question_key,
+    question_text: data.question_text,
+    question_embedding: data.question_embedding,
+    embedding_model: data.embedding_model,
+    order_index: data.question_key === 'q1' ? 0 : 1,
+  };
+
+  const { error } = await supabase.from('questions').upsert(insertData, {
+    onConflict: 'case_id,question_key',
+  });
+
+  if (error) {
+    console.error('upsertQuestion error:', error);
+    throw new Error(`設問の保存に失敗しました: ${error.message ?? 'unknown error'}`);
+  }
+}
+
+// 設問を削除
+export async function deleteQuestion(
+  caseId: string,
+  questionKey: 'q1' | 'q2',
+  accessToken?: string
+): Promise<void> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+
+  const { error } = await supabase
+    .from('questions')
+    .delete()
+    .eq('case_id', caseId)
+    .eq('question_key', questionKey);
+
+  if (error) {
+    console.error('deleteQuestion error:', error);
+    throw new Error(`設問の削除に失敗しました: ${error.message ?? 'unknown error'}`);
+  }
 }

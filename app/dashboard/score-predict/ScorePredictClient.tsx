@@ -32,8 +32,8 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const handleSubmit = async (question: "problem" | "solution") => {
-    const answerText = question === "problem" ? problemAnswer : solutionAnswer;
+  const handleSubmit = async (question: "q1" | "q2") => {
+    const answerText = question === "q1" ? problemAnswer : solutionAnswer;
 
     if (!selectedCaseId) {
       setError("ケースを選択してください");
@@ -41,7 +41,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
     }
 
     if (!answerText.trim()) {
-      setError(`${question === "problem" ? "問題把握" : "対策立案"}の回答を入力してください`);
+      setError(`${question === "q1" ? "設問1" : "設問2"}の回答を入力してください`);
       return;
     }
 
@@ -59,7 +59,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
       });
 
       if (response.success && response.prediction) {
-        if (question === "problem") {
+        if (question === "q1") {
           setProblemResult(response.prediction);
         } else {
           setSolutionResult(response.prediction);
@@ -76,8 +76,8 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
     <div className="space-y-6">
       {/* ケース選択 */}
       <div
-        className="rounded-xl p-5"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        className="p-5"
+        style={{ background: "transparent" }}
       >
         <label className="block text-sm font-black mb-2" style={{ color: "#323232" }}>
           ケース
@@ -101,7 +101,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
           <option value="">選択してください</option>
           {cases.map((c) => (
             <option key={c.case_id} value={c.case_id}>
-              {c.case_name || c.case_id}
+              {c.case_name}
             </option>
           ))}
         </select>
@@ -118,17 +118,17 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
         )}
       </div>
 
-      {/* 問題把握の回答入力 */}
+      {/* 設問1の回答入力 */}
       <div
-        className="rounded-xl p-5"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        className="p-5"
+        style={{ background: "transparent" }}
       >
         <div className="flex items-center justify-between mb-3">
           <label className="text-sm font-black" style={{ color: "#323232" }}>
-            問題把握の回答（10文字以上）
+            設問1の回答（10文字以上）
           </label>
           <button
-            onClick={() => handleSubmit("problem")}
+            onClick={() => handleSubmit("q1")}
             disabled={!selectedCaseId || !problemAnswer.trim() || problemAnswer.trim().length < 10 || isPending}
             className="px-4 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
             style={{ background: "var(--primary)" }}
@@ -152,7 +152,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
             setProblemAnswer(e.target.value);
             setError(null);
           }}
-          placeholder="問題把握の回答を入力してください..."
+          placeholder="設問1の回答を入力してください..."
           rows={6}
           className="w-full px-4 py-3 rounded-lg text-sm font-bold resize-none"
           style={{
@@ -166,17 +166,17 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
         </p>
       </div>
 
-      {/* 対策立案の回答入力 */}
+      {/* 設問2の回答入力 */}
       <div
-        className="rounded-xl p-5"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        className="p-5"
+        style={{ background: "transparent" }}
       >
         <div className="flex items-center justify-between mb-3">
           <label className="text-sm font-black" style={{ color: "#323232" }}>
-            対策立案の回答（10文字以上）
+            設問2の回答（10文字以上）
           </label>
           <button
-            onClick={() => handleSubmit("solution")}
+            onClick={() => handleSubmit("q2")}
             disabled={!selectedCaseId || !solutionAnswer.trim() || solutionAnswer.trim().length < 10 || isPending}
             className="px-4 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
             style={{ background: "var(--primary)" }}
@@ -200,7 +200,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
             setSolutionAnswer(e.target.value);
             setError(null);
           }}
-          placeholder="対策立案の回答を入力してください..."
+          placeholder="設問2の回答を入力してください..."
           rows={6}
           className="w-full px-4 py-3 rounded-lg text-sm font-bold resize-none"
           style={{
@@ -225,17 +225,17 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
         </div>
       )}
 
-      {/* 問題把握の結果 */}
+      {/* 設問1の結果 */}
       {problemResult && !isPending && (
         <div className="space-y-4">
           <h3 className="text-base font-black" style={{ color: "#323232" }}>
-            問題把握の予測結果
+            設問1の予測結果
           </h3>
 
           {/* 予測スコアと信頼度 */}
           <div
-            className="rounded-xl p-6"
-            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+            className="p-6"
+            style={{ background: "transparent" }}
           >
             <div className="flex items-start gap-4">
               <div
@@ -268,8 +268,8 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
 
           {/* 説明 */}
           <div
-            className="rounded-xl p-5"
-            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+            className="p-5"
+            style={{ background: "transparent" }}
           >
             <div className="flex items-start gap-3 mb-3">
               <Lightbulb className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
@@ -285,8 +285,8 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
           {/* 類似例 */}
           {problemResult.similarExamples.length > 0 && (
             <div
-              className="rounded-xl p-5"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+              className="p-5"
+              style={{ background: "transparent" }}
             >
               <div className="flex items-start gap-3 mb-4">
                 <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
@@ -299,7 +299,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
                   <div
                     key={example.responseId}
                     className="p-4 rounded-lg"
-                    style={{ background: "var(--background)", border: "1px solid var(--border)" }}
+                    style={{ background: "#fff" }}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-black" style={{ color: "var(--text-muted)" }}>
@@ -325,17 +325,17 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
         </div>
       )}
 
-      {/* 対策立案の結果 */}
+      {/* 設問2の結果 */}
       {solutionResult && !isPending && (
         <div className="space-y-4">
           <h3 className="text-base font-black" style={{ color: "#323232" }}>
-            対策立案の予測結果
+            設問2の予測結果
           </h3>
 
           {/* 予測スコアと信頼度 */}
           <div
-            className="rounded-xl p-6"
-            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+            className="p-6"
+            style={{ background: "transparent" }}
           >
             <div className="flex items-start gap-4">
               <div
@@ -368,8 +368,8 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
 
           {/* 説明 */}
           <div
-            className="rounded-xl p-5"
-            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+            className="p-5"
+            style={{ background: "transparent" }}
           >
             <div className="flex items-start gap-3 mb-3">
               <Lightbulb className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
@@ -385,8 +385,8 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
           {/* 類似例 */}
           {solutionResult.similarExamples.length > 0 && (
             <div
-              className="rounded-xl p-5"
-              style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+              className="p-5"
+              style={{ background: "transparent" }}
             >
               <div className="flex items-start gap-3 mb-4">
                 <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
@@ -399,7 +399,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
                   <div
                     key={example.responseId}
                     className="p-4 rounded-lg"
-                    style={{ background: "var(--background)", border: "1px solid var(--border)" }}
+                    style={{ background: "#fff" }}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-black" style={{ color: "var(--text-muted)" }}>

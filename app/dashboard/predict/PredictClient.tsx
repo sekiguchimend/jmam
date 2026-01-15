@@ -25,7 +25,7 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(["problem", "solution"]));
+  const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(["q1", "q2"]));
 
   const toggleAccordion = (key: string) => {
     setOpenAccordions((prev) => {
@@ -90,7 +90,7 @@ export function PredictClient({ cases }: PredictClientProps) {
           <option value="">選択してください</option>
           {cases.map((c) => (
             <option key={c.case_id} value={c.case_id}>
-              {c.case_name || c.case_id}
+              {c.case_name}
             </option>
           ))}
         </select>
@@ -200,44 +200,44 @@ export function PredictClient({ cases }: PredictClientProps) {
       {/* 結果 - アコーディオン形式 */}
       {result && !isPending && (
         <div className="space-y-3">
-          {/* 問題把握 */}
+          {/* 設問1 */}
           <div
             className="rounded-xl overflow-hidden"
             style={{
               background: "var(--surface)",
-              border: openAccordions.has("problem") ? "1px solid var(--primary)" : "1px solid var(--border)",
+              border: openAccordions.has("q1") ? "1px solid var(--primary)" : "1px solid var(--border)",
               transition: "border-color 0.2s ease",
             }}
           >
             <button
-              onClick={() => toggleAccordion("problem")}
+              onClick={() => toggleAccordion("q1")}
               className="w-full px-4 py-3.5 flex items-center gap-3 text-left hover:opacity-80 transition-opacity"
             >
               <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: openAccordions.has("problem") ? "var(--primary)" : "var(--background)" }}
+                style={{ background: openAccordions.has("q1") ? "var(--primary)" : "var(--background)" }}
               >
                 <Target
                   className="w-4 h-4"
-                  style={{ color: openAccordions.has("problem") ? "#fff" : "var(--text-muted)" }}
+                  style={{ color: openAccordions.has("q1") ? "#fff" : "var(--text-muted)" }}
                 />
               </div>
               <span className="text-sm font-black flex-1" style={{ color: "#323232" }}>
-                問題把握
+                設問1
               </span>
               <ChevronRight
                 className="w-4 h-4 transition-transform duration-200"
                 style={{
                   color: "var(--text-muted)",
-                  transform: openAccordions.has("problem") ? "rotate(90deg)" : "rotate(0deg)",
+                  transform: openAccordions.has("q1") ? "rotate(90deg)" : "rotate(0deg)",
                 }}
               />
             </button>
             <div
               className="overflow-hidden transition-all duration-200"
               style={{
-                maxHeight: openAccordions.has("problem") ? "1000px" : "0",
-                opacity: openAccordions.has("problem") ? 1 : 0,
+                maxHeight: openAccordions.has("q1") ? "1000px" : "0",
+                opacity: openAccordions.has("q1") ? 1 : 0,
               }}
             >
               <div
@@ -245,50 +245,50 @@ export function PredictClient({ cases }: PredictClientProps) {
                 style={{ marginLeft: "44px" }}
               >
                 <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
-                  {result.problemAnswer}
+                  {result.q1Answer}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* 対策立案 */}
+          {/* 設問2 */}
           <div
             className="rounded-xl overflow-hidden"
             style={{
               background: "var(--surface)",
-              border: openAccordions.has("solution") ? "1px solid var(--primary)" : "1px solid var(--border)",
+              border: openAccordions.has("q2") ? "1px solid var(--primary)" : "1px solid var(--border)",
               transition: "border-color 0.2s ease",
             }}
           >
             <button
-              onClick={() => toggleAccordion("solution")}
+              onClick={() => toggleAccordion("q2")}
               className="w-full px-4 py-3.5 flex items-center gap-3 text-left hover:opacity-80 transition-opacity"
             >
               <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: openAccordions.has("solution") ? "var(--primary)" : "var(--background)" }}
+                style={{ background: openAccordions.has("q2") ? "var(--primary)" : "var(--background)" }}
               >
                 <MessageSquare
                   className="w-4 h-4"
-                  style={{ color: openAccordions.has("solution") ? "#fff" : "var(--text-muted)" }}
+                  style={{ color: openAccordions.has("q2") ? "#fff" : "var(--text-muted)" }}
                 />
               </div>
               <span className="text-sm font-black flex-1" style={{ color: "#323232" }}>
-                対策立案
+                設問2
               </span>
               <ChevronRight
                 className="w-4 h-4 transition-transform duration-200"
                 style={{
                   color: "var(--text-muted)",
-                  transform: openAccordions.has("solution") ? "rotate(90deg)" : "rotate(0deg)",
+                  transform: openAccordions.has("q2") ? "rotate(90deg)" : "rotate(0deg)",
                 }}
               />
             </button>
             <div
               className="overflow-hidden transition-all duration-200"
               style={{
-                maxHeight: openAccordions.has("solution") ? "1000px" : "0",
-                opacity: openAccordions.has("solution") ? 1 : 0,
+                maxHeight: openAccordions.has("q2") ? "1000px" : "0",
+                opacity: openAccordions.has("q2") ? 1 : 0,
               }}
             >
               <div
@@ -296,14 +296,14 @@ export function PredictClient({ cases }: PredictClientProps) {
                 style={{ marginLeft: "44px" }}
               >
                 <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
-                  {result.solutionAnswer}
+                  {result.q2Answer}
                 </p>
               </div>
             </div>
           </div>
 
           {/* 理由 */}
-          {(result.problemReason || result.solutionReason) && (
+          {(result.q1Reason || result.q2Reason) && (
             <div
               className="rounded-xl overflow-hidden"
               style={{
@@ -347,23 +347,23 @@ export function PredictClient({ cases }: PredictClientProps) {
                   className="px-4 pb-4 pt-0 space-y-4"
                   style={{ marginLeft: "44px" }}
                 >
-                  {result.problemReason && (
+                  {result.q1Reason && (
                     <div>
                       <p className="text-xs font-bold mb-1.5" style={{ color: "var(--primary)" }}>
-                        問題把握について
+                        設問1について
                       </p>
                       <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
-                        {result.problemReason}
+                        {result.q1Reason}
                       </p>
                     </div>
                   )}
-                  {result.solutionReason && (
+                  {result.q2Reason && (
                     <div>
                       <p className="text-xs font-bold mb-1.5" style={{ color: "var(--primary)" }}>
-                        対策立案について
+                        設問2について
                       </p>
                       <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
-                        {result.solutionReason}
+                        {result.q2Reason}
                       </p>
                     </div>
                   )}

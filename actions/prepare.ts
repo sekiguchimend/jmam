@@ -25,7 +25,7 @@ export async function processEmbeddingQueueBatch(limit: number = 50): Promise<{
 
 export async function rebuildTypicalExamplesForBucket(params: {
   caseId: string;
-  question: 'problem' | 'solution';
+  question: 'q1' | 'q2';
   scoreBucket: number;
   maxClusters?: number;
 }): Promise<{ clusters: number; points: number }> {

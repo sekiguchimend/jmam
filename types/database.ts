@@ -297,7 +297,7 @@ export type Database = {
         Row: {
           case_id: string;
           response_id: string;
-          question: 'problem' | 'solution';
+          question: 'q1' | 'q2';
           status: 'pending' | 'processing' | 'done' | 'error';
           attempts: number;
           last_error: string | null;
@@ -307,7 +307,7 @@ export type Database = {
         Insert: {
           case_id: string;
           response_id: string;
-          question: 'problem' | 'solution';
+          question: 'q1' | 'q2';
           status?: 'pending' | 'processing' | 'done' | 'error';
           attempts?: number;
           last_error?: string | null;
@@ -317,7 +317,7 @@ export type Database = {
         Update: {
           case_id?: string;
           response_id?: string;
-          question?: 'problem' | 'solution';
+          question?: 'q1' | 'q2';
           status?: 'pending' | 'processing' | 'done' | 'error';
           attempts?: number;
           last_error?: string | null;
@@ -337,7 +337,7 @@ export type Database = {
         Row: {
           case_id: string;
           response_id: string;
-          question: 'problem' | 'solution';
+          question: 'q1' | 'q2';
           score: number | null;
           score_bucket: number;
           embedding: unknown;
@@ -349,7 +349,7 @@ export type Database = {
         Insert: {
           case_id: string;
           response_id: string;
-          question: 'problem' | 'solution';
+          question: 'q1' | 'q2';
           score?: number | null;
           score_bucket: number;
           embedding: unknown;
@@ -361,7 +361,7 @@ export type Database = {
         Update: {
           case_id?: string;
           response_id?: string;
-          question?: 'problem' | 'solution';
+          question?: 'q1' | 'q2';
           score?: number | null;
           score_bucket?: number;
           embedding?: unknown;
@@ -383,7 +383,7 @@ export type Database = {
         Row: {
           id: string;
           case_id: string;
-          question: 'problem' | 'solution';
+          question: 'q1' | 'q2';
           score_bucket: number;
           cluster_id: number;
           cluster_size: number;
@@ -401,7 +401,7 @@ export type Database = {
         Insert: {
           id?: string;
           case_id: string;
-          question: 'problem' | 'solution';
+          question: 'q1' | 'q2';
           score_bucket: number;
           cluster_id: number;
           cluster_size: number;
@@ -419,7 +419,7 @@ export type Database = {
         Update: {
           id?: string;
           case_id?: string;
-          question?: 'problem' | 'solution';
+          question?: 'q1' | 'q2';
           score_bucket?: number;
           cluster_id?: number;
           cluster_size?: number;
@@ -446,6 +446,46 @@ export type Database = {
             columns: ['rep_case_id', 'rep_response_id'];
             referencedRelation: 'responses';
             referencedColumns: ['case_id', 'response_id'];
+          }
+        ];
+      };
+
+      questions: {
+        Row: {
+          id: string;
+          case_id: string;
+          question_key: 'q1' | 'q2';
+          question_text: string;
+          question_embedding: number[] | null;
+          embedding_model: string | null;
+          order_index: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          case_id: string;
+          question_key: 'q1' | 'q2';
+          question_text: string;
+          question_embedding?: number[] | null;
+          embedding_model?: string | null;
+          order_index?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          question_text?: string;
+          question_embedding?: number[] | null;
+          embedding_model?: string | null;
+          order_index?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'questions_case_id_fkey';
+            columns: ['case_id'];
+            referencedRelation: 'cases';
+            referencedColumns: ['case_id'];
           }
         ];
       };
@@ -481,3 +521,8 @@ export type Database = {
 
 // 管理者ユーザー型
 export type AdminUser = Database['public']['Tables']['admin_users']['Row'];
+
+// 設問型
+export type QuestionRow = Database['public']['Tables']['questions']['Row'];
+export type QuestionInsert = Database['public']['Tables']['questions']['Insert'];
+export type QuestionUpdate = Database['public']['Tables']['questions']['Update'];

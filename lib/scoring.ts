@@ -30,7 +30,7 @@ export type ScorePrediction = {
 export async function predictScoreFromAnswer(params: {
   token: string;
   caseId: string;
-  question: 'problem' | 'solution';
+  question: 'q1' | 'q2';
   answerText: string;
   topK?: number;
 }): Promise<ScorePrediction> {

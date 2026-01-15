@@ -262,6 +262,10 @@ export function UploadClientForm() {
     setTotalCount(0);
     setErrors([]);
     setErrorMessage(null);
+    // input の value をリセットして同じファイルを再選択可能にする
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   return (

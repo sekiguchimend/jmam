@@ -295,23 +295,32 @@ export async function POST(request: Request) {
             await upsertResponses(dbRecords, adminToken);
 
             // embeddingキュー投入（事前準備用）
+            // q1 → answer_q1, q2 → answer_q2〜q8のいずれかがあれば
             await enqueueEmbeddingJobs(
               deduped.flatMap((r) => {
-                const jobs: { case_id: string; response_id: string; question: 'problem' | 'solution' }[] = [];
-                if (r.answer_q1 && r.answer_q1.trim()) jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'problem' });
-                if (r.answer_q2 && r.answer_q2.trim()) jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'solution' });
+                const jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[] = [];
+                if (r.answer_q1 && r.answer_q1.trim()) {
+                  jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'q1' });
+                }
+                // q2〜q8のいずれかがあれば q2 としてキュー投入
+                const hasQ2Content = [r.answer_q2, r.answer_q3, r.answer_q4, r.answer_q5, r.answer_q6, r.answer_q7, r.answer_q8]
+                  .some((a) => a && a.trim());
+                if (hasQ2Content) {
+                  jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'q2' });
+                }
                 return jobs;
               }),
               adminToken
             );
 
             // 典型例再計算用の「触れたスコア帯」を記録
+            // ラベルは q1/q2 に変更、スコアは score_problem/score_solution のまま
             for (const r of deduped) {
               if (typeof r.score_problem === 'number') {
-                touchedBuckets.add(`${r.case_id}__problem__${toScoreBucket(r.score_problem)}`);
+                touchedBuckets.add(`${r.case_id}__q1__${toScoreBucket(r.score_problem)}`);
               }
               if (typeof r.score_solution === 'number') {
-                touchedBuckets.add(`${r.case_id}__solution__${toScoreBucket(r.score_solution)}`);
+                touchedBuckets.add(`${r.case_id}__q2__${toScoreBucket(r.score_solution)}`);
               }
             }
             processedCount += batch.length;
@@ -346,21 +355,28 @@ export async function POST(request: Request) {
             return rest;
           });
           await upsertResponses(dbRecords, adminToken);
+          // q1 → answer_q1, q2 → answer_q2〜q8のいずれかがあれば
           await enqueueEmbeddingJobs(
             deduped.flatMap((r) => {
-              const jobs: { case_id: string; response_id: string; question: 'problem' | 'solution' }[] = [];
-              if (r.answer_q1 && r.answer_q1.trim()) jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'problem' });
-              if (r.answer_q2 && r.answer_q2.trim()) jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'solution' });
+              const jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[] = [];
+              if (r.answer_q1 && r.answer_q1.trim()) {
+                jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'q1' });
+              }
+              const hasQ2Content = [r.answer_q2, r.answer_q3, r.answer_q4, r.answer_q5, r.answer_q6, r.answer_q7, r.answer_q8]
+                .some((a) => a && a.trim());
+              if (hasQ2Content) {
+                jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'q2' });
+              }
               return jobs;
             }),
             adminToken
           );
           for (const r of deduped) {
             if (typeof r.score_problem === 'number') {
-              touchedBuckets.add(`${r.case_id}__problem__${toScoreBucket(r.score_problem)}`);
+              touchedBuckets.add(`${r.case_id}__q1__${toScoreBucket(r.score_problem)}`);
             }
             if (typeof r.score_solution === 'number') {
-              touchedBuckets.add(`${r.case_id}__solution__${toScoreBucket(r.score_solution)}`);
+              touchedBuckets.add(`${r.case_id}__q2__${toScoreBucket(r.score_solution)}`);
             }
           }
           processedCount += batch.length;
@@ -404,7 +420,7 @@ export async function POST(request: Request) {
           if (Date.now() - prepareStartedAt >= AUTO_PREPARE_MAX_MS) break;
           const [caseId, question, bucketStr] = key.split('__');
           const scoreBucket = Number(bucketStr);
-          if (!caseId || (question !== 'problem' && question !== 'solution') || !Number.isFinite(scoreBucket)) continue;
+          if (!caseId || (question !== 'q1' && question !== 'q2') || !Number.isFinite(scoreBucket)) continue;
           await rebuildTypicalExamplesForBucketWithToken({
             adminToken: adminToken,
             caseId,

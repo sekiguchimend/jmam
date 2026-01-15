@@ -56,10 +56,10 @@ ${formatExamples(`以下は「対策立案 ${fewShot.solutionScoreBucket}点帯�
 
 \`\`\`json
 {
-  "problemAnswer": "問題把握についての予測回答（200文字程度）",
-  "problemReason": "問題把握の回答の理由（箇条書き3点まで）",
-  "solutionAnswer": "対策立案についての予測回答（200文字程度）",
-  "solutionReason": "対策立案の回答の理由（箇条書き3点まで）"
+  "q1Answer": "設問1についての予測回答（200文字程度）",
+  "q1Reason": "設問1の回答の理由（箇条書き3点まで）",
+  "q2Answer": "設問2についての予測回答（200文字程度）",
+  "q2Reason": "設問2の回答の理由（箇条書き3点まで）"
 }
 \`\`\``;
 
@@ -108,10 +108,10 @@ ${formatExamples(`以下は「対策立案 ${fewShot.solutionScoreBucket}点帯�
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[1]);
       return {
-        problemAnswer: parsed.problemAnswer || '予測回答を生成できませんでした',
-        problemReason: parsed.problemReason || undefined,
-        solutionAnswer: parsed.solutionAnswer || '予測回答を生成できませんでした',
-        solutionReason: parsed.solutionReason || undefined,
+        q1Answer: parsed.q1Answer || '予測回答を生成できませんでした',
+        q1Reason: parsed.q1Reason || undefined,
+        q2Answer: parsed.q2Answer || '予測回答を生成できませんでした',
+        q2Reason: parsed.q2Reason || undefined,
       };
     }
 
@@ -119,16 +119,16 @@ ${formatExamples(`以下は「対策立案 ${fewShot.solutionScoreBucket}点帯�
     try {
       const parsed = JSON.parse(generatedText);
       return {
-        problemAnswer: parsed.problemAnswer || '予測回答を生成できませんでした',
-        problemReason: parsed.problemReason || undefined,
-        solutionAnswer: parsed.solutionAnswer || '予測回答を生成できませんでした',
-        solutionReason: parsed.solutionReason || undefined,
+        q1Answer: parsed.q1Answer || '予測回答を生成できませんでした',
+        q1Reason: parsed.q1Reason || undefined,
+        q2Answer: parsed.q2Answer || '予測回答を生成できませんでした',
+        q2Reason: parsed.q2Reason || undefined,
       };
     } catch {
       // パースできない場合はテキストをそのまま使用
       return {
-        problemAnswer: generatedText.substring(0, 500),
-        solutionAnswer: '（回答の分離に失敗しました）',
+        q1Answer: generatedText.substring(0, 500),
+        q2Answer: '（回答の分離に失敗しました）',
       };
     }
   } catch (error) {
@@ -138,10 +138,17 @@ ${formatExamples(`以下は「対策立案 ${fewShot.solutionScoreBucket}点帯�
   }
 }
 
+// q2 用のテキスト結合ヘルパー
+function combineQ2Answers(r: { answer_q2?: string | null; answer_q3?: string | null; answer_q4?: string | null; answer_q5?: string | null; answer_q6?: string | null; answer_q7?: string | null; answer_q8?: string | null }): string {
+  return [r.answer_q2, r.answer_q3, r.answer_q4, r.answer_q5, r.answer_q6, r.answer_q7, r.answer_q8]
+    .filter(Boolean)
+    .join('\n') || '（なし）';
+}
+
 // 類似回答者の回答を参考にLLMで新たな回答を生成（ユークリッド距離ベース）
 export async function generatePredictionFromSimilar(
   situationText: string,
-  similarResponses: { answer_q1: string | null; answer_q2: string | null; score_problem: number | null; score_solution: number | null; score_role: number | null; score_leadership: number | null; score_collaboration: number | null; score_development: number | null }[],
+  similarResponses: { answer_q1: string | null; answer_q2: string | null; answer_q3?: string | null; answer_q4?: string | null; answer_q5?: string | null; answer_q6?: string | null; answer_q7?: string | null; answer_q8?: string | null; score_problem: number | null; score_solution: number | null; score_role: number | null; score_leadership: number | null; score_collaboration: number | null; score_development: number | null }[],
   targetScores: Scores
 ): Promise<PredictionResponse> {
   // 類似回答者の回答をフォーマット
@@ -150,8 +157,8 @@ export async function generatePredictionFromSimilar(
     return similarResponses.map((r, i) => {
       const scores = `[問題把握:${r.score_problem ?? '-'}, 対策立案:${r.score_solution ?? '-'}, 役割理解:${r.score_role ?? '-'}, 主導:${r.score_leadership ?? '-'}, 連携:${r.score_collaboration ?? '-'}, 育成:${r.score_development ?? '-'}]`;
       return `【類似回答者${i + 1}】${scores}
-問題把握の回答: ${r.answer_q1 || '（なし）'}
-対策立案の回答: ${r.answer_q2 || '（なし）'}`;
+設問1の回答: ${r.answer_q1 || '（なし）'}
+設問2の回答: ${combineQ2Answers(r)}`;
     }).join('\n\n');
   };
 
@@ -234,10 +241,10 @@ ${formatSimilarExamples()}
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[1]);
       return {
-        problemAnswer: parsed.problemAnswer || '予測回答を生成できませんでした',
-        problemReason: parsed.problemReason || undefined,
-        solutionAnswer: parsed.solutionAnswer || '予測回答を生成できませんでした',
-        solutionReason: parsed.solutionReason || undefined,
+        q1Answer: parsed.q1Answer || '予測回答を生成できませんでした',
+        q1Reason: parsed.q1Reason || undefined,
+        q2Answer: parsed.q2Answer || '予測回答を生成できませんでした',
+        q2Reason: parsed.q2Reason || undefined,
       };
     }
 
@@ -245,15 +252,15 @@ ${formatSimilarExamples()}
     try {
       const parsed = JSON.parse(generatedText);
       return {
-        problemAnswer: parsed.problemAnswer || '予測回答を生成できませんでした',
-        problemReason: parsed.problemReason || undefined,
-        solutionAnswer: parsed.solutionAnswer || '予測回答を生成できませんでした',
-        solutionReason: parsed.solutionReason || undefined,
+        q1Answer: parsed.q1Answer || '予測回答を生成できませんでした',
+        q1Reason: parsed.q1Reason || undefined,
+        q2Answer: parsed.q2Answer || '予測回答を生成できませんでした',
+        q2Reason: parsed.q2Reason || undefined,
       };
     } catch {
       return {
-        problemAnswer: generatedText.substring(0, 500),
-        solutionAnswer: '（回答の分離に失敗しました）',
+        q1Answer: generatedText.substring(0, 500),
+        q2Answer: '（回答の分離に失敗しました）',
       };
     }
   } catch (error) {
@@ -268,24 +275,27 @@ function generateMockPrediction(
 ): PredictionResponse {
   const scoreLevel = (targetScores.problem + targetScores.solution) / 2;
   
-  let problemAnswer: string;
-  let solutionAnswer: string;
+  let q1Answer: string;
+  let q2Answer: string;
 
   if (scoreLevel >= 3.5) {
-    problemAnswer = '現状の問題点を的確に把握し、根本原因を多角的な視点から分析しています。組織全体への影響を考慮した上で、優先順位を明確に設定できています。';
-    solutionAnswer = '具体的かつ実現可能な対策を複数提案し、それぞれのメリット・デメリットを考慮した上で最適な解決策を選択できています。実施計画も明確です。';
+    q1Answer = '現状の問題点を的確に把握し、根本原因を多角的な視点から分析しています。組織全体への影響を考慮した上で、優先順位を明確に設定できています。';
+    q2Answer = '具体的かつ実現可能な対策を複数提案し、それぞれのメリット・デメリットを考慮した上で最適な解決策を選択できています。実施計画も明確です。';
   } else if (scoreLevel >= 2.5) {
-    problemAnswer = '主要な問題点は認識できており、ある程度の原因分析ができています。ただし、一部の視点が不足している可能性があります。';
-    solutionAnswer = '基本的な対策は提案できていますが、より具体的な実施方法や想定されるリスクへの対応が求められます。';
+    q1Answer = '主要な問題点は認識できており、ある程度の原因分析ができています。ただし、一部の視点が不足している可能性があります。';
+    q2Answer = '基本的な対策は提案できていますが、より具体的な実施方法や想定されるリスクへの対応が求められます。';
   } else {
-    problemAnswer = '問題点の把握が表面的であり、より深い原因分析が必要です。関係者の視点からの検討も求められます。';
-    solutionAnswer = '対策の提案はあるものの、具体性や実現可能性の検討が不足しています。より詳細な計画立案が望まれます。';
+    q1Answer = '問題点の把握が表面的であり、より深い原因分析が必要です。関係者の視点からの検討も求められます。';
+    q2Answer = '対策の提案はあるものの、具体性や実現可能性の検討が不足しています。より詳細な計画立案が望まれます。';
   }
 
+  const q1Reason = '（モック）スコア水準に合わせて、問題の把握深度と根拠の示し方を調整しました。';
+  const q2Reason = '（モック）実行可能性と具体性のバランスがスコア水準に合うように調整しました。';
+
   return {
-    problemAnswer,
-    problemReason: '（モック）スコア水準に合わせて、問題の把握深度と根拠の示し方を調整しました。',
-    solutionAnswer,
-    solutionReason: '（モック）実行可能性と具体性のバランスがスコア水準に合うように調整しました。',
+    q1Answer,
+    q1Reason,
+    q2Answer,
+    q2Reason,
   };
 }

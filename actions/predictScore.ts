@@ -41,7 +41,7 @@ export async function fetchCasesForScorePrediction(): Promise<{
 // 回答からスコアを予測
 export async function submitAnswerForScorePrediction(params: {
   caseId: string;
-  question: 'problem' | 'solution';
+  question: 'q1' | 'q2';
   answerText: string;
 }): Promise<{
   success: boolean;

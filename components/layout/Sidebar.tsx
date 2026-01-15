@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/actions/auth";
 import { useTransition } from "react";
-import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, Link2, Calculator } from "lucide-react";
+import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, Link2, Calculator, FileQuestion } from "lucide-react";
 import Image from "next/image";
 
 interface SidebarProps {
@@ -53,6 +53,11 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
       name: "学習データ",
       href: "/admin",
       icon: <Database className="w-5 h-5" />,
+    },
+    {
+      name: "設問管理",
+      href: "/admin/questions",
+      icon: <FileQuestion className="w-5 h-5" />,
     },
     {
       name: "ユーザー管理",

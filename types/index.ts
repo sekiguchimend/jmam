@@ -56,22 +56,32 @@ export interface Scores {
 
 // 予測結果
 export interface PredictionResponse {
-  problemAnswer: string;
-  problemReason?: string;
-  solutionAnswer: string;
-  solutionReason?: string;
+  q1Answer: string;
+  q1Reason?: string;
+  q2Answer: string;
+  q2Reason?: string;
   similarResponses?: Response[];
 }
 
 export type TypicalExample = {
   case_id: string;
-  question: 'problem' | 'solution';
+  question: 'q1' | 'q2';
   score_bucket: number;
   cluster_id: number;
   cluster_size: number;
   rep_text: string;
   rep_score: number | null;
 };
+
+// 設問型
+export interface Question {
+  id: string;
+  case_id: string;
+  question_key: 'q1' | 'q2';
+  question_text: string;
+  question_embedding: number[] | null;
+  order_index: number;
+}
 
 // アップロード進捗
 export interface UploadProgress {

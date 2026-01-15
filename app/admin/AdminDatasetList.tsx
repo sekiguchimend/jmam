@@ -64,7 +64,7 @@ export function AdminDatasetList({ initialStats }: AdminDatasetListProps) {
                 <FileText className="w-4 lg:w-5 h-4 lg:h-5 flex-shrink-0 hidden sm:block" style={{ color: "var(--primary)" }} />
                 <div className="min-w-0">
                   <p className="text-sm lg:text-base font-black truncate" style={{ color: "#323232" }}>
-                    {stat.caseName || stat.caseId}
+                    {stat.caseName}
                   </p>
                   <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
                     <span className="hidden sm:inline">ケースID: {stat.caseId} • </span>

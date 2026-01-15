@@ -99,8 +99,14 @@ export async function processEmbeddingQueueBatchWithToken(
   const computed = await mapWithConcurrency(jobs, concurrency, async (job): Promise<JobResult> => {
     const key = `${job.case_id}__${job.response_id}`;
     const src = rowMap.get(key);
-    const text = job.question === 'problem' ? src?.answer_q1 : src?.answer_q2;
-    const score = job.question === 'problem' ? src?.score_problem : src?.score_solution;
+    // q1 → answer_q1, q2 → answer_q2〜q8を結合
+    const text = job.question === 'q1'
+      ? src?.answer_q1
+      : [src?.answer_q2, src?.answer_q3, src?.answer_q4, src?.answer_q5, src?.answer_q6, src?.answer_q7, src?.answer_q8]
+          .filter(Boolean)
+          .join('\n');
+    // スコアは score_problem / score_solution をそのまま使用（評価軸は変わらない）
+    const score = job.question === 'q1' ? src?.score_problem : src?.score_solution;
     if (!src || !text || !text.trim()) {
       return { key: `${key}__${job.question}`, ok: false, error: 'テキストが見つかりません' };
     }
@@ -169,7 +175,7 @@ export async function processEmbeddingQueueBatchWithToken(
 export async function rebuildTypicalExamplesForBucketWithToken(params: {
   adminToken: string;
   caseId: string;
-  question: 'problem' | 'solution';
+  question: 'q1' | 'q2';
   scoreBucket: number;
   maxClusters?: number;
 }): Promise<{ clusters: number; points: number }> {
@@ -209,7 +215,7 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
   const or = buildOrFilter(repPairs);
   const { data, error } = await supabase
     .from('responses')
-    .select('case_id,response_id,answer_q1,answer_q2,score_problem,score_solution')
+    .select('case_id,response_id,answer_q1,answer_q2,answer_q3,answer_q4,answer_q5,answer_q6,answer_q7,answer_q8,score_problem,score_solution')
     .or(or);
   if (error) {
     throw new Error(`代表回答の取得に失敗しました: ${error.message}`);
@@ -219,7 +225,7 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
     string,
     {
       answer_q1: string | null;
-      answer_q2: string | null;
+      answer_q2_combined: string | null;
       score_problem: number | null;
       score_solution: number | null;
     }
@@ -231,13 +237,23 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
       response_id: string;
       answer_q1?: string | null;
       answer_q2?: string | null;
+      answer_q3?: string | null;
+      answer_q4?: string | null;
+      answer_q5?: string | null;
+      answer_q6?: string | null;
+      answer_q7?: string | null;
+      answer_q8?: string | null;
       score_problem?: number | null;
       score_solution?: number | null;
     };
     if (!r.case_id || !r.response_id) continue;
+    // q2 は answer_q2〜q8 を結合
+    const q2Combined = [r.answer_q2, r.answer_q3, r.answer_q4, r.answer_q5, r.answer_q6, r.answer_q7, r.answer_q8]
+      .filter(Boolean)
+      .join('\n') || null;
     textMap.set(`${r.case_id}__${r.response_id}`, {
       answer_q1: r.answer_q1 ?? null,
-      answer_q2: r.answer_q2 ?? null,
+      answer_q2_combined: q2Combined,
       score_problem: r.score_problem ?? null,
       score_solution: r.score_solution ?? null,
     });
@@ -250,8 +266,9 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
     .map((r, clusterId) => {
       const embRow = embeddings[r.idx];
       const resp = textMap.get(`${embRow.case_id}__${embRow.response_id}`);
-      const repText = question === 'problem' ? resp?.answer_q1 : resp?.answer_q2;
-      const repScore = question === 'problem' ? resp?.score_problem : resp?.score_solution;
+      // q1 → answer_q1, q2 → answer_q2〜q8結合版
+      const repText = question === 'q1' ? resp?.answer_q1 : resp?.answer_q2_combined;
+      const repScore = question === 'q1' ? resp?.score_problem : resp?.score_solution;
       if (!repText || !String(repText).trim()) return null;
       const row: TypicalExampleInsert = {
         case_id: caseId,

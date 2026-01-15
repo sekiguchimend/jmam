@@ -26,12 +26,12 @@ export function PredictionResult({ prediction, isLoading }: PredictionResultProp
     <Card title="予測結果">
       <div className="space-y-4 text-[#323232]">
         <div>
-          <h4 className="font-bold">問題把握</h4>
-          <p>{prediction.problemAnswer}</p>
+          <h4 className="font-bold">設問1</h4>
+          <p>{prediction.q1Answer}</p>
         </div>
         <div>
-          <h4 className="font-bold">対策立案</h4>
-          <p>{prediction.solutionAnswer}</p>
+          <h4 className="font-bold">設問2</h4>
+          <p>{prediction.q2Answer}</p>
         </div>
       </div>
     </Card>
