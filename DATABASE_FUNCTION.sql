@@ -23,7 +23,7 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    re.response_id,
+    re.response_id::text,
     COALESCE(
       CASE
         WHEN p_question = 'q1' THEN r.score_problem
@@ -48,10 +48,10 @@ BEGIN
         ELSE r.answer_q1
       END,
       ''
-    ) as answer_text,
-    r.comment_problem,
-    r.comment_solution,
-    r.comment_overall
+    )::text as answer_text,
+    r.comment_problem::text,
+    r.comment_solution::text,
+    r.comment_overall::text
   FROM response_embeddings re
   JOIN responses r ON re.case_id = r.case_id AND re.response_id = r.response_id
   WHERE
@@ -79,10 +79,10 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    c.case_id,
-    c.case_name,
-    c.situation_text,
-    1 - (c.situation_embedding <=> p_embedding) AS similarity
+    c.case_id::text,
+    c.case_name::text,
+    c.situation_text::text,
+    (1 - (c.situation_embedding <=> p_embedding))::float AS similarity
   FROM cases c
   WHERE c.situation_embedding IS NOT NULL
   ORDER BY c.situation_embedding <=> p_embedding
@@ -113,21 +113,21 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT
-    r.response_id,
-    r.case_id,
-    c.case_name,
-    CASE
+    r.response_id::text,
+    r.case_id::text,
+    c.case_name::text,
+    (CASE
       WHEN p_question = 'q1' THEN COALESCE(r.score_problem, r.score_overall)
       ELSE COALESCE(r.score_solution, r.score_overall)
-    END AS score,
-    1 - (re.embedding <=> p_embedding) AS similarity,
-    CASE
+    END)::float AS score,
+    (1 - (re.embedding <=> p_embedding))::float AS similarity,
+    (CASE
       WHEN p_question = 'q1' THEN r.answer_q1
       ELSE CONCAT_WS(E'\n', r.answer_q2, r.answer_q3, r.answer_q4, r.answer_q5, r.answer_q6, r.answer_q7, r.answer_q8)
-    END AS answer_text,
-    r.comment_problem,
-    r.comment_solution,
-    r.comment_overall
+    END)::text AS answer_text,
+    r.comment_problem::text,
+    r.comment_solution::text,
+    r.comment_overall::text
   FROM response_embeddings re
   JOIN responses r ON r.case_id = re.case_id AND r.response_id = re.response_id
   JOIN cases c ON c.case_id = r.case_id

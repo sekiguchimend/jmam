@@ -232,12 +232,9 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
             設問1の予測結果
           </h3>
 
-          {/* 予測スコアと信頼度 */}
-          <div
-            className="p-6"
-            style={{ background: "transparent" }}
-          >
-            <div className="flex items-start gap-4">
+          {/* 予測スコア一覧 */}
+          <div className="p-6" style={{ background: "transparent" }}>
+            <div className="flex items-start gap-4 mb-4">
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{ background: "var(--primary)" }}
@@ -245,17 +242,9 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
                 <Calculator className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-black mb-3" style={{ color: "#323232" }}>
+                <h3 className="text-sm font-black mb-2" style={{ color: "#323232" }}>
                   予測スコア
                 </h3>
-                <div className="flex items-baseline gap-2 mb-3">
-                  <span className="text-4xl font-black" style={{ color: "var(--primary)" }}>
-                    {problemResult.predictedScore.toFixed(1)}
-                  </span>
-                  <span className="text-lg font-bold" style={{ color: "var(--text-muted)" }}>
-                    / 5.0
-                  </span>
-                </div>
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
                   <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
@@ -264,13 +253,62 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
                 </div>
               </div>
             </div>
+
+            {/* スコアグリッド */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {problemResult.predictedScores.overall != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff", border: "2px solid var(--primary)" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>総合</p>
+                  <p className="text-2xl font-black" style={{ color: "var(--primary)" }}>
+                    {problemResult.predictedScores.overall.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {problemResult.predictedScores.problem != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>問題把握</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {problemResult.predictedScores.problem.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {problemResult.predictedScores.solution != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>対策立案</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {problemResult.predictedScores.solution.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {problemResult.predictedScores.leadership != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>主導</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {problemResult.predictedScores.leadership.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {problemResult.predictedScores.collaboration != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>連携</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {problemResult.predictedScores.collaboration.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {problemResult.predictedScores.development != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>育成</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {problemResult.predictedScores.development.toFixed(1)}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 説明 */}
-          <div
-            className="p-5"
-            style={{ background: "transparent" }}
-          >
+          <div className="p-5" style={{ background: "transparent" }}>
             <div className="flex items-start gap-3 mb-3">
               <Lightbulb className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
               <h3 className="text-sm font-black" style={{ color: "#323232" }}>
@@ -284,10 +322,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
 
           {/* 類似例 */}
           {problemResult.similarExamples.length > 0 && (
-            <div
-              className="p-5"
-              style={{ background: "transparent" }}
-            >
+            <div className="p-5" style={{ background: "transparent" }}>
               <div className="flex items-start gap-3 mb-4">
                 <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
                 <h3 className="text-sm font-black" style={{ color: "#323232" }}>
@@ -296,11 +331,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
               </div>
               <div className="space-y-3" style={{ marginLeft: "32px" }}>
                 {problemResult.similarExamples.map((example, index) => (
-                  <div
-                    key={example.responseId}
-                    className="p-4 rounded-lg"
-                    style={{ background: "#fff" }}
-                  >
+                  <div key={example.responseId} className="p-4 rounded-lg" style={{ background: "#fff" }}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-black" style={{ color: "var(--text-muted)" }}>
                         #{index + 1}
@@ -310,7 +341,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
                           類似度: {(example.similarity * 100).toFixed(0)}%
                         </span>
                         <span className="text-sm font-black" style={{ color: "var(--primary)" }}>
-                          {example.score.toFixed(1)}点
+                          総合{example.scores.overall?.toFixed(1) ?? "-"}点
                         </span>
                       </div>
                     </div>
@@ -332,12 +363,9 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
             設問2の予測結果
           </h3>
 
-          {/* 予測スコアと信頼度 */}
-          <div
-            className="p-6"
-            style={{ background: "transparent" }}
-          >
-            <div className="flex items-start gap-4">
+          {/* 予測スコア一覧 */}
+          <div className="p-6" style={{ background: "transparent" }}>
+            <div className="flex items-start gap-4 mb-4">
               <div
                 className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{ background: "var(--primary)" }}
@@ -345,17 +373,9 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
                 <Calculator className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-black mb-3" style={{ color: "#323232" }}>
+                <h3 className="text-sm font-black mb-2" style={{ color: "#323232" }}>
                   予測スコア
                 </h3>
-                <div className="flex items-baseline gap-2 mb-3">
-                  <span className="text-4xl font-black" style={{ color: "var(--primary)" }}>
-                    {solutionResult.predictedScore.toFixed(1)}
-                  </span>
-                  <span className="text-lg font-bold" style={{ color: "var(--text-muted)" }}>
-                    / 5.0
-                  </span>
-                </div>
                 <div className="flex items-center gap-2">
                   <TrendingUp className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
                   <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
@@ -364,13 +384,62 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
                 </div>
               </div>
             </div>
+
+            {/* スコアグリッド */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {solutionResult.predictedScores.overall != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff", border: "2px solid var(--primary)" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>総合</p>
+                  <p className="text-2xl font-black" style={{ color: "var(--primary)" }}>
+                    {solutionResult.predictedScores.overall.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {solutionResult.predictedScores.problem != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>問題把握</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {solutionResult.predictedScores.problem.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {solutionResult.predictedScores.solution != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>対策立案</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {solutionResult.predictedScores.solution.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {solutionResult.predictedScores.leadership != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>主導</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {solutionResult.predictedScores.leadership.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {solutionResult.predictedScores.collaboration != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>連携</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {solutionResult.predictedScores.collaboration.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {solutionResult.predictedScores.development != null && (
+                <div className="p-3 rounded-lg" style={{ background: "#fff" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>育成</p>
+                  <p className="text-2xl font-black" style={{ color: "#323232" }}>
+                    {solutionResult.predictedScores.development.toFixed(1)}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 説明 */}
-          <div
-            className="p-5"
-            style={{ background: "transparent" }}
-          >
+          <div className="p-5" style={{ background: "transparent" }}>
             <div className="flex items-start gap-3 mb-3">
               <Lightbulb className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
               <h3 className="text-sm font-black" style={{ color: "#323232" }}>
@@ -384,10 +453,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
 
           {/* 類似例 */}
           {solutionResult.similarExamples.length > 0 && (
-            <div
-              className="p-5"
-              style={{ background: "transparent" }}
-            >
+            <div className="p-5" style={{ background: "transparent" }}>
               <div className="flex items-start gap-3 mb-4">
                 <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
                 <h3 className="text-sm font-black" style={{ color: "#323232" }}>
@@ -396,11 +462,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
               </div>
               <div className="space-y-3" style={{ marginLeft: "32px" }}>
                 {solutionResult.similarExamples.map((example, index) => (
-                  <div
-                    key={example.responseId}
-                    className="p-4 rounded-lg"
-                    style={{ background: "#fff" }}
-                  >
+                  <div key={example.responseId} className="p-4 rounded-lg" style={{ background: "#fff" }}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-black" style={{ color: "var(--text-muted)" }}>
                         #{index + 1}
@@ -410,7 +472,7 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
                           類似度: {(example.similarity * 100).toFixed(0)}%
                         </span>
                         <span className="text-sm font-black" style={{ color: "var(--primary)" }}>
-                          {example.score.toFixed(1)}点
+                          総合{example.scores.overall?.toFixed(1) ?? "-"}点
                         </span>
                       </div>
                     </div>

@@ -11,10 +11,20 @@ export function toScoreBucket(score: number): number {
   return Math.round(clamped * 2) / 2;
 }
 
+// 個別スコア項目の型定義
+export type ScoreItems = {
+  overall: number | null;      // 総合評点
+  problem: number | null;      // 問題把握
+  solution: number | null;     // 対策立案
+  leadership: number | null;   // 主導
+  collaboration: number | null; // 連携
+  development: number | null;  // 育成
+};
+
 // 類似回答の型定義
 export type SimilarResponse = {
   responseId: string;
-  score: number;
+  scores: ScoreItems;
   similarity: number;
   excerpt: string;
   // コメントフィールド（AI評価用）
@@ -25,11 +35,24 @@ export type SimilarResponse = {
 
 // スコア予測結果の型定義
 export type ScorePrediction = {
-  predictedScore: number;
+  predictedScores: ScoreItems;  // 複数スコア
   confidence: number;
   similarExamples: SimilarResponse[];
   explanation: string;
 };
+
+// 重み付き平均でスコアを計算するヘルパー関数
+function calculateWeightedScore(data: any[], field: string, totalSimilarity: number): number | null {
+  const validData = data.filter((r: any) => r[field] != null);
+  if (validData.length === 0) return null;
+  
+  const weightedSum = validData.reduce(
+    (sum: number, r: any) => sum + (r[field] * r.similarity),
+    0
+  );
+  const validSimilarity = validData.reduce((sum: number, r: any) => sum + r.similarity, 0);
+  return validSimilarity > 0 ? Math.round((weightedSum / validSimilarity) * 10) / 10 : null;
+}
 
 // 回答テキストからスコアを予測
 export async function predictScoreFromAnswer(params: {
@@ -50,7 +73,7 @@ export async function predictScoreFromAnswer(params: {
   // 2. Supabaseクライアントを作成
   const supabase = createAuthedAnonServerClient(token);
 
-  // 3. 類似回答を検索（コメント付き）
+  // 3. 類似回答を検索（全スコア付き）
   const { data, error } = await supabase.rpc('find_similar_responses_for_scoring', {
     p_embedding: JSON.stringify(embedding),
     p_case_id: caseId,
@@ -67,22 +90,33 @@ export async function predictScoreFromAnswer(params: {
     throw new Error('類似回答が見つかりませんでした。このケースにはまだ回答データがありません。');
   }
 
-  // 4. 重み付き平均でスコアを算出
+  // 4. 各スコア項目の重み付き平均を算出
   const totalSimilarity = data.reduce((sum: number, r: any) => sum + r.similarity, 0);
-  const weightedScore = data.reduce(
-    (sum: number, r: any) => sum + (r.score * r.similarity),
-    0
-  );
-  const predictedScore = weightedScore / totalSimilarity;
+  
+  const predictedScores: ScoreItems = {
+    overall: calculateWeightedScore(data, 'score_overall', totalSimilarity),
+    problem: calculateWeightedScore(data, 'score_problem', totalSimilarity),
+    solution: calculateWeightedScore(data, 'score_solution', totalSimilarity),
+    leadership: calculateWeightedScore(data, 'score_leadership', totalSimilarity),
+    collaboration: calculateWeightedScore(data, 'score_collaboration', totalSimilarity),
+    development: calculateWeightedScore(data, 'score_development', totalSimilarity),
+  };
 
   // 5. 信頼度を計算（平均類似度）
   const avgSimilarity = totalSimilarity / data.length;
   const confidence = Math.min(1.0, avgSimilarity);
 
-  // 6. 類似例を抽出（コメント含む）
+  // 6. 類似例を抽出（全スコア含む）
   const similarExamples: SimilarResponse[] = data.slice(0, 5).map((r: any) => ({
     responseId: r.response_id,
-    score: Math.round(r.score * 10) / 10,
+    scores: {
+      overall: r.score_overall != null ? Math.round(r.score_overall * 10) / 10 : null,
+      problem: r.score_problem != null ? Math.round(r.score_problem * 10) / 10 : null,
+      solution: r.score_solution != null ? Math.round(r.score_solution * 10) / 10 : null,
+      leadership: r.score_leadership != null ? Math.round(r.score_leadership * 10) / 10 : null,
+      collaboration: r.score_collaboration != null ? Math.round(r.score_collaboration * 10) / 10 : null,
+      development: r.score_development != null ? Math.round(r.score_development * 10) / 10 : null,
+    },
     similarity: Math.round(r.similarity * 100) / 100,
     excerpt: r.answer_text ? r.answer_text.substring(0, 100) + '...' : '(回答なし)',
     commentProblem: r.comment_problem,
@@ -90,7 +124,6 @@ export async function predictScoreFromAnswer(params: {
     commentOverall: r.comment_overall,
   }));
 
-  const roundedScore = Math.round(predictedScore * 10) / 10;
   const roundedConfidence = Math.round(confidence * 100) / 100;
 
   // 7. 説明文を生成（AI or フォールバック）
@@ -99,7 +132,7 @@ export async function predictScoreFromAnswer(params: {
     // AI評価用のデータを準備
     const scoringExamples: ScoringExample[] = data.slice(0, 5).map((r: any) => ({
       responseId: r.response_id,
-      score: r.score,
+      score: r.score_overall || r.score_problem || r.score_solution || 0,
       similarity: r.similarity,
       answerText: r.answer_text || '',
       commentProblem: r.comment_problem,
@@ -112,16 +145,16 @@ export async function predictScoreFromAnswer(params: {
       question,
       answerText,
       similarExamples: scoringExamples,
-      predictedScore: roundedScore,
+      predictedScore: predictedScores.overall || predictedScores.problem || 0,
       confidence: roundedConfidence,
     });
     explanation = aiResult.explanation;
   } else {
-    explanation = generateExplanation(roundedScore, similarExamples, roundedConfidence);
+    explanation = generateExplanation(predictedScores, similarExamples, roundedConfidence);
   }
 
   return {
-    predictedScore: roundedScore,
+    predictedScores,
     confidence: roundedConfidence,
     similarExamples: similarExamples.slice(0, 3), // UIには上位3件のみ返す
     explanation,
@@ -130,14 +163,14 @@ export async function predictScoreFromAnswer(params: {
 
 // 予測結果の説明文を生成
 function generateExplanation(
-  score: number,
+  scores: ScoreItems,
   examples: SimilarResponse[],
   confidence: number
 ): string {
-  const avgScore = examples.reduce((sum, ex) => sum + ex.score, 0) / examples.length;
-  const scoreLevel = score >= 3.5 ? '高評価' : score >= 2.5 ? '中程度' : '低評価';
+  const overallScore = scores.overall || scores.problem || 0;
+  const scoreLevel = overallScore >= 3.5 ? '高評価' : overallScore >= 2.5 ? '中程度' : '低評価';
 
-  let explanation = `この回答は過去の${scoreLevel}回答（平均${avgScore.toFixed(1)}点）に類似しています。`;
+  let explanation = `この回答は過去の${scoreLevel}回答に類似しています。`;
 
   if (confidence >= 0.8) {
     explanation += ' 信頼度が高い予測です。';
@@ -164,7 +197,7 @@ export type SimilarCase = {
 
 // 未知ケース用の予測結果
 export type NewCaseScorePrediction = {
-  predictedScore: number;
+  predictedScores: ScoreItems;  // 複数スコア
   confidence: number;
   similarCases: SimilarCase[];
   similarExamples: SimilarResponse[];
@@ -256,10 +289,9 @@ export async function predictScoreForNewCase(params: {
   // 3. 類似ケースのIDを取得
   const caseIds = similarCases.map((c) => c.caseId);
 
-  // 4. 類似ケースから類似回答を検索（コメント付き）
+  // 4. 類似ケースから類似回答を検索（全スコア付き）
   const { data: responsesData, error: responsesError } = await supabase.rpc('find_similar_responses_cross_cases', {
     p_embedding: JSON.stringify(answerEmbedding),
-    p_case_ids: caseIds,
     p_question: question,
     p_limit: topKResponses,
   });
@@ -273,23 +305,34 @@ export async function predictScoreForNewCase(params: {
     throw new Error('類似回答が見つかりませんでした。類似ケースにはまだ回答データがありません。');
   }
 
-  // 5. 重み付き平均でスコアを算出
+  // 5. 各スコア項目の重み付き平均を算出
   const totalSimilarity = responsesData.reduce((sum: number, r: any) => sum + r.similarity, 0);
-  const weightedScore = responsesData.reduce(
-    (sum: number, r: any) => sum + (r.score * r.similarity),
-    0
-  );
-  const predictedScore = weightedScore / totalSimilarity;
+
+  const predictedScores: ScoreItems = {
+    overall: calculateWeightedScore(responsesData, 'score_overall', totalSimilarity),
+    problem: calculateWeightedScore(responsesData, 'score_problem', totalSimilarity),
+    solution: calculateWeightedScore(responsesData, 'score_solution', totalSimilarity),
+    leadership: calculateWeightedScore(responsesData, 'score_leadership', totalSimilarity),
+    collaboration: calculateWeightedScore(responsesData, 'score_collaboration', totalSimilarity),
+    development: calculateWeightedScore(responsesData, 'score_development', totalSimilarity),
+  };
 
   // 6. 信頼度を計算（ケース類似度と回答類似度の組み合わせ）
   const avgCaseSimilarity = similarCases.reduce((sum, c) => sum + c.similarity, 0) / similarCases.length;
   const avgResponseSimilarity = totalSimilarity / responsesData.length;
   const confidence = Math.min(1.0, (avgCaseSimilarity + avgResponseSimilarity) / 2);
 
-  // 7. 類似例を抽出（コメント含む）
+  // 7. 類似例を抽出（全スコア含む）
   const similarExamples: SimilarResponse[] = responsesData.slice(0, 5).map((r: any) => ({
     responseId: r.response_id,
-    score: Math.round(r.score * 10) / 10,
+    scores: {
+      overall: r.score_overall != null ? Math.round(r.score_overall * 10) / 10 : null,
+      problem: r.score_problem != null ? Math.round(r.score_problem * 10) / 10 : null,
+      solution: r.score_solution != null ? Math.round(r.score_solution * 10) / 10 : null,
+      leadership: r.score_leadership != null ? Math.round(r.score_leadership * 10) / 10 : null,
+      collaboration: r.score_collaboration != null ? Math.round(r.score_collaboration * 10) / 10 : null,
+      development: r.score_development != null ? Math.round(r.score_development * 10) / 10 : null,
+    },
     similarity: Math.round(r.similarity * 100) / 100,
     excerpt: r.answer_text ? r.answer_text.substring(0, 100) + '...' : '(回答なし)',
     commentProblem: r.comment_problem,
@@ -297,7 +340,6 @@ export async function predictScoreForNewCase(params: {
     commentOverall: r.comment_overall,
   }));
 
-  const roundedScore = Math.round(predictedScore * 10) / 10;
   const roundedConfidence = Math.round(confidence * 100) / 100;
 
   // 8. 説明文を生成（AI or フォールバック）
@@ -306,7 +348,7 @@ export async function predictScoreForNewCase(params: {
     // AI評価用のデータを準備
     const scoringExamples: ScoringExample[] = responsesData.slice(0, 5).map((r: any) => ({
       responseId: r.response_id,
-      score: r.score,
+      score: r.score_overall || r.score_problem || r.score_solution || 0,
       similarity: r.similarity,
       answerText: r.answer_text || '',
       commentProblem: r.comment_problem,
@@ -327,16 +369,16 @@ export async function predictScoreForNewCase(params: {
       answerText,
       similarExamples: scoringExamples,
       similarCases: scoringCases,
-      predictedScore: roundedScore,
+      predictedScore: predictedScores.overall || predictedScores.problem || 0,
       confidence: roundedConfidence,
     });
     explanation = aiResult.explanation;
   } else {
-    explanation = generateNewCaseExplanation(roundedScore, similarCases, similarExamples.slice(0, 3), roundedConfidence);
+    explanation = generateNewCaseExplanation(predictedScores, similarCases, similarExamples.slice(0, 3), roundedConfidence);
   }
 
   return {
-    predictedScore: roundedScore,
+    predictedScores,
     confidence: roundedConfidence,
     similarCases,
     similarExamples: similarExamples.slice(0, 3), // UIには上位3件のみ返す
@@ -346,17 +388,17 @@ export async function predictScoreForNewCase(params: {
 
 // 未知ケース用の説明文を生成
 function generateNewCaseExplanation(
-  score: number,
+  scores: ScoreItems,
   similarCases: SimilarCase[],
   examples: SimilarResponse[],
   confidence: number
 ): string {
-  const avgScore = examples.reduce((sum, ex) => sum + ex.score, 0) / examples.length;
-  const scoreLevel = score >= 3.5 ? '高評価' : score >= 2.5 ? '中程度' : '低評価';
+  const overallScore = scores.overall || scores.problem || 0;
+  const scoreLevel = overallScore >= 3.5 ? '高評価' : overallScore >= 2.5 ? '中程度' : '低評価';
   const topCase = similarCases[0];
 
   let explanation = `入力されたシチュエーションは「${topCase.caseName || topCase.caseId}」（類似度${(topCase.similarity * 100).toFixed(0)}%）に最も類似しています。`;
-  explanation += ` この回答は類似ケースの${scoreLevel}回答（平均${avgScore.toFixed(1)}点）に近い内容です。`;
+  explanation += ` この回答は類似ケースの${scoreLevel}回答に近い内容です。`;
 
   if (confidence >= 0.7) {
     explanation += ' ケースと回答の両方で高い類似度が得られたため、信頼性の高い予測です。';
