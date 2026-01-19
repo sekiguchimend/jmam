@@ -517,6 +517,40 @@ export type Database = {
           score: number;
           similarity: number;
           answer_text: string;
+          comment_problem: string | null;
+          comment_solution: string | null;
+          comment_overall: string | null;
+        }>;
+      };
+      find_similar_cases: {
+        Args: {
+          p_embedding: string;
+          p_limit?: number;
+        };
+        Returns: Array<{
+          case_id: string;
+          case_name: string | null;
+          situation_text: string | null;
+          similarity: number;
+        }>;
+      };
+      find_similar_responses_cross_cases: {
+        Args: {
+          p_embedding: string;
+          p_case_ids: string[];
+          p_question: string;
+          p_limit?: number;
+        };
+        Returns: Array<{
+          response_id: string;
+          case_id: string;
+          case_name: string | null;
+          score: number;
+          similarity: number;
+          answer_text: string;
+          comment_problem: string | null;
+          comment_solution: string | null;
+          comment_overall: string | null;
         }>;
       };
     };

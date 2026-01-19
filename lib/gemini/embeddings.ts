@@ -1,8 +1,8 @@
 // Gemini Embeddings（事前準備: 全回答をエンベディング化）
 
-const EMBED_MODEL = 'models/text-embedding-004';
+const EMBED_MODEL = 'models/gemini-embedding-001';
 const EMBED_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent';
 
 type EmbedResult = {
   values: number[];
@@ -22,6 +22,7 @@ export async function embedText(text: string): Promise<EmbedResult> {
     content: {
       parts: [{ text }],
     },
+    output_dimensionality: 3072,
   };
 
   const res = await fetch(`${EMBED_URL}?key=${apiKey}`, {

@@ -5,7 +5,7 @@ import { getQuestionsByCase, upsertQuestion, deleteQuestion, updateCaseSituation
 import { embedText } from '@/lib/gemini';
 import type { Question } from '@/types';
 
-const EMBEDDING_MODEL = 'models/text-embedding-004';
+const EMBEDDING_MODEL = 'models/text-embedding-001';
 
 // 設問一覧を取得
 export async function fetchQuestions(caseId: string): Promise<{

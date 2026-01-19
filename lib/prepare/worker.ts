@@ -18,8 +18,8 @@ import { kmeansCosine } from '@/lib/ml/kmeans';
 import { cosineDistance, type Vector } from '@/lib/ml/vector';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-export const EMBEDDING_MODEL = 'models/text-embedding-004';
-export const EMBEDDING_DIM = 768;
+export const EMBEDDING_MODEL = 'models/gemini-embedding-001';
+export const EMBEDDING_DIM = 3072;
 
 function parseVector(v: unknown): Vector {
   if (Array.isArray(v)) return v.map((x) => Number(x));

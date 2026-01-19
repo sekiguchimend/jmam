@@ -53,7 +53,7 @@ CREATE TABLE questions (
   case_id TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
   question_key TEXT NOT NULL,           -- 'q1', 'q2'
   question_text TEXT NOT NULL,          -- 質問文（生テキスト）
-  question_embedding vector(768),       -- 質問文のembedding
+  question_embedding vector(3072),       -- 質問文のembedding
   embedding_model TEXT,                 -- 使用したモデル名
   order_index INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now(),
