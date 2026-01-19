@@ -68,7 +68,7 @@ export function PredictClient({ cases }: PredictClientProps) {
       {/* ケース選択 */}
       <div
         className="rounded-xl p-5"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        style={{ background: "var(--surface)" }}
       >
         <label className="block text-sm font-black mb-2" style={{ color: "#323232" }}>
           ケース

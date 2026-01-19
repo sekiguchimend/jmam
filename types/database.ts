@@ -40,6 +40,8 @@ export type Database = {
           case_id: string;
           case_name: string | null;
           situation_text: string | null;
+          situation_embedding: number[] | null;
+          embedding_model: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -47,11 +49,15 @@ export type Database = {
           case_id: string;
           case_name?: string | null;
           situation_text?: string | null;
+          situation_embedding?: number[] | null;
+          embedding_model?: string | null;
         };
         Update: {
           case_id?: string;
           case_name?: string | null;
           situation_text?: string | null;
+          situation_embedding?: number[] | null;
+          embedding_model?: string | null;
         };
         Relationships: [];
       };

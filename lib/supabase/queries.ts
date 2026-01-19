@@ -439,6 +439,34 @@ export async function upsertCase(caseData: CaseInsert, accessToken?: string): Pr
   }
 }
 
+// ケースの内容（シチュエーション）を更新
+export async function updateCaseSituation(
+  caseId: string,
+  data: {
+    situation_text: string;
+    situation_embedding: number[];
+    embedding_model: string;
+  },
+  accessToken?: string
+): Promise<void> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+  const { error } = await supabase
+    .from('cases')
+    .update({
+      situation_text: data.situation_text,
+      situation_embedding: data.situation_embedding as unknown as string,
+      embedding_model: data.embedding_model,
+    })
+    .eq('case_id', caseId);
+
+  if (error) {
+    console.error('updateCaseSituation error:', error);
+    throw new Error(`ケース内容の更新に失敗しました: ${error.message ?? 'unknown error'}`);
+  }
+}
+
 // 回答データをバッチupsert（FR-09: 1000件単位）
 export async function upsertResponses(responses: ResponseInsert[], accessToken?: string): Promise<void> {
   const token = accessToken ?? (await getAccessToken());

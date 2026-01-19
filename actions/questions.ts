@@ -1,7 +1,7 @@
 'use server';
 
 import { isAdmin, getAccessToken } from '@/lib/supabase/server';
-import { getQuestionsByCase, upsertQuestion, deleteQuestion } from '@/lib/supabase/queries';
+import { getQuestionsByCase, upsertQuestion, deleteQuestion, updateCaseSituation } from '@/lib/supabase/queries';
 import { embedText } from '@/lib/gemini';
 import type { Question } from '@/types';
 
@@ -111,6 +111,52 @@ export async function removeQuestion(params: {
     return {
       success: false,
       error: error instanceof Error ? error.message : '設問の削除に失敗しました',
+    };
+  }
+}
+
+// ケース内容（シチュエーション）を保存（テキスト + embedding同時生成）
+export async function saveCaseSituation(params: {
+  caseId: string;
+  situationText: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!(await isAdmin())) {
+      return { success: false, error: '管理者権限がありません' };
+    }
+
+    const { caseId, situationText } = params;
+
+    if (!caseId || !situationText.trim()) {
+      return { success: false, error: 'ケースIDとケース内容は必須です' };
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      return { success: false, error: '管理者トークンが見つかりません（再ログインしてください）' };
+    }
+
+    // ケース内容をembedding化
+    const embeddingResult = await embedText(situationText.trim());
+    const embedding = embeddingResult.values;
+
+    // ケース内容を保存
+    await updateCaseSituation(
+      caseId,
+      {
+        situation_text: situationText.trim(),
+        situation_embedding: embedding,
+        embedding_model: EMBEDDING_MODEL,
+      },
+      token
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error('saveCaseSituation error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'ケース内容の保存に失敗しました',
     };
   }
 }

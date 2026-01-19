@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
-import { fetchQuestions, saveQuestion, removeQuestion } from "@/actions/questions";
+import { fetchQuestions, saveQuestion, removeQuestion, saveCaseSituation } from "@/actions/questions";
 import type { Case, Question } from "@/types";
 import {
   AlertCircle,
   CheckCircle,
   FileQuestion,
+  FileText,
   Loader2,
   Save,
   Trash2,
@@ -18,6 +19,7 @@ interface QuestionsClientProps {
 
 export function QuestionsClient({ cases }: QuestionsClientProps) {
   const [selectedCaseId, setSelectedCaseId] = useState("");
+  const [situationText, setSituationText] = useState("");
   const [q1Text, setQ1Text] = useState("");
   const [q2Text, setQ2Text] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,9 +27,10 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
   const [isPending, startTransition] = useTransition();
   const [isLoading, setIsLoading] = useState(false);
 
-  // ケース選択時に既存の設問を取得
+  // ケース選択時に既存の設問とケース内容を取得
   useEffect(() => {
     if (!selectedCaseId) {
+      setSituationText("");
       setQ1Text("");
       setQ2Text("");
       return;
@@ -36,6 +39,10 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
     setIsLoading(true);
     setError(null);
     setSuccess(null);
+
+    // ケース内容を設定
+    const selectedCase = cases.find((c) => c.case_id === selectedCaseId);
+    setSituationText(selectedCase?.situation_text || "");
 
     fetchQuestions(selectedCaseId).then((result) => {
       setIsLoading(false);
@@ -52,7 +59,7 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
         }
       }
     });
-  }, [selectedCaseId]);
+  }, [selectedCaseId, cases]);
 
   const handleSave = async (questionKey: "q1" | "q2") => {
     if (!selectedCaseId) {
@@ -124,6 +131,36 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
     });
   };
 
+  // ケース内容（シチュエーション）を保存
+  const handleSaveSituation = async () => {
+    if (!selectedCaseId) {
+      setError("ケースを選択してください");
+      return;
+    }
+
+    if (!situationText.trim()) {
+      setError("ケース内容を入力してください");
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+
+    startTransition(async () => {
+      const result = await saveCaseSituation({
+        caseId: selectedCaseId,
+        situationText: situationText.trim(),
+      });
+
+      if (result.success) {
+        setSuccess("ケース内容を保存しました（Embeddingも生成されました）");
+        setTimeout(() => setSuccess(null), 3000);
+      } else {
+        setError(result.error || "保存に失敗しました");
+      }
+    });
+  };
+
   const selectedCase = cases.find((c) => c.case_id === selectedCaseId);
 
   return (
@@ -155,16 +192,6 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
           ))}
         </select>
 
-        {selectedCase?.situation_text && (
-          <div className="mt-4 p-4 rounded-lg" style={{ background: "var(--background)" }}>
-            <p className="text-xs font-black mb-1" style={{ color: "var(--text-muted)" }}>
-              シチュエーション
-            </p>
-            <p className="text-sm leading-relaxed" style={{ color: "#323232" }}>
-              {selectedCase.situation_text}
-            </p>
-          </div>
-        )}
       </div>
 
       {/* ローディング */}
@@ -177,9 +204,65 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
         </div>
       )}
 
-      {/* 設問入力フォーム */}
+      {/* ケース内容・設問入力フォーム */}
       {selectedCaseId && !isLoading && (
         <>
+          {/* ケース内容（シチュエーション） */}
+          <div
+            className="rounded-xl p-5"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: "#6366f1" }}
+              >
+                <FileText className="w-4 h-4 text-white" />
+              </div>
+              <label className="text-sm font-black" style={{ color: "#323232" }}>
+                ケース内容（シチュエーション）
+              </label>
+            </div>
+            <textarea
+              value={situationText}
+              onChange={(e) => setSituationText(e.target.value)}
+              placeholder="ケースのシチュエーション（状況説明）を入力してください...&#10;例：あなたは〇〇部門の課長です。部下に△△という問題が発生しています..."
+              rows={8}
+              className="w-full px-4 py-3 rounded-lg text-sm font-bold resize-none"
+              style={{
+                border: "1px solid var(--border)",
+                background: "var(--background)",
+                color: "#323232",
+              }}
+            />
+            <div className="flex justify-between items-center mt-3">
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {situationText.length} 文字
+              </p>
+              <button
+                onClick={handleSaveSituation}
+                disabled={!situationText.trim() || isPending}
+                className="px-4 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
+                style={{ background: "#6366f1" }}
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3 h-3" />
+                    保存（Embedding生成）
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+              ※ 保存時にケース内容のEmbeddingが自動生成され、類似ケース検索に活用されます
+            </p>
+          </div>
+
           {/* 設問1 */}
           <div
             className="rounded-xl p-5"
@@ -335,16 +418,17 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
       {/* 説明 */}
       <div
         className="rounded-xl p-5"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        style={{ background: "#f5f5f5" }}
       >
         <h3 className="text-sm font-black mb-2" style={{ color: "#323232" }}>
-          設問管理について
+          ケース・設問管理について
         </h3>
         <ul className="text-sm space-y-2" style={{ color: "var(--text-muted)" }}>
-          <li>• 設問1（q1）: answer_q1 に対応する質問文（箇条書き形式）</li>
-          <li>• 設問2（q2）: answer_q2〜q8 を結合した回答に対応する質問文（文章形式）</li>
-          <li>• 保存時に設問テキストのEmbeddingも自動生成されます</li>
-          <li>• 設問Embeddingは類似回答検索の精度向上に活用されます</li>
+          <li>• <strong>ケース内容</strong>: 診断者が読むシチュエーション（状況説明文）</li>
+          <li>• <strong>設問1（q1）</strong>: answer_q1 に対応する質問文（箇条書き形式）</li>
+          <li>• <strong>設問2（q2）</strong>: answer_q2〜q8 を結合した回答に対応する質問文（文章形式）</li>
+          <li>• 保存時にテキストのEmbeddingが自動生成されます</li>
+          <li>• ケースのEmbeddingは未知のケースに対するスコア予測時に、類似ケースの検索に活用されます</li>
         </ul>
       </div>
     </div>
