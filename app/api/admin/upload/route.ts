@@ -72,6 +72,7 @@ function parseRow(
       response_id: responseId,
       case_name: caseName ?? undefined,
       submitted_at: parseDate(getVal('実施日')) ?? undefined,
+      // 主要スコア（7項目）
       score_overall: parseScore(getVal('Ⅱ　MC　演習総合評点')) ?? undefined,
       score_problem: parseScore(getVal('Ⅱ　MC　問題把握評点')) ?? undefined,
       score_solution: parseScore(getVal('Ⅱ　MC　対策立案評点')) ?? undefined,
@@ -79,6 +80,24 @@ function parseRow(
       score_leadership: parseScore(getVal('Ⅱ　MC　主導評点')) ?? undefined,
       score_collaboration: parseScore(getVal('Ⅱ　MC　連携評点')) ?? undefined,
       score_development: parseScore(getVal('Ⅱ　MC　育成評点')) ?? undefined,
+      // 問題把握の詳細スコア（6項目）- Google Sheet実際のヘッダー名に対応
+      detail_problem_understanding: parseScore(getVal('Ⅱ MC 問題把握 状況理解')) ?? undefined,
+      detail_problem_essence: parseScore(getVal('Ⅱ MC 問題把握 本質把握')) ?? undefined,
+      detail_problem_maintenance_biz: parseScore(getVal('Ⅱ MC 問題把握 維持管理 業務の問題')) ?? undefined,
+      detail_problem_maintenance_hr: parseScore(getVal('Ⅱ MC 問題把握 維持管理 人の問題')) ?? undefined,
+      detail_problem_reform_biz: parseScore(getVal('Ⅱ MC 問題把握 改革 業務の問題')) ?? undefined,
+      detail_problem_reform_hr: parseScore(getVal('Ⅱ MC 問題把握 改革 人の問題')) ?? undefined,
+      // 対策立案の詳細スコア（6項目）- Google Sheet実際のヘッダー名に対応
+      detail_solution_coverage: parseScore(getVal('Ⅱ MC 対策立案 網羅性')) ?? undefined,
+      detail_solution_planning: parseScore(getVal('Ⅱ MC 対策立案 計画性')) ?? undefined,
+      detail_solution_maintenance_biz: parseScore(getVal('Ⅱ MC 対策立案 維持管理 業務の問題')) ?? undefined,
+      detail_solution_maintenance_hr: parseScore(getVal('Ⅱ MC 対策立案 維持管理 人の問題')) ?? undefined,
+      detail_solution_reform_biz: parseScore(getVal('Ⅱ MC 対策立案 改革 業務の問題')) ?? undefined,
+      detail_solution_reform_hr: parseScore(getVal('Ⅱ MC 対策立案 改革 人の問題')) ?? undefined,
+      // 連携の詳細スコア（3項目）- Google Sheet実際のヘッダー名に対応
+      detail_collab_supervisor: parseScore(getVal('Ⅱ MC 連携 上司')) ?? undefined,
+      detail_collab_external: parseScore(getVal('Ⅱ MC 連携 職場外')) ?? undefined,
+      detail_collab_member: parseScore(getVal('Ⅱ MC 連携 メンバー')) ?? undefined,
       comment_overall: getVal('Ⅱ　MC　総合コメント') || undefined,
       comment_problem: commentProblem,
       comment_solution: commentSolution,

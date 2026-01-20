@@ -415,8 +415,8 @@ function CombinedPredictionResultView({
               </div>
             )}
             
-            {/* 個別スコア */}
-            <div className="grid grid-cols-5 gap-2">
+            {/* 主要スコア（5項目） */}
+            <div className="grid grid-cols-5 gap-2 mb-4">
               {result.predictedScores.problem != null && (
                 <div className="p-2 rounded-lg text-center" style={{ background: "var(--background)" }}>
                   <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>問題把握</p>
@@ -458,6 +458,9 @@ function CombinedPredictionResultView({
                 </div>
               )}
             </div>
+
+            {/* 詳細スコア */}
+            <DetailScoresSection scores={result.predictedScores} />
             
             <div className="flex items-center gap-2 mt-4">
               <TrendingUp className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
@@ -465,6 +468,65 @@ function CombinedPredictionResultView({
                 信頼度: {(result.confidence * 100).toFixed(0)}%
               </span>
             </div>
+
+            {/* エンベディング予測スコア（参考値） */}
+            {result.embeddingScores && (
+              <div className="mt-4 p-3 rounded-lg" style={{ background: "var(--background)", border: "1px dashed var(--border)" }}>
+                <p className="text-xs font-bold mb-2" style={{ color: "var(--text-muted)" }}>
+                  参考: エンベディング予測値{result.isNewCase && '（別ケースからの参照）'}
+                </p>
+                <div className="grid grid-cols-6 gap-1">
+                  {result.embeddingScores.overall != null && (
+                    <div className="text-center">
+                      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>総合</p>
+                      <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                        {result.embeddingScores.overall.toFixed(1)}
+                      </p>
+                    </div>
+                  )}
+                  {result.embeddingScores.problem != null && (
+                    <div className="text-center">
+                      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>問題</p>
+                      <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                        {result.embeddingScores.problem.toFixed(1)}
+                      </p>
+                    </div>
+                  )}
+                  {result.embeddingScores.solution != null && (
+                    <div className="text-center">
+                      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>対策</p>
+                      <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                        {result.embeddingScores.solution.toFixed(1)}
+                      </p>
+                    </div>
+                  )}
+                  {result.embeddingScores.leadership != null && (
+                    <div className="text-center">
+                      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>主導</p>
+                      <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                        {result.embeddingScores.leadership.toFixed(1)}
+                      </p>
+                    </div>
+                  )}
+                  {result.embeddingScores.collaboration != null && (
+                    <div className="text-center">
+                      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>連携</p>
+                      <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                        {result.embeddingScores.collaboration.toFixed(1)}
+                      </p>
+                    </div>
+                  )}
+                  {result.embeddingScores.development != null && (
+                    <div className="text-center">
+                      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>育成</p>
+                      <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+                        {result.embeddingScores.development.toFixed(1)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -484,6 +546,85 @@ function CombinedPredictionResultView({
           {result.combinedExplanation}
         </div>
       </div>
+    </div>
+  );
+}
+
+// 詳細スコア表示コンポーネント
+function DetailScoresSection({ scores }: { scores: ScoreItems }) {
+  const hasProblemDetails = scores.problemUnderstanding != null || 
+    scores.problemEssence != null || 
+    scores.problemMaintenanceBiz != null;
+  
+  const hasSolutionDetails = scores.solutionCoverage != null || 
+    scores.solutionPlanning != null || 
+    scores.solutionMaintenanceBiz != null;
+  
+  const hasCollabDetails = scores.collabSupervisor != null || 
+    scores.collabExternal != null || 
+    scores.collabMember != null;
+
+  if (!hasProblemDetails && !hasSolutionDetails && !hasCollabDetails) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3 mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+      <p className="text-xs font-black" style={{ color: "var(--text-muted)" }}>詳細スコア</p>
+      
+      {/* 問題把握の詳細 */}
+      {hasProblemDetails && (
+        <div className="p-3 rounded-lg" style={{ background: "var(--background)" }}>
+          <p className="text-xs font-bold mb-2" style={{ color: "#323232" }}>問題把握</p>
+          <div className="grid grid-cols-6 gap-1">
+            <DetailScoreItem label="状況理解" value={scores.problemUnderstanding} />
+            <DetailScoreItem label="本質把握" value={scores.problemEssence} />
+            <DetailScoreItem label="維持・業務" value={scores.problemMaintenanceBiz} />
+            <DetailScoreItem label="維持・人" value={scores.problemMaintenanceHr} />
+            <DetailScoreItem label="改革・業務" value={scores.problemReformBiz} />
+            <DetailScoreItem label="改革・人" value={scores.problemReformHr} />
+          </div>
+        </div>
+      )}
+
+      {/* 対策立案の詳細 */}
+      {hasSolutionDetails && (
+        <div className="p-3 rounded-lg" style={{ background: "var(--background)" }}>
+          <p className="text-xs font-bold mb-2" style={{ color: "#323232" }}>対策立案</p>
+          <div className="grid grid-cols-6 gap-1">
+            <DetailScoreItem label="網羅性" value={scores.solutionCoverage} />
+            <DetailScoreItem label="計画性" value={scores.solutionPlanning} />
+            <DetailScoreItem label="維持・業務" value={scores.solutionMaintenanceBiz} />
+            <DetailScoreItem label="維持・人" value={scores.solutionMaintenanceHr} />
+            <DetailScoreItem label="改革・業務" value={scores.solutionReformBiz} />
+            <DetailScoreItem label="改革・人" value={scores.solutionReformHr} />
+          </div>
+        </div>
+      )}
+
+      {/* 連携の詳細 */}
+      {hasCollabDetails && (
+        <div className="p-3 rounded-lg" style={{ background: "var(--background)" }}>
+          <p className="text-xs font-bold mb-2" style={{ color: "#323232" }}>連携</p>
+          <div className="grid grid-cols-3 gap-1">
+            <DetailScoreItem label="上司" value={scores.collabSupervisor} />
+            <DetailScoreItem label="職場外" value={scores.collabExternal} />
+            <DetailScoreItem label="メンバー" value={scores.collabMember} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 個別の詳細スコア項目
+function DetailScoreItem({ label, value }: { label: string; value: number | null | undefined }) {
+  if (value == null) return null;
+  
+  return (
+    <div className="text-center">
+      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{label}</p>
+      <p className="text-sm font-bold" style={{ color: "var(--primary)" }}>{value}</p>
     </div>
   );
 }

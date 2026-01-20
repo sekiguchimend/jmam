@@ -173,12 +173,31 @@ function stratifiedSampling<T extends { score: number | null; similarity: number
 
 // 個別スコア項目の型定義
 export type ScoreItems = {
+  // 主要スコア（7項目）
   overall: number | null;      // 総合評点
   problem: number | null;      // 問題把握
   solution: number | null;     // 対策立案
   leadership: number | null;   // 主導
   collaboration: number | null; // 連携
   development: number | null;  // 育成
+  // 問題把握の詳細スコア（6項目）
+  problemUnderstanding?: number | null;     // 状況理解
+  problemEssence?: number | null;           // 本質把握
+  problemMaintenanceBiz?: number | null;    // 維持管理・業務
+  problemMaintenanceHr?: number | null;     // 維持管理・人
+  problemReformBiz?: number | null;         // 改革・業務
+  problemReformHr?: number | null;          // 改革・人
+  // 対策立案の詳細スコア（6項目）
+  solutionCoverage?: number | null;         // 網羅性
+  solutionPlanning?: number | null;         // 計画性
+  solutionMaintenanceBiz?: number | null;   // 維持管理・業務
+  solutionMaintenanceHr?: number | null;    // 維持管理・人
+  solutionReformBiz?: number | null;        // 改革・業務
+  solutionReformHr?: number | null;         // 改革・人
+  // 連携の詳細スコア（3項目）
+  collabSupervisor?: number | null;         // 上司
+  collabExternal?: number | null;           // 職場外
+  collabMember?: number | null;             // メンバー
 };
 
 // 類似回答の型定義
@@ -359,13 +378,47 @@ export async function predictScoreFromAnswer(params: {
       return null;
     };
 
+    // 詳細スコア用の関数（プロトタイプなしで個別回答の平均）
+    const calcDetailScoreProto = (field: string): number | null => {
+      const validData = filteredData.filter((r: any) => r[field] != null);
+      if (validData.length === 0) return null;
+      let weightedSum = 0;
+      let totalWeight = 0;
+      for (const r of validData) {
+        const rec = r as any;
+        const weight = Math.pow(rec.similarity, HYBRID_CONFIG.similarityPower);
+        weightedSum += rec[field] * weight;
+        totalWeight += weight;
+      }
+      return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : null;
+    };
+
     predictedScores = {
+      // 主要スコア
       overall: combineScores(prototypeOverall, individualOverall),
       problem: combineScores(prototypeProblem, individualProblem),
       solution: combineScores(prototypeSolution, individualSolution),
       leadership: combineScores(prototypeLeadership, individualLeadership),
       collaboration: combineScores(prototypeCollaboration, individualCollaboration),
       development: combineScores(prototypeDevelopment, individualDevelopment),
+      // 問題把握の詳細スコア
+      problemUnderstanding: calcDetailScoreProto('detail_problem_understanding'),
+      problemEssence: calcDetailScoreProto('detail_problem_essence'),
+      problemMaintenanceBiz: calcDetailScoreProto('detail_problem_maintenance_biz'),
+      problemMaintenanceHr: calcDetailScoreProto('detail_problem_maintenance_hr'),
+      problemReformBiz: calcDetailScoreProto('detail_problem_reform_biz'),
+      problemReformHr: calcDetailScoreProto('detail_problem_reform_hr'),
+      // 対策立案の詳細スコア
+      solutionCoverage: calcDetailScoreProto('detail_solution_coverage'),
+      solutionPlanning: calcDetailScoreProto('detail_solution_planning'),
+      solutionMaintenanceBiz: calcDetailScoreProto('detail_solution_maintenance_biz'),
+      solutionMaintenanceHr: calcDetailScoreProto('detail_solution_maintenance_hr'),
+      solutionReformBiz: calcDetailScoreProto('detail_solution_reform_biz'),
+      solutionReformHr: calcDetailScoreProto('detail_solution_reform_hr'),
+      // 連携の詳細スコア
+      collabSupervisor: calcDetailScoreProto('detail_collab_supervisor'),
+      collabExternal: calcDetailScoreProto('detail_collab_external'),
+      collabMember: calcDetailScoreProto('detail_collab_member'),
     };
   } else if (useHybridMethod) {
     // 4b. 従来のハイブリッド手法（逆頻度重み使用）
@@ -419,8 +472,18 @@ export async function predictScoreFromAnswer(params: {
       HYBRID_CONFIG.maxPerBucket
     );
 
+    // 詳細スコア用の単純重み付き平均関数
+    const calcDetailScore = (field: string): number | null => {
+      const validData = filteredData.filter((r: any) => r[field] != null);
+      if (validData.length === 0) return null;
+      const weightedSum = validData.reduce((sum: number, r: any) => sum + r[field] * r.similarity, 0);
+      const validSimilarity = validData.reduce((sum: number, r: any) => sum + r.similarity, 0);
+      return validSimilarity > 0 ? Math.round(weightedSum / validSimilarity) : null;
+    };
+
     // ハイブリッド手法で各スコアを計算
     predictedScores = {
+      // 主要スコア
       overall: calculateWeightedScoreHybrid(sampledOverall, 'score_overall', overallDistribution),
       problem: calculateWeightedScoreHybrid(sampledProblem, 'score_problem', problemDistribution),
       solution: calculateWeightedScoreHybrid(sampledSolution, 'score_solution', solutionDistribution),
@@ -431,6 +494,24 @@ export async function predictScoreFromAnswer(params: {
         collaborationDistribution
       ),
       development: calculateWeightedScoreHybrid(sampledDevelopment, 'score_development', developmentDistribution),
+      // 問題把握の詳細スコア
+      problemUnderstanding: calcDetailScore('detail_problem_understanding'),
+      problemEssence: calcDetailScore('detail_problem_essence'),
+      problemMaintenanceBiz: calcDetailScore('detail_problem_maintenance_biz'),
+      problemMaintenanceHr: calcDetailScore('detail_problem_maintenance_hr'),
+      problemReformBiz: calcDetailScore('detail_problem_reform_biz'),
+      problemReformHr: calcDetailScore('detail_problem_reform_hr'),
+      // 対策立案の詳細スコア
+      solutionCoverage: calcDetailScore('detail_solution_coverage'),
+      solutionPlanning: calcDetailScore('detail_solution_planning'),
+      solutionMaintenanceBiz: calcDetailScore('detail_solution_maintenance_biz'),
+      solutionMaintenanceHr: calcDetailScore('detail_solution_maintenance_hr'),
+      solutionReformBiz: calcDetailScore('detail_solution_reform_biz'),
+      solutionReformHr: calcDetailScore('detail_solution_reform_hr'),
+      // 連携の詳細スコア
+      collabSupervisor: calcDetailScore('detail_collab_supervisor'),
+      collabExternal: calcDetailScore('detail_collab_external'),
+      collabMember: calcDetailScore('detail_collab_member'),
     };
   } else {
     // 4c. 従来の単純な重み付き平均
@@ -444,12 +525,31 @@ export async function predictScoreFromAnswer(params: {
     };
 
     predictedScores = {
+      // 主要スコア
       overall: calculateSimpleWeightedScore(filteredData, 'score_overall'),
       problem: calculateSimpleWeightedScore(filteredData, 'score_problem'),
       solution: calculateSimpleWeightedScore(filteredData, 'score_solution'),
       leadership: calculateSimpleWeightedScore(filteredData, 'score_leadership'),
       collaboration: calculateSimpleWeightedScore(filteredData, 'score_collaboration'),
       development: calculateSimpleWeightedScore(filteredData, 'score_development'),
+      // 問題把握の詳細スコア
+      problemUnderstanding: calculateSimpleWeightedScore(filteredData, 'detail_problem_understanding'),
+      problemEssence: calculateSimpleWeightedScore(filteredData, 'detail_problem_essence'),
+      problemMaintenanceBiz: calculateSimpleWeightedScore(filteredData, 'detail_problem_maintenance_biz'),
+      problemMaintenanceHr: calculateSimpleWeightedScore(filteredData, 'detail_problem_maintenance_hr'),
+      problemReformBiz: calculateSimpleWeightedScore(filteredData, 'detail_problem_reform_biz'),
+      problemReformHr: calculateSimpleWeightedScore(filteredData, 'detail_problem_reform_hr'),
+      // 対策立案の詳細スコア
+      solutionCoverage: calculateSimpleWeightedScore(filteredData, 'detail_solution_coverage'),
+      solutionPlanning: calculateSimpleWeightedScore(filteredData, 'detail_solution_planning'),
+      solutionMaintenanceBiz: calculateSimpleWeightedScore(filteredData, 'detail_solution_maintenance_biz'),
+      solutionMaintenanceHr: calculateSimpleWeightedScore(filteredData, 'detail_solution_maintenance_hr'),
+      solutionReformBiz: calculateSimpleWeightedScore(filteredData, 'detail_solution_reform_biz'),
+      solutionReformHr: calculateSimpleWeightedScore(filteredData, 'detail_solution_reform_hr'),
+      // 連携の詳細スコア
+      collabSupervisor: calculateSimpleWeightedScore(filteredData, 'detail_collab_supervisor'),
+      collabExternal: calculateSimpleWeightedScore(filteredData, 'detail_collab_external'),
+      collabMember: calculateSimpleWeightedScore(filteredData, 'detail_collab_member'),
     };
   }
 
@@ -741,8 +841,20 @@ export async function predictScoreForNewCase(params: {
     throw new Error('類似回答が見つかりませんでした。類似ケースにはまだ回答データがありません。');
   }
 
-  // 5. 新規ケースではエンベディング予測をスキップ
-  // AIが評価基準に基づいて直接スコアを決定する
+  // 5. エンベディング予測を計算（参考表示用、AIの最終判断には使用しない）
+  const totalSimilarity = responsesData.reduce((sum: number, r: any) => sum + r.similarity, 0);
+  
+  // エンベディングベースの予測スコア（参考値として計算）
+  const embeddingScores: ScoreItems = {
+    overall: calculateWeightedScore(responsesData, 'score_overall', totalSimilarity),
+    problem: calculateWeightedScore(responsesData, 'score_problem', totalSimilarity),
+    solution: calculateWeightedScore(responsesData, 'score_solution', totalSimilarity),
+    leadership: calculateWeightedScore(responsesData, 'score_leadership', totalSimilarity),
+    collaboration: calculateWeightedScore(responsesData, 'score_collaboration', totalSimilarity),
+    development: calculateWeightedScore(responsesData, 'score_development', totalSimilarity),
+  };
+  
+  // 最終スコア（AIが決定、初期値はnull）
   let predictedScores: ScoreItems = {
     overall: null,
     problem: null,
@@ -752,18 +864,20 @@ export async function predictScoreForNewCase(params: {
     development: null,
   };
 
-  // 6. 信頼度は類似ケースの類似度のみで計算（参考値）
+  // 6. 信頼度を計算（参考値）
   const maxCaseSimilarity = Math.max(...similarCases.map(c => c.similarity));
   const avgCaseSimilarity = similarCases.reduce((sum, c) => sum + c.similarity, 0) / similarCases.length;
   
   const responseSimilarities = responsesData.map((r: any) => r.similarity);
   const maxResponseSimilarity = Math.max(...responseSimilarities);
+  const avgResponseSimilarity = totalSimilarity / responsesData.length;
   
   // 類似度が低い場合の警告用
   const isLowSimilarity = maxCaseSimilarity < HYBRID_CONFIG.highConfidenceSimilarity;
   
-  // 信頼度は類似ケースの類似度のみ（新規ケースのためエンベディング予測は使用しない）
-  const confidence = (maxCaseSimilarity * 0.5 + avgCaseSimilarity * 0.5);
+  // 信頼度（新規ケースのため参考値）
+  const rawConfidence = (maxCaseSimilarity * 0.3 + avgCaseSimilarity * 0.2 + maxResponseSimilarity * 0.3 + avgResponseSimilarity * 0.2);
+  const confidence = isLowSimilarity ? rawConfidence * 0.8 : rawConfidence;
 
   // 6.5. 早期品質チェック（API呼び出し前の高速フィルタ）
   const earlyCheck = performEarlyQualityCheck(answerText);
@@ -886,7 +1000,7 @@ export async function predictScoreForNewCase(params: {
 
   return {
     predictedScores,
-    // embeddingScores は新規ケースでは undefined（エンベディング予測を行っていない）
+    embeddingScores, // 参考値として表示（AIの最終判断には使用していない）
     confidence: roundedConfidence,
     similarCases,
     similarExamples: similarExamples.slice(0, 3), // UIには上位3件のみ返す

@@ -79,13 +79,24 @@ export type Database = {
           comment_overall: string | null;
           comment_problem: string | null;
           comment_solution: string | null;
-          // 詳細評価データ
+          // 問題把握の詳細評価データ
           detail_problem_maintenance_biz: number | null;
           detail_problem_maintenance_hr: number | null;
           detail_problem_reform_biz: number | null;
           detail_problem_reform_hr: number | null;
           detail_problem_understanding: number | null;
           detail_problem_essence: number | null;
+          // 対策立案の詳細評価データ
+          detail_solution_coverage: number | null;
+          detail_solution_planning: number | null;
+          detail_solution_maintenance_biz: number | null;
+          detail_solution_maintenance_hr: number | null;
+          detail_solution_reform_biz: number | null;
+          detail_solution_reform_hr: number | null;
+          // 連携の詳細評価データ
+          detail_collab_supervisor: number | null;
+          detail_collab_external: number | null;
+          detail_collab_member: number | null;
           // 設問回答データ
           answer_q1: string | null;
           answer_q2: string | null;
@@ -120,6 +131,17 @@ export type Database = {
           detail_problem_reform_hr?: number | null;
           detail_problem_understanding?: number | null;
           detail_problem_essence?: number | null;
+          // 対策立案の詳細評価データ
+          detail_solution_coverage?: number | null;
+          detail_solution_planning?: number | null;
+          detail_solution_maintenance_biz?: number | null;
+          detail_solution_maintenance_hr?: number | null;
+          detail_solution_reform_biz?: number | null;
+          detail_solution_reform_hr?: number | null;
+          // 連携の詳細評価データ
+          detail_collab_supervisor?: number | null;
+          detail_collab_external?: number | null;
+          detail_collab_member?: number | null;
           answer_q1?: string | null;
           answer_q2?: string | null;
           answer_q3?: string | null;
@@ -150,6 +172,17 @@ export type Database = {
           detail_problem_reform_hr?: number | null;
           detail_problem_understanding?: number | null;
           detail_problem_essence?: number | null;
+          // 対策立案の詳細評価データ
+          detail_solution_coverage?: number | null;
+          detail_solution_planning?: number | null;
+          detail_solution_maintenance_biz?: number | null;
+          detail_solution_maintenance_hr?: number | null;
+          detail_solution_reform_biz?: number | null;
+          detail_solution_reform_hr?: number | null;
+          // 連携の詳細評価データ
+          detail_collab_supervisor?: number | null;
+          detail_collab_external?: number | null;
+          detail_collab_member?: number | null;
           answer_q1?: string | null;
           answer_q2?: string | null;
           answer_q3?: string | null;

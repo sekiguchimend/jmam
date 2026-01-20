@@ -4,19 +4,206 @@ import { useState, useTransition } from "react";
 import { predictAnswer } from "@/actions/predict";
 import type { Case, Scores, PredictionResponse } from "@/types";
 import { defaultScores } from "@/types";
-import { AlertCircle, ChevronRight, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
 
-const scoreLabels = [
-  { key: "problem", label: "問題把握" },
-  { key: "solution", label: "対策立案" },
-  { key: "role", label: "役割理解" },
-  { key: "leadership", label: "主導" },
-  { key: "collaboration", label: "連携" },
-  { key: "development", label: "育成" },
-] as const;
+// スコア項目の型定義
+interface ScoreItemConfig {
+  key: keyof Scores;
+  label: string;
+  description: string;
+  step: number;
+  max: number;
+  children?: ScoreItemConfig[];
+}
+
+// 階層構造のスコア定義（総合以外すべて同じレベルで表示）
+const scoreStructure: ScoreItemConfig[] = [
+  {
+    key: "problem",
+    label: "問題把握",
+    description: "職場の状況を幅広く捉え、重要な問題を的確に把握する",
+    step: 0.5,
+    max: 5,
+    children: [
+      { key: "problemUnderstanding", label: "状況理解", description: "職場の状況を幅広く認識している", step: 1, max: 4 },
+      { key: "problemEssence", label: "本質把握", description: "問題の要点を把握し、簡潔に表現する", step: 1, max: 4 },
+      { key: "problemMaintenanceBiz", label: "維持管理・業務", description: "職場の維持管理に関わる、業務面の問題を把握している", step: 1, max: 4 },
+      { key: "problemMaintenanceHr", label: "維持管理・人", description: "職場の維持管理に関わる、対人面の問題を把握している", step: 1, max: 4 },
+      { key: "problemReformBiz", label: "改革・業務", description: "職場の改革に関わる、業務面の問題を把握している", step: 1, max: 4 },
+      { key: "problemReformHr", label: "改革・人", description: "職場の改革に関わる、対人面の問題を把握している", step: 1, max: 4 },
+    ],
+  },
+  {
+    key: "solution",
+    label: "対策立案",
+    description: "職場の重要な問題への具体的な対策を立案する",
+    step: 0.5,
+    max: 5,
+    children: [
+      { key: "solutionCoverage", label: "網羅性", description: "職場の問題に幅広く対応しようとしている", step: 1, max: 4 },
+      { key: "solutionPlanning", label: "計画性", description: "実行可能な行動プランを立てる", step: 1, max: 4 },
+      { key: "solutionMaintenanceBiz", label: "維持管理・業務", description: "職場の維持管理に関わる、業務面の問題に対策を立案している", step: 1, max: 4 },
+      { key: "solutionMaintenanceHr", label: "維持管理・人", description: "職場の維持管理に関わる、対人面の問題に対策を立案している", step: 1, max: 4 },
+      { key: "solutionReformBiz", label: "改革・業務", description: "職場の改革に関わる、業務面の問題に対策を立案している", step: 1, max: 4 },
+      { key: "solutionReformHr", label: "改革・人", description: "職場の改革に関わる、対人面の問題に対策を立案している", step: 1, max: 4 },
+    ],
+  },
+  {
+    key: "role",
+    label: "役割理解",
+    description: "職場運営に取り組むリーダーの役割を理解する",
+    step: 0.1,
+    max: 5,
+  },
+  {
+    key: "leadership",
+    label: "主導",
+    description: "主体的に問題解決に取り組む",
+    step: 0.5,
+    max: 4,
+  },
+  {
+    key: "collaboration",
+    label: "連携",
+    description: "関係者に働きかける",
+    step: 0.5,
+    max: 4,
+    children: [
+      { key: "collabSupervisor", label: "上司", description: "上司に適切なタイミングで報告・連絡・相談する", step: 1, max: 4 },
+      { key: "collabExternal", label: "職場外", description: "職場外の関係者を適切に巻き込みながら、問題を解決する", step: 1, max: 4 },
+      { key: "collabMember", label: "メンバー", description: "メンバーを巻き込みながら問題を解決する", step: 1, max: 4 },
+    ],
+  },
+  {
+    key: "development",
+    label: "育成",
+    description: "メンバーや部下を育成する",
+    step: 0.5,
+    max: 4,
+  },
+];
 
 interface PredictClientProps {
   cases: Case[];
+}
+
+// 再帰的に折りたたみ可能なスコアセクション
+function RecursiveScoreSection({
+  item,
+  scores,
+  onChange,
+  expandedSections,
+  toggleSection,
+  depth = 0,
+}: {
+  item: ScoreItemConfig;
+  scores: Scores;
+  onChange: (key: keyof Scores, value: number) => void;
+  expandedSections: Set<string>;
+  toggleSection: (key: string) => void;
+  depth?: number;
+}) {
+  const hasChildren = item.children && item.children.length > 0;
+  const isExpanded = expandedSections.has(item.key);
+
+  // 深さに応じたスタイル
+  const isRoot = depth === 0;
+  const isChild = depth === 1;
+  const isGrandChild = depth >= 2;
+
+  const paddingLeft = depth * 16;
+  const fontSize = isRoot ? "text-sm" : isChild ? "text-xs" : "text-[11px]";
+  const descFontSize = isRoot ? "text-[11px]" : "text-[10px]";
+  const bgColor = isRoot ? "var(--background)" : "var(--surface)";
+  const inputBorder = isRoot ? "var(--primary)" : "var(--border)";
+
+  return (
+    <div
+      className={`${isRoot ? "rounded-lg overflow-hidden" : ""}`}
+      style={{ background: isRoot ? bgColor : "transparent" }}
+    >
+      {/* 項目行 */}
+      <div
+        className="flex items-center gap-2 py-2.5"
+        style={{
+          paddingLeft: isRoot ? 16 : paddingLeft,
+          paddingRight: 16,
+          borderBottom: (hasChildren && isExpanded) || !isRoot ? "1px solid var(--border)" : "none",
+          background: isRoot ? bgColor : "transparent",
+        }}
+      >
+        {/* 折りたたみボタン */}
+        {hasChildren ? (
+          <button
+            onClick={() => toggleSection(item.key)}
+            className="w-5 h-5 rounded flex items-center justify-center hover:opacity-70 transition-opacity flex-shrink-0"
+            style={{ background: isRoot ? "var(--surface)" : "var(--background)" }}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
+            )}
+          </button>
+        ) : (
+          <div className="w-5" />
+        )}
+
+        {/* ラベルと説明 */}
+        <div className="flex-1 min-w-0">
+          <p className={`font-bold ${fontSize}`} style={{ color: "#323232" }}>
+            {item.label}
+          </p>
+          <p className={`${descFontSize} mt-0.5 leading-relaxed`} style={{ color: "var(--text-muted)" }}>
+            {item.description}
+          </p>
+        </div>
+
+        {/* 数値入力 */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <input
+            type="number"
+            min="1"
+            max={item.max}
+            step={item.step}
+            value={scores[item.key] ?? 2}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              if (!isNaN(val) && val >= 1 && val <= item.max) {
+                onChange(item.key, val);
+              }
+            }}
+            className={`w-14 text-center py-1 rounded font-bold ${isGrandChild ? "text-xs" : "text-sm"}`}
+            style={{
+              border: `1px solid ${inputBorder}`,
+              background: "#fff",
+              color: "#323232",
+            }}
+          />
+          <span className="text-[9px] w-8 text-right" style={{ color: "var(--text-muted)" }}>
+            /{item.max}
+          </span>
+        </div>
+      </div>
+
+      {/* 子項目（再帰的に描画） */}
+      {hasChildren && isExpanded && (
+        <div style={{ background: "var(--surface)" }}>
+          {item.children!.map((child) => (
+            <RecursiveScoreSection
+              key={child.key}
+              item={child}
+              scores={scores}
+              onChange={onChange}
+              expandedSections={expandedSections}
+              toggleSection={toggleSection}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function PredictClient({ cases }: PredictClientProps) {
@@ -26,9 +213,22 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(["q1", "q2"]));
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   const toggleAccordion = (key: string) => {
     setOpenAccordions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const toggleSection = (key: string) => {
+    setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
         next.delete(key);
@@ -107,60 +307,58 @@ export function PredictClient({ cases }: PredictClientProps) {
         )}
       </div>
 
-      {/* 目標スコア設定 - テーブル形式 */}
+      {/* 目標スコア設定 - 縦並び階層構造 */}
       <div
         className="rounded-xl p-5"
         style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
       >
-        <label className="block text-sm font-black mb-3" style={{ color: "#323232" }}>
-          目標スコア
-        </label>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ minWidth: "500px" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                {scoreLabels.map(({ label }) => (
-                  <th
-                    key={label}
-                    className="pb-2 text-center font-bold"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                {scoreLabels.map(({ key }) => (
-                  <td key={key} className="pt-3 px-1">
-                    <input
-                      type="number"
-                      min="1.0"
-                      max="4.0"
-                      step="0.1"
-                      value={scores[key]}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        if (!isNaN(val) && val >= 1.0 && val <= 4.0) {
-                          handleScoreChange(key, val);
-                        }
-                      }}
-                      className="w-full text-center py-2 rounded-lg font-bold text-sm"
-                      style={{
-                        border: "1px solid var(--border)",
-                        background: "var(--background)",
-                        color: "#323232",
-                      }}
-                    />
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+        <div className="flex items-center justify-between mb-4">
+          <label className="text-sm font-black" style={{ color: "#323232" }}>
+            目標スコア設定
+          </label>
+          <button
+            onClick={() => {
+              // 全展開/全折りたたみ（3階層すべて対応）
+              const collectAllExpandableKeys = (items: ScoreItemConfig[]): string[] => {
+                const keys: string[] = [];
+                for (const item of items) {
+                  if (item.children && item.children.length > 0) {
+                    keys.push(item.key);
+                    keys.push(...collectAllExpandableKeys(item.children));
+                  }
+                }
+                return keys;
+              };
+              const allKeys = collectAllExpandableKeys(scoreStructure);
+              if (expandedSections.size >= allKeys.length) {
+                setExpandedSections(new Set());
+              } else {
+                setExpandedSections(new Set(allKeys));
+              }
+            }}
+            className="text-[11px] px-2 py-1 rounded hover:opacity-70 transition-opacity"
+            style={{ color: "var(--primary)", background: "var(--background)" }}
+          >
+            {expandedSections.size > 0 ? "すべて折りたたむ" : "すべて展開"}
+          </button>
         </div>
-        <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-          1.0〜4.0の範囲で入力
+
+        <div className="space-y-2">
+          {scoreStructure.map((item) => (
+            <RecursiveScoreSection
+              key={item.key}
+              item={item}
+              scores={scores}
+              onChange={handleScoreChange}
+              expandedSections={expandedSections}
+              toggleSection={toggleSection}
+              depth={0}
+            />
+          ))}
+        </div>
+
+        <p className="text-[10px] mt-4 text-center" style={{ color: "var(--text-muted)" }}>
+          各スコアの上限値・刻み幅は項目ごとに異なります。詳細項目は親項目の左の矢印をクリックして展開できます。
         </p>
       </div>
 

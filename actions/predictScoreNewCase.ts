@@ -8,10 +8,12 @@ import { predictScoreForNewCase, predictScoreFromAnswer, type NewCaseScorePredic
 // 統合予測結果の型
 export type CombinedPredictionResult = {
   predictedScores: ScoreItems;
+  embeddingScores?: ScoreItems;  // エンベディングベースの参考スコア
   confidence: number;
   q1Explanation: string;
   q2Explanation: string;
   combinedExplanation: string;
+  isNewCase?: boolean;  // 新規ケースかどうか
 };
 
 // 未知ケースの回答からスコアを予測
@@ -189,10 +191,11 @@ export async function submitCombinedPrediction(params: {
     ]);
 
     // スコアを統合
-    // 設問1から: 問題把握
-    // 設問2から: 対策立案、主導、連携、育成
+    // 設問1から: 問題把握 + 問題把握の詳細スコア
+    // 設問2から: 対策立案、主導、連携、育成 + それぞれの詳細スコア
     // 総合: 両方を考慮して算出
     const predictedScores: ScoreItems = {
+      // 主要スコア
       problem: q1Result.predictedScores.problem,
       solution: q2Result.predictedScores.solution,
       leadership: q2Result.predictedScores.leadership,
@@ -206,7 +209,43 @@ export async function submitCombinedPrediction(params: {
         collaboration: q2Result.predictedScores.collaboration,
         development: q2Result.predictedScores.development,
       }),
+      // 問題把握の詳細スコア（設問1から）
+      problemUnderstanding: q1Result.predictedScores.problemUnderstanding,
+      problemEssence: q1Result.predictedScores.problemEssence,
+      problemMaintenanceBiz: q1Result.predictedScores.problemMaintenanceBiz,
+      problemMaintenanceHr: q1Result.predictedScores.problemMaintenanceHr,
+      problemReformBiz: q1Result.predictedScores.problemReformBiz,
+      problemReformHr: q1Result.predictedScores.problemReformHr,
+      // 対策立案の詳細スコア（設問2から）
+      solutionCoverage: q2Result.predictedScores.solutionCoverage,
+      solutionPlanning: q2Result.predictedScores.solutionPlanning,
+      solutionMaintenanceBiz: q2Result.predictedScores.solutionMaintenanceBiz,
+      solutionMaintenanceHr: q2Result.predictedScores.solutionMaintenanceHr,
+      solutionReformBiz: q2Result.predictedScores.solutionReformBiz,
+      solutionReformHr: q2Result.predictedScores.solutionReformHr,
+      // 連携の詳細スコア（設問2から）
+      collabSupervisor: q2Result.predictedScores.collabSupervisor,
+      collabExternal: q2Result.predictedScores.collabExternal,
+      collabMember: q2Result.predictedScores.collabMember,
     };
+
+    // エンベディングベースのスコアを統合（参考値）
+    const embeddingScores: ScoreItems | undefined = (q1Result.embeddingScores || q2Result.embeddingScores)
+      ? {
+          problem: q1Result.embeddingScores?.problem ?? null,
+          solution: q2Result.embeddingScores?.solution ?? null,
+          leadership: q2Result.embeddingScores?.leadership ?? null,
+          collaboration: q2Result.embeddingScores?.collaboration ?? null,
+          development: q2Result.embeddingScores?.development ?? null,
+          overall: calculateOverallScore({
+            problem: q1Result.embeddingScores?.problem ?? null,
+            solution: q2Result.embeddingScores?.solution ?? null,
+            leadership: q2Result.embeddingScores?.leadership ?? null,
+            collaboration: q2Result.embeddingScores?.collaboration ?? null,
+            development: q2Result.embeddingScores?.development ?? null,
+          }),
+        }
+      : undefined;
 
     // 信頼度は両方の平均
     const confidence = Math.round(((q1Result.confidence + q2Result.confidence) / 2) * 100) / 100;
@@ -218,10 +257,12 @@ export async function submitCombinedPrediction(params: {
       success: true,
       result: {
         predictedScores,
+        embeddingScores,
         confidence,
         q1Explanation: q1Result.explanation,
         q2Explanation: q2Result.explanation,
         combinedExplanation,
+        isNewCase: false,
       },
     };
   } catch (error) {
@@ -297,8 +338,9 @@ export async function submitCombinedNewCasePrediction(params: {
       }),
     ]);
 
-    // スコアを統合
+    // スコアを統合（新規ケース）
     const predictedScores: ScoreItems = {
+      // 主要スコア
       problem: q1Result.predictedScores.problem,
       solution: q2Result.predictedScores.solution,
       leadership: q2Result.predictedScores.leadership,
@@ -311,7 +353,43 @@ export async function submitCombinedNewCasePrediction(params: {
         collaboration: q2Result.predictedScores.collaboration,
         development: q2Result.predictedScores.development,
       }),
+      // 問題把握の詳細スコア（設問1から）
+      problemUnderstanding: q1Result.predictedScores.problemUnderstanding,
+      problemEssence: q1Result.predictedScores.problemEssence,
+      problemMaintenanceBiz: q1Result.predictedScores.problemMaintenanceBiz,
+      problemMaintenanceHr: q1Result.predictedScores.problemMaintenanceHr,
+      problemReformBiz: q1Result.predictedScores.problemReformBiz,
+      problemReformHr: q1Result.predictedScores.problemReformHr,
+      // 対策立案の詳細スコア（設問2から）
+      solutionCoverage: q2Result.predictedScores.solutionCoverage,
+      solutionPlanning: q2Result.predictedScores.solutionPlanning,
+      solutionMaintenanceBiz: q2Result.predictedScores.solutionMaintenanceBiz,
+      solutionMaintenanceHr: q2Result.predictedScores.solutionMaintenanceHr,
+      solutionReformBiz: q2Result.predictedScores.solutionReformBiz,
+      solutionReformHr: q2Result.predictedScores.solutionReformHr,
+      // 連携の詳細スコア（設問2から）
+      collabSupervisor: q2Result.predictedScores.collabSupervisor,
+      collabExternal: q2Result.predictedScores.collabExternal,
+      collabMember: q2Result.predictedScores.collabMember,
     };
+
+    // エンベディングベースのスコアを統合（参考値）
+    const embeddingScores: ScoreItems | undefined = (q1Result.embeddingScores || q2Result.embeddingScores)
+      ? {
+          problem: q1Result.embeddingScores?.problem ?? null,
+          solution: q2Result.embeddingScores?.solution ?? null,
+          leadership: q2Result.embeddingScores?.leadership ?? null,
+          collaboration: q2Result.embeddingScores?.collaboration ?? null,
+          development: q2Result.embeddingScores?.development ?? null,
+          overall: calculateOverallScore({
+            problem: q1Result.embeddingScores?.problem ?? null,
+            solution: q2Result.embeddingScores?.solution ?? null,
+            leadership: q2Result.embeddingScores?.leadership ?? null,
+            collaboration: q2Result.embeddingScores?.collaboration ?? null,
+            development: q2Result.embeddingScores?.development ?? null,
+          }),
+        }
+      : undefined;
 
     // 信頼度は両方の平均
     const confidence = Math.round(((q1Result.confidence + q2Result.confidence) / 2) * 100) / 100;
@@ -323,10 +401,12 @@ export async function submitCombinedNewCasePrediction(params: {
       success: true,
       result: {
         predictedScores,
+        embeddingScores,
         confidence,
         q1Explanation: q1Result.explanation,
         q2Explanation: q2Result.explanation,
         combinedExplanation,
+        isNewCase: true,
       },
     };
   } catch (error) {
