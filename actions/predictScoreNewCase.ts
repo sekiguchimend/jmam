@@ -3,7 +3,16 @@
 'use server';
 
 import { getAnyAccessToken } from '@/lib/supabase/server';
-import { predictScoreForNewCase, predictScoreFromAnswer, type NewCaseScorePrediction } from '@/lib/scoring';
+import { predictScoreForNewCase, predictScoreFromAnswer, type NewCaseScorePrediction, type ScoreItems } from '@/lib/scoring';
+
+// 統合予測結果の型
+export type CombinedPredictionResult = {
+  predictedScores: ScoreItems;
+  confidence: number;
+  q1Explanation: string;
+  q2Explanation: string;
+  combinedExplanation: string;
+};
 
 // 未知ケースの回答からスコアを予測
 export async function submitAnswerForNewCasePrediction(params: {
@@ -104,7 +113,7 @@ export async function submitAnswerForExistingCasePrediction(params: {
 
     // NewCaseScorePrediction形式に変換（similarCasesは空）
     const prediction: NewCaseScorePrediction = {
-      predictedScore: result.predictedScore,
+      predictedScores: result.predictedScores,
       confidence: result.confidence,
       similarCases: [], // 既存ケースの場合は類似ケース検索なし
       similarExamples: result.similarExamples,
@@ -119,4 +128,228 @@ export async function submitAnswerForExistingCasePrediction(params: {
       error: error instanceof Error ? error.message : 'スコア予測に失敗しました',
     };
   }
+}
+
+// 設問1と設問2の両方から統合してスコアを予測（既存ケース用）
+export async function submitCombinedPrediction(params: {
+  caseId: string;
+  q1Answer: string;
+  q2Answer: string;
+}): Promise<{
+  success: boolean;
+  result?: CombinedPredictionResult;
+  error?: string;
+}> {
+  try {
+    const { caseId, q1Answer, q2Answer } = params;
+
+    // バリデーション
+    if (!caseId) {
+      return { success: false, error: 'ケースを選択してください' };
+    }
+
+    if (!q1Answer.trim()) {
+      return { success: false, error: '設問1の回答を入力してください' };
+    }
+
+    if (q1Answer.trim().length < 10) {
+      return { success: false, error: '設問1の回答は10文字以上入力してください' };
+    }
+
+    if (!q2Answer.trim()) {
+      return { success: false, error: '設問2の回答を入力してください' };
+    }
+
+    if (q2Answer.trim().length < 10) {
+      return { success: false, error: '設問2の回答は10文字以上入力してください' };
+    }
+
+    // 認証チェック
+    const token = await getAnyAccessToken();
+    if (!token) {
+      return { success: false, error: '認証が必要です' };
+    }
+
+    // 設問1と設問2を並列で予測
+    const [q1Result, q2Result] = await Promise.all([
+      predictScoreFromAnswer({
+        token,
+        caseId,
+        question: 'q1',
+        answerText: q1Answer.trim(),
+        topK: 10,
+      }),
+      predictScoreFromAnswer({
+        token,
+        caseId,
+        question: 'q2',
+        answerText: q2Answer.trim(),
+        topK: 10,
+      }),
+    ]);
+
+    // スコアを統合
+    // 設問1から: 問題把握
+    // 設問2から: 対策立案、主導、連携、育成
+    // 総合: 両方を考慮して算出
+    const predictedScores: ScoreItems = {
+      problem: q1Result.predictedScores.problem,
+      solution: q2Result.predictedScores.solution,
+      leadership: q2Result.predictedScores.leadership,
+      collaboration: q2Result.predictedScores.collaboration,
+      development: q2Result.predictedScores.development,
+      // 総合スコア = (問題把握 + 対策立案 + 主導 + 連携 + 育成) / 5
+      overall: calculateOverallScore({
+        problem: q1Result.predictedScores.problem,
+        solution: q2Result.predictedScores.solution,
+        leadership: q2Result.predictedScores.leadership,
+        collaboration: q2Result.predictedScores.collaboration,
+        development: q2Result.predictedScores.development,
+      }),
+    };
+
+    // 信頼度は両方の平均
+    const confidence = Math.round(((q1Result.confidence + q2Result.confidence) / 2) * 100) / 100;
+
+    // 説明文を統合
+    const combinedExplanation = `【問題把握（設問1）】\n${q1Result.explanation}\n\n【対策立案・主導・連携・育成（設問2）】\n${q2Result.explanation}`;
+
+    return {
+      success: true,
+      result: {
+        predictedScores,
+        confidence,
+        q1Explanation: q1Result.explanation,
+        q2Explanation: q2Result.explanation,
+        combinedExplanation,
+      },
+    };
+  } catch (error) {
+    console.error('submitCombinedPrediction error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'スコア予測に失敗しました',
+    };
+  }
+}
+
+// 設問1と設問2の両方から統合してスコアを予測（新規ケース用）
+export async function submitCombinedNewCasePrediction(params: {
+  situationText: string;
+  q1Answer: string;
+  q2Answer: string;
+}): Promise<{
+  success: boolean;
+  result?: CombinedPredictionResult;
+  error?: string;
+}> {
+  try {
+    const { situationText, q1Answer, q2Answer } = params;
+
+    // バリデーション
+    if (!situationText.trim()) {
+      return { success: false, error: 'ケース内容（シチュエーション）を入力してください' };
+    }
+
+    if (situationText.trim().length < 20) {
+      return { success: false, error: 'ケース内容は20文字以上入力してください' };
+    }
+
+    if (!q1Answer.trim()) {
+      return { success: false, error: '設問1の回答を入力してください' };
+    }
+
+    if (q1Answer.trim().length < 10) {
+      return { success: false, error: '設問1の回答は10文字以上入力してください' };
+    }
+
+    if (!q2Answer.trim()) {
+      return { success: false, error: '設問2の回答を入力してください' };
+    }
+
+    if (q2Answer.trim().length < 10) {
+      return { success: false, error: '設問2の回答は10文字以上入力してください' };
+    }
+
+    // 認証チェック
+    const token = await getAnyAccessToken();
+    if (!token) {
+      return { success: false, error: '認証が必要です' };
+    }
+
+    // 設問1と設問2を並列で予測
+    const [q1Result, q2Result] = await Promise.all([
+      predictScoreForNewCase({
+        token,
+        situationText: situationText.trim(),
+        question: 'q1',
+        answerText: q1Answer.trim(),
+        topKCases: 5,
+        topKResponses: 10,
+      }),
+      predictScoreForNewCase({
+        token,
+        situationText: situationText.trim(),
+        question: 'q2',
+        answerText: q2Answer.trim(),
+        topKCases: 5,
+        topKResponses: 10,
+      }),
+    ]);
+
+    // スコアを統合
+    const predictedScores: ScoreItems = {
+      problem: q1Result.predictedScores.problem,
+      solution: q2Result.predictedScores.solution,
+      leadership: q2Result.predictedScores.leadership,
+      collaboration: q2Result.predictedScores.collaboration,
+      development: q2Result.predictedScores.development,
+      overall: calculateOverallScore({
+        problem: q1Result.predictedScores.problem,
+        solution: q2Result.predictedScores.solution,
+        leadership: q2Result.predictedScores.leadership,
+        collaboration: q2Result.predictedScores.collaboration,
+        development: q2Result.predictedScores.development,
+      }),
+    };
+
+    // 信頼度は両方の平均
+    const confidence = Math.round(((q1Result.confidence + q2Result.confidence) / 2) * 100) / 100;
+
+    // 説明文を統合
+    const combinedExplanation = `【問題把握（設問1）】\n${q1Result.explanation}\n\n【対策立案・主導・連携・育成（設問2）】\n${q2Result.explanation}`;
+
+    return {
+      success: true,
+      result: {
+        predictedScores,
+        confidence,
+        q1Explanation: q1Result.explanation,
+        q2Explanation: q2Result.explanation,
+        combinedExplanation,
+      },
+    };
+  } catch (error) {
+    console.error('submitCombinedNewCasePrediction error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'スコア予測に失敗しました',
+    };
+  }
+}
+
+// 総合スコアを計算（5項目の平均）
+function calculateOverallScore(scores: Omit<ScoreItems, 'overall'>): number | null {
+  const values = [
+    scores.problem,
+    scores.solution,
+    scores.leadership,
+    scores.collaboration,
+    scores.development,
+  ].filter((v): v is number => v != null);
+
+  if (values.length === 0) return null;
+
+  const sum = values.reduce((acc, v) => acc + v, 0);
+  return Math.round((sum / values.length) * 10) / 10;
 }

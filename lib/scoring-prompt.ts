@@ -8,6 +8,8 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
  * 
  * このプロンプトは、従業員のケーススタディ回答を評価する際に使用されます。
  * 過去の回答パターンと採点基準に基づいて、公平で一貫性のある評価を提供します。
+ * 
+ * AIは「エンベディング予測値」を参考にしつつ、回答の妥当性を評価して最終スコアを決定します。
  */
 export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマンス評価を専門とする採点アシスタントです。
 職場ケーススタディへの回答を評価し、確立された基準と過去の評価パターンに基づいて、
@@ -19,6 +21,25 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 回答は以下の2つの設問に分かれています：
 - **設問1（q1）**: 問題把握 - 現状の問題点を的確に捉えているか
 - **設問2（q2）**: 対策立案、主導、連携、育成 - 解決策と実行計画を示せているか
+
+## 重要：回答の妥当性チェック
+
+**まず最初に、回答が「有効な回答」かどうかを判定してください。**
+
+### 無効な回答の例（スコア1.0を付与）
+- 意味のない文字の羅列（例：「あああああ」「asdfghjkl」「xxxx」）
+- 全く関係のない内容（例：天気の話、料理のレシピ、個人的な話題）
+- 空白のみ、または極端に短い（例：「はい」「わかりません」「特にない」）
+- コピペや定型文の繰り返し
+- 設問やケースと全く関係のない内容
+
+### 低品質な回答の例（スコア1.0〜1.5を付与）
+- 設問の内容を理解していない
+- 具体性が著しく欠如（「頑張ります」「改善します」のみ）
+- ケース状況と無関係な一般論のみ
+- 論理的な構成がない
+
+**無効または低品質な回答の場合、エンベディング予測値に関係なく低いスコアを付けてください。**
 
 ## 評価基準
 
@@ -154,15 +175,17 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 - **3.5〜4.0**: 優秀。多くの観点で良好な回答
 - **2.5〜3.0**: 標準的。基本的な要素は押さえているが改善の余地あり
 - **1.5〜2.0**: 改善が必要。重要な観点が欠けている
-- **1.0**: 大幅な改善が必要
+- **1.0**: 大幅な改善が必要、または無効な回答
 
 ## 評価の進め方
 
-1. **ケース状況を理解**: 提供されたケース（状況説明）を注意深く読む
-2. **回答を分析**: 設問に対する回答の内容を詳細に確認
-3. **類似例を参照**: 提供された類似回答とそのスコア・コメントを参考にする
-4. **評価軸に沿って判断**: 上記の評価基準に照らして強みと弱みを特定
-5. **総合的にスコアを算出**: 各観点のバランスを考慮して最終スコアを決定
+1. **回答の妥当性を確認**: まず回答が有効かどうかを判定
+2. **ケース状況を理解**: 提供されたケース（状況説明）を注意深く読む
+3. **回答を分析**: 設問に対する回答の内容を詳細に確認
+4. **類似例を参照**: 提供された類似回答とそのスコア・コメントを参考にする
+5. **評価軸に沿って判断**: 上記の評価基準に照らして強みと弱みを特定
+6. **エンベディング予測値を参考に**: 類似度ベースの予測値を参考にしつつ、回答内容を総合的に判断
+7. **最終スコアを決定**: 各観点のバランスを考慮して最終スコアを決定
 
 ## 出力形式
 
@@ -170,11 +193,24 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 
 \`\`\`json
 {
-  "predictedScore": <1.0〜5.0の数値>,
-  "confidence": <0.0〜1.0の数値>,
+  "isValidAnswer": true または false,
+  "scores": {
+    "overall": 1.0〜5.0の数値（総合評点、設問1の場合は問題把握を重視）,
+    "problem": 1.0〜5.0の数値または null（問題把握評点）,
+    "solution": 1.0〜5.0の数値または null（対策立案評点）,
+    "leadership": 1.0〜5.0の数値または null（主導評点）,
+    "collaboration": 1.0〜5.0の数値または null（連携評点）,
+    "development": 1.0〜5.0の数値または null（育成評点）
+  },
   "explanation": "<詳細な説明文>"
 }
 \`\`\`
+
+**重要な注意点**:
+- 無効な回答（意味のない文字列など）の場合、isValidAnswer を false にし、すべてのスコアを 1.0 にしてください
+- 設問1（q1）の場合、problem スコアを重視し、overall は problem と同じにしてください
+- 設問2（q2）の場合、solution, leadership, collaboration, development を評価し、overall はこれらの平均としてください
+- エンベディング予測値は「参考」であり、回答内容が明らかに低品質な場合は予測値より低いスコアを付けてください
 
 ## 説明文のガイドライン
 
@@ -185,6 +221,8 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 3. **改善点**: 不足している観点や深堀りが必要な点
 4. **類似例との比較**: 参照した類似回答との類似点・相違点
 5. **アドバイス**: 今後の改善に向けた具体的な提案
+
+無効な回答の場合は、なぜ無効と判断したかを説明し、有効な回答のためのアドバイスを提供してください。
 
 説明文は建設的かつ専門的なトーンで、過去の評価コメントのスタイルに合わせてください。`;
 
@@ -218,18 +256,33 @@ export type AIScoringRequest = {
   caseContext: string; // ケースの状況説明
   question: 'q1' | 'q2';
   answerText: string; // 評価対象の回答
-  similarExamples: ScoringExample[]; // 類似回答例
+  similarExamples: ScoringExample[]; // 類似回答例（評価スタイルの参考）
   similarCases?: ScoringCaseContext[]; // 類似ケース（新規ケース予測時）
-  predictedScore: number; // ベクトル類似度ベースの予測スコア
-  confidence: number; // 信頼度
+  isNewCase?: boolean; // 新規ケースかどうか
+  embeddingPredictedScores?: {
+    overall: number | null;
+    problem: number | null;
+    solution: number | null;
+    leadership: number | null;
+    collaboration: number | null;
+    development: number | null;
+  }; // エンベディングベースの予測スコア（既存ケースの場合のみ）
+  confidence?: number; // 信頼度（既存ケースの場合のみ）
 };
 
 /**
- * AI採点レスポンス
+ * AI採点レスポンス（スコア＋説明文）
  */
 export type AIScoringResponse = {
-  predictedScore: number;
-  confidence: number;
+  isValidAnswer: boolean;
+  scores: {
+    overall: number | null;
+    problem: number | null;
+    solution: number | null;
+    leadership: number | null;
+    collaboration: number | null;
+    development: number | null;
+  };
   explanation: string;
 };
 
@@ -242,14 +295,18 @@ function getQuestionFocus(question: 'q1' | 'q2'): string {
 主に「問題把握評点」の観点から評価してください：
 - 何が問題かを的確に捉えているか
 - 問題の本質や根本原因を見抜けているか
-- 対人関係面や組織的な問題も考慮しているか`;
+- 対人関係面や組織的な問題も考慮しているか
+
+**設問1では、overall と problem を同じスコアにしてください。solution, leadership, collaboration, development は null にしてください。**`;
   }
   return `この回答は「設問2（対策立案・主導・連携・育成）」への回答です。
 以下の観点から総合的に評価してください：
 - 対策立案: 具体的な実行計画があるか
 - 主導: リーダーとしての主体性が見られるか
 - 連携: 関係者との協力姿勢があるか
-- 育成: メンバー育成の視点があるか`;
+- 育成: メンバー育成の視点があるか
+
+**設問2では、solution, leadership, collaboration, development をそれぞれ評価し、overall はこれらの平均（小数点1位まで）にしてください。problem は null にしてください。**`;
 }
 
 /**
@@ -286,11 +343,62 @@ function formatSimilarCases(cases?: ScoringCaseContext[]): string {
 }
 
 /**
- * AIを使用して詳細な評価説明を生成
+ * エンベディング予測スコアをフォーマット
  */
-export async function generateAIExplanation(
+function formatEmbeddingScores(scores: AIScoringRequest['embeddingPredictedScores'], question: 'q1' | 'q2'): string {
+  if (!scores) {
+    return '（エンベディング予測値なし）';
+  }
+  if (question === 'q1') {
+    return `- 問題把握（参考値）: ${scores.problem ?? scores.overall ?? '不明'}点`;
+  }
+  return `- 総合（参考値）: ${scores.overall ?? '不明'}点
+- 対策立案: ${scores.solution ?? '不明'}点
+- 主導: ${scores.leadership ?? '不明'}点
+- 連携: ${scores.collaboration ?? '不明'}点
+- 育成: ${scores.development ?? '不明'}点`;
+}
+
+/**
+ * AIを使用して評価（スコア＋説明文）を生成
+ */
+export async function generateAIScoring(
   request: AIScoringRequest
 ): Promise<AIScoringResponse> {
+  const isNewCase = request.isNewCase || !!request.similarCases?.length;
+  
+  // 新規ケースの場合と既存ケースの場合でプロンプトを変える
+  const embeddingSection = isNewCase
+    ? `### 新規ケースについて
+**これは新規ケースです。** エンベディングベースの予測値はありません。
+回答内容を評価基準に基づいて直接評価してください。
+類似回答例は「過去の評価スタイルの参考」として使用してください（スコアの参考にはしないでください）。`
+    : `### エンベディングベースの予測スコア（参考値）
+${formatEmbeddingScores(request.embeddingPredictedScores!, request.question)}
+- 信頼度: ${((request.confidence || 0) * 100).toFixed(0)}%
+
+**注意**: 上記の予測スコアはベクトル類似度に基づく参考値です。回答内容が明らかに低品質（意味のない文字列、関係のない内容など）の場合は、予測値に関係なく低いスコアを付けてください。`;
+
+  const taskSection = isNewCase
+    ? `## タスク
+
+1. まず、回答が「有効な回答」かどうかを判定してください
+2. 有効な場合：**評価基準に基づいて回答内容を直接評価**し、スコアを決定してください
+3. 無効な場合：isValidAnswer を false にし、すべてのスコアを 1.0 に
+4. 説明文を生成してください
+
+**重要**: 新規ケースのため、類似回答例のスコアは参考にしないでください。評価基準に基づいて独自に判断してください。
+
+JSON形式で出力してください。`
+    : `## タスク
+
+1. まず、回答が「有効な回答」かどうかを判定してください
+2. 有効な場合：エンベディング予測値を参考にしつつ、回答内容を評価してスコアを決定
+3. 無効な場合：isValidAnswer を false にし、すべてのスコアを 1.0 に
+4. 説明文を生成してください
+
+JSON形式で出力してください。`;
+
   const userPrompt = `## 評価対象
 
 ### ケース（状況説明）
@@ -302,37 +410,23 @@ ${getQuestionFocus(request.question)}
 ### 評価対象の回答
 ${request.answerText}
 
-### ベクトル類似度ベースの予測
-- 予測スコア: ${request.predictedScore}点
-- 信頼度: ${(request.confidence * 100).toFixed(0)}%
+${embeddingSection}
 
-## 参考: 類似回答例とその評価
+## 参考: 類似回答例とその評価${isNewCase ? '（評価スタイルの参考のみ）' : ''}
 
 ${formatSimilarExamples(request.similarExamples)}
 
-## タスク
-
-上記の情報を基に、評価対象の回答を採点してください。
-
-1. ベクトル類似度ベースの予測スコア（${request.predictedScore}点）を参考にしつつ、内容を精査して最終スコアを決定
-2. 類似例のスコアやコメントのパターンを参考に、同様のトーンで説明を生成
-3. 具体的な根拠を示しながら、改善点も提案
-
-JSON形式で出力してください。`;
+${taskSection}`;
 
   // Gemini APIが未設定の場合はフォールバック
   if (!GEMINI_API_KEY) {
-    console.warn('GEMINI_API_KEY is not set. Using fallback explanation.');
-    return {
-      predictedScore: request.predictedScore,
-      confidence: request.confidence,
-      explanation: generateFallbackExplanation(request),
-    };
+    console.warn('GEMINI_API_KEY is not set. Using fallback scoring.');
+    return generateFallbackScoring(request);
   }
 
   try {
     const controller = new AbortController();
-    const timeoutMs = 20000; // 20秒
+    const timeoutMs = 25000; // 25秒
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
@@ -347,8 +441,8 @@ JSON形式で出力してください。`;
           parts: [{ text: userPrompt }]
         }],
         generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 1024,
+          temperature: 0.3,  // 低温度で一貫性を重視
+          maxOutputTokens: 2000,
         },
       }),
     });
@@ -366,51 +460,128 @@ JSON形式で出力してください。`;
     // JSONを抽出してパース
     const jsonMatch = generatedText.match(/```json\s*([\s\S]*?)\s*```/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[1]);
-      return {
-        predictedScore: parsed.predictedScore ?? request.predictedScore,
-        confidence: parsed.confidence ?? request.confidence,
-        explanation: parsed.explanation || generateFallbackExplanation(request),
-      };
+      try {
+        const parsed = JSON.parse(jsonMatch[1]);
+        return normalizeAIResponse(parsed, request);
+      } catch {
+        // JSONパース失敗
+      }
     }
 
     // JSONブロックがない場合は直接パースを試みる
     try {
       const parsed = JSON.parse(generatedText);
-      return {
-        predictedScore: parsed.predictedScore ?? request.predictedScore,
-        confidence: parsed.confidence ?? request.confidence,
-        explanation: parsed.explanation || generatedText,
-      };
+      return normalizeAIResponse(parsed, request);
     } catch {
-      // パースできない場合はテキストをそのまま説明として使用
-      return {
-        predictedScore: request.predictedScore,
-        confidence: request.confidence,
-        explanation: generatedText || generateFallbackExplanation(request),
-      };
+      // パースできない場合はフォールバック
+      console.error('Failed to parse AI response:', generatedText);
+      return generateFallbackScoring(request);
     }
   } catch (error) {
-    console.error('generateAIExplanation error:', error);
-    return {
-      predictedScore: request.predictedScore,
-      confidence: request.confidence,
-      explanation: generateFallbackExplanation(request),
-    };
+    console.error('generateAIScoring error:', error);
+    return generateFallbackScoring(request);
   }
 }
 
 /**
- * フォールバック用の説明文を生成（API未設定時やエラー時）
+ * AIレスポンスを正規化
  */
-function generateFallbackExplanation(request: AIScoringRequest): string {
-  const { predictedScore, confidence, similarExamples, question } = request;
+function normalizeAIResponse(parsed: any, request: AIScoringRequest): AIScoringResponse {
+  const isValidAnswer = parsed.isValidAnswer !== false;
+  
+  // スコアを正規化（1.0〜5.0の範囲、0.5刻み）
+  const normalizeScore = (score: any): number | null => {
+    if (score === null || score === undefined) return null;
+    const num = Number(score);
+    if (isNaN(num)) return null;
+    const clamped = Math.min(5, Math.max(1, num));
+    return Math.round(clamped * 2) / 2; // 0.5刻みに丸める
+  };
+
+  const scores = parsed.scores || {};
+  
+  return {
+    isValidAnswer,
+    scores: {
+      overall: normalizeScore(scores.overall),
+      problem: normalizeScore(scores.problem),
+      solution: normalizeScore(scores.solution),
+      leadership: normalizeScore(scores.leadership),
+      collaboration: normalizeScore(scores.collaboration),
+      development: normalizeScore(scores.development),
+    },
+    explanation: parsed.explanation || generateFallbackExplanation(request, isValidAnswer),
+  };
+}
+
+/**
+ * フォールバック用のスコアリング（API未設定時やエラー時）
+ * 既存ケース: エンベディング予測値をそのまま使用
+ * 新規ケース: デフォルトスコア（2.5）を使用
+ */
+function generateFallbackScoring(request: AIScoringRequest): AIScoringResponse {
+  const isNewCase = request.isNewCase || !!request.similarCases?.length;
+  
+  if (isNewCase || !request.embeddingPredictedScores) {
+    // 新規ケースの場合はデフォルトスコア
+    const defaultScore = 2.5;
+    return {
+      isValidAnswer: true,
+      scores: {
+        overall: defaultScore,
+        problem: request.question === 'q1' ? defaultScore : null,
+        solution: request.question === 'q2' ? defaultScore : null,
+        leadership: request.question === 'q2' ? defaultScore : null,
+        collaboration: request.question === 'q2' ? defaultScore : null,
+        development: request.question === 'q2' ? defaultScore : null,
+      },
+      explanation: generateFallbackExplanation(request, true),
+    };
+  }
+  
+  return {
+    isValidAnswer: true,
+    scores: {
+      overall: request.embeddingPredictedScores.overall,
+      problem: request.embeddingPredictedScores.problem,
+      solution: request.embeddingPredictedScores.solution,
+      leadership: request.embeddingPredictedScores.leadership,
+      collaboration: request.embeddingPredictedScores.collaboration,
+      development: request.embeddingPredictedScores.development,
+    },
+    explanation: generateFallbackExplanation(request, true),
+  };
+}
+
+/**
+ * フォールバック用の説明文を生成
+ */
+function generateFallbackExplanation(request: AIScoringRequest, isValid: boolean): string {
+  if (!isValid) {
+    return '【警告】この回答は有効な回答として認識されませんでした。ケースの状況を踏まえた具体的な回答を記述してください。';
+  }
+
+  const isNewCase = request.isNewCase || !!request.similarCases?.length;
+  const questionType = request.question === 'q1' ? '問題把握' : '対策立案・主導・連携・育成';
+
+  // 新規ケースの場合
+  if (isNewCase || !request.embeddingPredictedScores) {
+    let explanation = `【${questionType}の評価 - 新規ケース】\n`;
+    explanation += `これは新規ケースのため、AI評価が利用できませんでした。\n`;
+    explanation += `評価基準に基づいて回答内容を確認してください。\n\n`;
+    explanation += request.question === 'q1'
+      ? '【問題把握のポイント】\n問題の本質を的確に捉え、多角的な視点から分析できているかを確認してください。'
+      : '【対策立案のポイント】\n具体的な対策と実行計画が示されているかを確認してください。';
+    return explanation;
+  }
+
+  const { embeddingPredictedScores, confidence, similarExamples, question } = request;
+  const predictedScore = embeddingPredictedScores.overall || embeddingPredictedScores.problem || 2.5;
   const avgScore = similarExamples.length > 0
     ? similarExamples.reduce((sum, ex) => sum + ex.score, 0) / similarExamples.length
     : predictedScore;
 
   const scoreLevel = predictedScore >= 3.5 ? '高評価' : predictedScore >= 2.5 ? '中程度' : '低評価';
-  const questionType = question === 'q1' ? '問題把握' : '対策立案・主導・連携・育成';
 
   let explanation = `【${questionType}の評価】\n`;
   explanation += `この回答は過去の${scoreLevel}回答（平均${avgScore.toFixed(1)}点）と類似しており、`;
@@ -435,9 +606,10 @@ function generateFallbackExplanation(request: AIScoringRequest): string {
 
   explanation += '\n\n';
 
-  if (confidence >= 0.7) {
+  const conf = confidence ?? 0;
+  if (conf >= 0.7) {
     explanation += '信頼度が高い予測です。類似する過去の回答が多く見つかりました。';
-  } else if (confidence >= 0.5) {
+  } else if (conf >= 0.5) {
     explanation += '中程度の信頼度です。';
   } else {
     explanation += '類似度がやや低いため、参考程度としてください。';
@@ -451,4 +623,69 @@ function generateFallbackExplanation(request: AIScoringRequest): string {
  */
 export function getScoringPrompt(): string {
   return SCORING_SYSTEM_PROMPT;
+}
+
+// ============================================
+// 早期品質チェック（API呼び出し前の高速フィルタ）
+// ============================================
+
+/**
+ * 早期品質チェック結果
+ */
+export type EarlyQualityCheckResult = {
+  isInvalid: boolean;
+  reason: string;
+};
+
+/**
+ * 早期品質チェック（API呼び出し前の簡易判定）
+ * 明らかに無効な回答を高速で検出
+ */
+export function performEarlyQualityCheck(answerText: string): EarlyQualityCheckResult | null {
+  const text = answerText.trim();
+
+  // 空または極端に短い
+  if (text.length < 10) {
+    return {
+      isInvalid: true,
+      reason: '回答が短すぎます（10文字未満）',
+    };
+  }
+
+  // 同じ文字の繰り返し（例：「あああああ」「aaaaa」）
+  const uniqueChars = new Set(text.replace(/\s/g, ''));
+  if (uniqueChars.size <= 3 && text.length > 20) {
+    return {
+      isInvalid: true,
+      reason: '意味のない文字の繰り返しが検出されました',
+    };
+  }
+
+  // 文字種の偏りをチェック（ひらがな・カタカナ・漢字がほぼない）
+  const japaneseChars = text.match(/[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g);
+  const japaneseRatio = (japaneseChars?.length || 0) / text.length;
+  if (text.length > 30 && japaneseRatio < 0.1) {
+    return {
+      isInvalid: true,
+      reason: '日本語として有効な回答ではありません',
+    };
+  }
+
+  // パターン検出：同じフレーズの繰り返し
+  const words = text.split(/[\s、。．，]+/).filter(w => w.length > 2);
+  if (words.length > 5) {
+    const wordCount = new Map<string, number>();
+    for (const word of words) {
+      wordCount.set(word, (wordCount.get(word) || 0) + 1);
+    }
+    const maxRepeat = Math.max(...wordCount.values());
+    if (maxRepeat > words.length * 0.5) {
+      return {
+        isInvalid: true,
+        reason: '同じ内容の繰り返しが検出されました',
+      };
+    }
+  }
+
+  return null; // 早期チェックでは問題なし → AI評価へ
 }

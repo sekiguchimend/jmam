@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { submitAnswerForNewCasePrediction, submitAnswerForExistingCasePrediction } from "@/actions/predictScoreNewCase";
-import type { NewCaseScorePrediction } from "@/lib/scoring";
+import { submitCombinedPrediction, submitCombinedNewCasePrediction, type CombinedPredictionResult } from "@/actions/predictScoreNewCase";
+import type { ScoreItems } from "@/lib/scoring";
 import {
   AlertCircle,
   Calculator,
@@ -10,8 +10,6 @@ import {
   FolderOpen,
   Lightbulb,
   Loader2,
-  MapPin,
-  Plus,
   Send,
   TrendingUp,
 } from "lucide-react";
@@ -34,8 +32,7 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
   const [situationText, setSituationText] = useState("");
   const [q1Answer, setQ1Answer] = useState("");
   const [q2Answer, setQ2Answer] = useState("");
-  const [q1Result, setQ1Result] = useState<NewCaseScorePrediction | null>(null);
-  const [q2Result, setQ2Result] = useState<NewCaseScorePrediction | null>(null);
+  const [result, setResult] = useState<CombinedPredictionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -48,8 +45,7 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
     setSituationText("");
     setQ1Answer("");
     setQ2Answer("");
-    setQ1Result(null);
-    setQ2Result(null);
+    setResult(null);
     setError(null);
   };
 
@@ -58,14 +54,12 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
     setSelectedCaseId(caseId);
     const selected = cases.find((c) => c.case_id === caseId);
     setSituationText(selected?.situation_text || "");
-    setQ1Result(null);
-    setQ2Result(null);
+    setResult(null);
     setError(null);
   };
 
-  const handleSubmit = async (question: "q1" | "q2") => {
-    const answerText = question === "q1" ? q1Answer : q2Answer;
-
+  // 統合予測を実行
+  const handleSubmit = async () => {
     // バリデーション
     if (caseMode === "existing") {
       if (!selectedCaseId) {
@@ -83,13 +77,23 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
       }
     }
 
-    if (!answerText.trim()) {
-      setError(`${question === "q1" ? "設問1" : "設問2"}の回答を入力してください`);
+    if (!q1Answer.trim()) {
+      setError("設問1の回答を入力してください");
       return;
     }
 
-    if (answerText.trim().length < 10) {
-      setError("回答は10文字以上入力してください");
+    if (q1Answer.trim().length < 10) {
+      setError("設問1の回答は10文字以上入力してください");
+      return;
+    }
+
+    if (!q2Answer.trim()) {
+      setError("設問2の回答を入力してください");
+      return;
+    }
+
+    if (q2Answer.trim().length < 10) {
+      setError("設問2の回答は10文字以上入力してください");
       return;
     }
 
@@ -99,26 +103,22 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
       
       if (caseMode === "existing") {
         // 既存ケースの場合
-        response = await submitAnswerForExistingCasePrediction({
+        response = await submitCombinedPrediction({
           caseId: selectedCaseId,
-          question,
-          answerText: answerText.trim(),
+          q1Answer: q1Answer.trim(),
+          q2Answer: q2Answer.trim(),
         });
       } else {
         // 新規ケースの場合
-        response = await submitAnswerForNewCasePrediction({
+        response = await submitCombinedNewCasePrediction({
           situationText: situationText.trim(),
-          question,
-          answerText: answerText.trim(),
+          q1Answer: q1Answer.trim(),
+          q2Answer: q2Answer.trim(),
         });
       }
 
-      if (response.success && response.prediction) {
-        if (question === "q1") {
-          setQ1Result(response.prediction);
-        } else {
-          setQ2Result(response.prediction);
-        }
+      if (response.success && response.result) {
+        setResult(response.result);
       } else {
         setError(response.error ?? "スコア予測に失敗しました");
       }
@@ -126,11 +126,10 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
   };
 
   // 予測ボタンの有効/無効判定
-  const isSubmitDisabled = (question: "q1" | "q2") => {
-    const answerText = question === "q1" ? q1Answer : q2Answer;
-    
+  const isSubmitDisabled = () => {
     if (isPending) return true;
-    if (!answerText.trim() || answerText.trim().length < 10) return true;
+    if (!q1Answer.trim() || q1Answer.trim().length < 10) return true;
+    if (!q2Answer.trim() || q2Answer.trim().length < 10) return true;
     
     if (caseMode === "existing") {
       return !selectedCaseId;
@@ -265,36 +264,17 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
         className="p-5"
         style={{ background: "transparent" }}
       >
-        <div className="flex items-center justify-between mb-3">
-          <label className="text-sm font-black" style={{ color: "#323232" }}>
-            設問1の回答（10文字以上）
-          </label>
-          <button
-            onClick={() => handleSubmit("q1")}
-            disabled={isSubmitDisabled("q1")}
-            className="px-4 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
-            style={{ background: "var(--primary)" }}
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="w-3 h-3 animate-spin" />
-                予測中...
-              </>
-            ) : (
-              <>
-                <Send className="w-3 h-3" />
-                予測
-              </>
-            )}
-          </button>
-        </div>
+        <label className="text-sm font-black mb-3 block" style={{ color: "#323232" }}>
+          設問1の回答（問題把握）
+        </label>
         <textarea
           value={q1Answer}
           onChange={(e) => {
             setQ1Answer(e.target.value);
             setError(null);
+            setResult(null);
           }}
-          placeholder="設問1の回答を入力してください..."
+          placeholder="設問1の回答を入力してください...&#10;（職場の問題点を挙げてください）"
           rows={6}
           className="w-full px-4 py-3 rounded-lg text-sm font-bold resize-none"
           style={{
@@ -313,36 +293,17 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
         className="p-5"
         style={{ background: "transparent" }}
       >
-        <div className="flex items-center justify-between mb-3">
-          <label className="text-sm font-black" style={{ color: "#323232" }}>
-            設問2の回答（10文字以上）
-          </label>
-          <button
-            onClick={() => handleSubmit("q2")}
-            disabled={isSubmitDisabled("q2")}
-            className="px-4 py-2 rounded-lg text-xs font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
-            style={{ background: "var(--primary)" }}
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="w-3 h-3 animate-spin" />
-                予測中...
-              </>
-            ) : (
-              <>
-                <Send className="w-3 h-3" />
-                予測
-              </>
-            )}
-          </button>
-        </div>
+        <label className="text-sm font-black mb-3 block" style={{ color: "#323232" }}>
+          設問2の回答（対策立案・主導・連携・育成）
+        </label>
         <textarea
           value={q2Answer}
           onChange={(e) => {
             setQ2Answer(e.target.value);
             setError(null);
+            setResult(null);
           }}
-          placeholder="設問2の回答を入力してください..."
+          placeholder="設問2の回答を入力してください...&#10;（問題に対する対策と実行計画を示してください）"
           rows={6}
           className="w-full px-4 py-3 rounded-lg text-sm font-bold resize-none"
           style={{
@@ -356,10 +317,32 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
         </p>
       </div>
 
+      {/* 予測ボタン */}
+      <div className="px-5">
+        <button
+          onClick={handleSubmit}
+          disabled={isSubmitDisabled()}
+          className="w-full px-6 py-4 rounded-xl text-base font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center justify-center gap-3"
+          style={{ background: "var(--primary)" }}
+        >
+          {isPending ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              予測中...
+            </>
+          ) : (
+            <>
+              <Calculator className="w-5 h-5" />
+              スコアを予測する
+            </>
+          )}
+        </button>
+      </div>
+
       {/* エラー */}
       {error && (
         <div
-          className="p-4 rounded-xl flex items-center gap-3"
+          className="p-4 rounded-xl flex items-center gap-3 mx-5"
           style={{ background: "var(--error-light)", color: "var(--error)" }}
         >
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
@@ -367,22 +350,9 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
         </div>
       )}
 
-      {/* 設問1の結果 */}
-      {q1Result && !isPending && (
-        <PredictionResult
-          title="設問1の予測結果"
-          result={q1Result}
-          showSimilarCases={caseMode === "new"}
-        />
-      )}
-
-      {/* 設問2の結果 */}
-      {q2Result && !isPending && (
-        <PredictionResult
-          title="設問2の予測結果"
-          result={q2Result}
-          showSimilarCases={caseMode === "new"}
-        />
+      {/* 統合予測結果 */}
+      {result && !isPending && (
+        <CombinedPredictionResultView result={result} />
       )}
 
       {/* 説明 */}
@@ -394,18 +364,11 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
           スコア予測について
         </h3>
         <ul className="text-sm space-y-2" style={{ color: "var(--text-muted)" }}>
-          {caseMode === "existing" ? (
-            <>
-              <li>• 選択したケースの過去回答データから類似回答を検索します</li>
-              <li>• 類似回答のスコアを基に、入力された回答のスコアを予測します</li>
-            </>
-          ) : (
-            <>
-              <li>• 入力されたシチュエーションから、類似の既存ケースを自動検索します</li>
-              <li>• 類似ケースの回答データを基に、入力された回答のスコアを予測します</li>
-              <li>• 類似度が高いケースが見つかるほど、予測の信頼度が向上します</li>
-              <li>• ケースのシチュエーションが登録されていない場合は検索できません</li>
-            </>
+          <li>• 設問1と設問2の両方の回答を入力して「スコアを予測する」を押してください</li>
+          <li>• 設問1からは「問題把握」を、設問2からは「対策立案・主導・連携・育成」を評価します</li>
+          <li>• 総合評点は5項目の平均で算出されます</li>
+          {caseMode === "new" && (
+            <li>• 新規ケースの場合、類似の既存ケースから回答データを参照します</li>
           )}
         </ul>
       </div>
@@ -413,28 +376,24 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
   );
 }
 
-// 予測結果表示コンポーネント
-function PredictionResult({
-  title,
+// 統合予測結果表示コンポーネント
+function CombinedPredictionResultView({
   result,
-  showSimilarCases = true,
 }: {
-  title: string;
-  result: NewCaseScorePrediction;
-  showSimilarCases?: boolean;
+  result: CombinedPredictionResult;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 px-5">
       <h3 className="text-base font-black" style={{ color: "#323232" }}>
-        {title}
+        予測結果
       </h3>
 
       {/* 予測スコアと信頼度 */}
       <div
-        className="p-6"
-        style={{ background: "transparent" }}
+        className="p-6 rounded-xl"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
       >
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-4 mb-4">
           <div
             className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: "var(--primary)" }}
@@ -445,15 +404,62 @@ function PredictionResult({
             <h3 className="text-sm font-black mb-3" style={{ color: "#323232" }}>
               予測スコア
             </h3>
-            <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-4xl font-black" style={{ color: "var(--primary)" }}>
-                {result.predictedScore.toFixed(1)}
-              </span>
-              <span className="text-lg font-bold" style={{ color: "var(--text-muted)" }}>
-                / 5.0
-              </span>
+            
+            {/* 総合スコア（大きく表示） */}
+            {result.predictedScores.overall != null && (
+              <div className="p-4 rounded-lg mb-4" style={{ background: "var(--primary)", color: "#fff" }}>
+                <p className="text-xs font-bold mb-1 opacity-80">総合評点</p>
+                <p className="text-4xl font-black">
+                  {result.predictedScores.overall.toFixed(1)}
+                </p>
+              </div>
+            )}
+            
+            {/* 個別スコア */}
+            <div className="grid grid-cols-5 gap-2">
+              {result.predictedScores.problem != null && (
+                <div className="p-2 rounded-lg text-center" style={{ background: "var(--background)" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>問題把握</p>
+                  <p className="text-lg font-black" style={{ color: "var(--primary)" }}>
+                    {result.predictedScores.problem.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {result.predictedScores.solution != null && (
+                <div className="p-2 rounded-lg text-center" style={{ background: "var(--background)" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>対策立案</p>
+                  <p className="text-lg font-black" style={{ color: "var(--primary)" }}>
+                    {result.predictedScores.solution.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {result.predictedScores.leadership != null && (
+                <div className="p-2 rounded-lg text-center" style={{ background: "var(--background)" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>主導</p>
+                  <p className="text-lg font-black" style={{ color: "var(--primary)" }}>
+                    {result.predictedScores.leadership.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {result.predictedScores.collaboration != null && (
+                <div className="p-2 rounded-lg text-center" style={{ background: "var(--background)" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>連携</p>
+                  <p className="text-lg font-black" style={{ color: "var(--primary)" }}>
+                    {result.predictedScores.collaboration.toFixed(1)}
+                  </p>
+                </div>
+              )}
+              {result.predictedScores.development != null && (
+                <div className="p-2 rounded-lg text-center" style={{ background: "var(--background)" }}>
+                  <p className="text-xs font-bold mb-1" style={{ color: "var(--text-muted)" }}>育成</p>
+                  <p className="text-lg font-black" style={{ color: "var(--primary)" }}>
+                    {result.predictedScores.development.toFixed(1)}
+                  </p>
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-2">
+            
+            <div className="flex items-center gap-2 mt-4">
               <TrendingUp className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
               <span className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
                 信頼度: {(result.confidence * 100).toFixed(0)}%
@@ -463,49 +469,10 @@ function PredictionResult({
         </div>
       </div>
 
-      {/* 類似ケース（新規モードのみ表示） */}
-      {showSimilarCases && result.similarCases && result.similarCases.length > 0 && (
-        <div
-          className="p-5"
-          style={{ background: "transparent" }}
-        >
-          <div className="flex items-start gap-3 mb-4">
-            <MapPin className="w-5 h-5 flex-shrink-0" style={{ color: "#6366f1" }} />
-            <h3 className="text-sm font-black" style={{ color: "#323232" }}>
-              類似ケース（上位{result.similarCases.length}件）
-            </h3>
-          </div>
-          <div className="space-y-2" style={{ marginLeft: "32px" }}>
-            {result.similarCases.map((c, index) => (
-              <div
-                key={c.caseId}
-                className="p-3 rounded-lg flex items-center justify-between"
-                style={{ background: "#fff" }}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-black" style={{ color: "var(--text-muted)" }}>
-                    #{index + 1}
-                  </span>
-                  <span className="text-sm font-bold" style={{ color: "#323232" }}>
-                    {c.caseName || c.caseId}
-                  </span>
-                </div>
-                <span
-                  className="text-xs font-black px-2 py-1 rounded"
-                  style={{ background: "#6366f1", color: "#fff" }}
-                >
-                  類似度 {(c.similarity * 100).toFixed(0)}%
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* 説明 */}
       <div
-        className="p-5"
-        style={{ background: "transparent" }}
+        className="p-5 rounded-xl"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
       >
         <div className="flex items-start gap-3 mb-3">
           <Lightbulb className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
@@ -513,51 +480,10 @@ function PredictionResult({
             予測の説明
           </h3>
         </div>
-        <p className="text-sm leading-relaxed" style={{ color: "#323232", marginLeft: "32px" }}>
-          {result.explanation}
-        </p>
-      </div>
-
-      {/* 類似例 */}
-      {result.similarExamples.length > 0 && (
-        <div
-          className="p-5"
-          style={{ background: "transparent" }}
-        >
-          <div className="flex items-start gap-3 mb-4">
-            <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
-            <h3 className="text-sm font-black" style={{ color: "#323232" }}>
-              類似回答例（上位{result.similarExamples.length}件）
-            </h3>
-          </div>
-          <div className="space-y-3" style={{ marginLeft: "32px" }}>
-            {result.similarExamples.map((example, index) => (
-              <div
-                key={example.responseId}
-                className="p-4 rounded-lg"
-                style={{ background: "#fff" }}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-black" style={{ color: "var(--text-muted)" }}>
-                    #{index + 1}
-                  </span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold" style={{ color: "var(--text-muted)" }}>
-                      類似度: {(example.similarity * 100).toFixed(0)}%
-                    </span>
-                    <span className="text-sm font-black" style={{ color: "var(--primary)" }}>
-                      {example.score.toFixed(1)}点
-                    </span>
-                  </div>
-                </div>
-                <p className="text-sm leading-relaxed" style={{ color: "#323232" }}>
-                  {example.excerpt}
-                </p>
-              </div>
-            ))}
-          </div>
+        <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232", marginLeft: "32px" }}>
+          {result.combinedExplanation}
         </div>
-      )}
+      </div>
     </div>
   );
 }
