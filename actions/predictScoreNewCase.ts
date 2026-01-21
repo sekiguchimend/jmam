@@ -193,22 +193,14 @@ export async function submitCombinedPrediction(params: {
     // スコアを統合
     // 設問1から: 問題把握 + 問題把握の詳細スコア
     // 設問2から: 対策立案、主導、連携、育成 + それぞれの詳細スコア
-    // 総合: 両方を考慮して算出
     const predictedScores: ScoreItems = {
       // 主要スコア
       problem: q1Result.predictedScores.problem,
       solution: q2Result.predictedScores.solution,
+      role: q1Result.predictedScores.role ?? q2Result.predictedScores.role ?? null,
       leadership: q2Result.predictedScores.leadership,
       collaboration: q2Result.predictedScores.collaboration,
       development: q2Result.predictedScores.development,
-      // 総合スコア = (問題把握 + 対策立案 + 主導 + 連携 + 育成) / 5
-      overall: calculateOverallScore({
-        problem: q1Result.predictedScores.problem,
-        solution: q2Result.predictedScores.solution,
-        leadership: q2Result.predictedScores.leadership,
-        collaboration: q2Result.predictedScores.collaboration,
-        development: q2Result.predictedScores.development,
-      }),
       // 問題把握の詳細スコア（設問1から）
       problemUnderstanding: q1Result.predictedScores.problemUnderstanding,
       problemEssence: q1Result.predictedScores.problemEssence,
@@ -234,16 +226,10 @@ export async function submitCombinedPrediction(params: {
       ? {
           problem: q1Result.embeddingScores?.problem ?? null,
           solution: q2Result.embeddingScores?.solution ?? null,
+          role: q1Result.embeddingScores?.role ?? q2Result.embeddingScores?.role ?? null,
           leadership: q2Result.embeddingScores?.leadership ?? null,
           collaboration: q2Result.embeddingScores?.collaboration ?? null,
           development: q2Result.embeddingScores?.development ?? null,
-          overall: calculateOverallScore({
-            problem: q1Result.embeddingScores?.problem ?? null,
-            solution: q2Result.embeddingScores?.solution ?? null,
-            leadership: q2Result.embeddingScores?.leadership ?? null,
-            collaboration: q2Result.embeddingScores?.collaboration ?? null,
-            development: q2Result.embeddingScores?.development ?? null,
-          }),
         }
       : undefined;
 
@@ -343,16 +329,10 @@ export async function submitCombinedNewCasePrediction(params: {
       // 主要スコア
       problem: q1Result.predictedScores.problem,
       solution: q2Result.predictedScores.solution,
+      role: q1Result.predictedScores.role ?? q2Result.predictedScores.role ?? null,
       leadership: q2Result.predictedScores.leadership,
       collaboration: q2Result.predictedScores.collaboration,
       development: q2Result.predictedScores.development,
-      overall: calculateOverallScore({
-        problem: q1Result.predictedScores.problem,
-        solution: q2Result.predictedScores.solution,
-        leadership: q2Result.predictedScores.leadership,
-        collaboration: q2Result.predictedScores.collaboration,
-        development: q2Result.predictedScores.development,
-      }),
       // 問題把握の詳細スコア（設問1から）
       problemUnderstanding: q1Result.predictedScores.problemUnderstanding,
       problemEssence: q1Result.predictedScores.problemEssence,
@@ -378,16 +358,10 @@ export async function submitCombinedNewCasePrediction(params: {
       ? {
           problem: q1Result.embeddingScores?.problem ?? null,
           solution: q2Result.embeddingScores?.solution ?? null,
+          role: q1Result.embeddingScores?.role ?? q2Result.embeddingScores?.role ?? null,
           leadership: q2Result.embeddingScores?.leadership ?? null,
           collaboration: q2Result.embeddingScores?.collaboration ?? null,
           development: q2Result.embeddingScores?.development ?? null,
-          overall: calculateOverallScore({
-            problem: q1Result.embeddingScores?.problem ?? null,
-            solution: q2Result.embeddingScores?.solution ?? null,
-            leadership: q2Result.embeddingScores?.leadership ?? null,
-            collaboration: q2Result.embeddingScores?.collaboration ?? null,
-            development: q2Result.embeddingScores?.development ?? null,
-          }),
         }
       : undefined;
 
@@ -418,18 +392,3 @@ export async function submitCombinedNewCasePrediction(params: {
   }
 }
 
-// 総合スコアを計算（5項目の平均）
-function calculateOverallScore(scores: Omit<ScoreItems, 'overall'>): number | null {
-  const values = [
-    scores.problem,
-    scores.solution,
-    scores.leadership,
-    scores.collaboration,
-    scores.development,
-  ].filter((v): v is number => v != null);
-
-  if (values.length === 0) return null;
-
-  const sum = values.reduce((acc, v) => acc + v, 0);
-  return Math.round((sum / values.length) * 10) / 10;
-}

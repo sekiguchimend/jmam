@@ -44,8 +44,11 @@ export function AdminDatasetList({ initialStats }: AdminDatasetListProps) {
           <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>データがありません</p>
           <Link
             href="/admin/upload"
-            className="inline-block mt-3 lg:mt-4 px-5 lg:px-6 py-2 rounded-lg font-black text-white text-sm lg:text-base"
-            style={{ background: "var(--primary)" }}
+            className="inline-block mt-3 lg:mt-4 px-6 py-3 font-black transition-all hover:opacity-90 text-white text-sm"
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
+              borderRadius: "5px"
+            }}
           >
             データ追加
           </Link>

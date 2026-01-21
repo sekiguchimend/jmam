@@ -12,10 +12,14 @@ import { toScoreBucket } from '@/lib/scoring';
 import { processEmbeddingQueueBatchWithToken, rebuildTypicalExamplesForBucketWithToken } from '@/lib/prepare/worker';
 
 const BATCH_SIZE = 1000;
-const REQUIRED_HEADERS = ['受注番号', 'Ⅱ　MC　題材コード'];
+// 必須ヘッダー（正規化後の形式で定義 - 半角スペース）
+const REQUIRED_HEADERS_NORMALIZED = ['受注番号', 'Ⅱ MC 題材コード'];
 // 5000行程度のアップロードを想定し、アップロード後の自動準備に使う上限を少し長めに確保
 // （maxDuration=600秒のため、アップロード処理そのものの時間も考慮して余裕を残す）
 const AUTO_PREPARE_MAX_MS = 420_000; // 7分
+
+// 全角スペースと半角スペースを正規化するヘルパー（共通で使用）
+const normalizeSpaces = (str: string) => str.replace(/　/g, ' ').replace(/\s+/g, ' ').trim();
 
 function dedupeResponsesByKey(rows: CsvRowData[]): { deduped: CsvRowData[]; dropped: number } {
   // upsertのonConflict(case_id,response_id)に対して、同一コマンド内で重複があると
@@ -31,7 +35,9 @@ function dedupeResponsesByKey(rows: CsvRowData[]): { deduped: CsvRowData[]; drop
 }
 
 function validateHeaders(headers: string[]): { valid: boolean; missing: string[] } {
-  const missing = REQUIRED_HEADERS.filter((h) => !headers.includes(h));
+  // ヘッダーを正規化して比較（全角/半角スペースどちらでも対応）
+  const normalizedHeaders = headers.map(normalizeSpaces);
+  const missing = REQUIRED_HEADERS_NORMALIZED.filter((h) => !normalizedHeaders.includes(h));
   return { valid: missing.length === 0, missing };
 }
 
@@ -40,31 +46,36 @@ function parseRow(
   values: string[],
   rowIndex: number
 ): { data: CsvRowData | null; caseName: string | null; error: string | null } {
+  // ヘッダーを正規化（全角/半角スペースどちらでも対応）
+  const normalizedHeaders = headers.map(normalizeSpaces);
+  
   const getVal = (key: string) => {
-    const idx = headers.indexOf(key);
+    // 正規化したキーで検索
+    const normalizedKey = normalizeSpaces(key);
+    const idx = normalizedHeaders.indexOf(normalizedKey);
     return idx >= 0 && idx < values.length ? values[idx]?.trim() ?? '' : '';
   };
 
   const responseId = getVal('受注番号');
-  const caseId = getVal('Ⅱ　MC　題材コード');
+  const caseId = getVal('Ⅱ MC 題材コード');
 
   if (!responseId || !caseId) {
     return {
       data: null,
       caseName: null,
-      error: `${rowIndex}行目: 必須項目（受注番号またはⅡ　MC　題材コード）が空です`,
+      error: `${rowIndex}行目: 必須項目（受注番号またはⅡ MC 題材コード）が空です`,
     };
   }
 
-  const caseName = getVal('Ⅱ　MC　題材名') || null;
+  const caseName = getVal('Ⅱ MC 題材名') || null;
   const commentProblem =
-    getVal('Ⅱ　MC　問題把握コメント') ||
-    [getVal('Ⅱ　MC　問題把握コメント1'), getVal('Ⅱ　MC　問題把握コメント2')]
+    getVal('Ⅱ MC 問題把握コメント') ||
+    [getVal('Ⅱ MC 問題把握コメント1'), getVal('Ⅱ MC 問題把握コメント2')]
       .filter(Boolean)
       .join('\n') ||
     undefined;
   const commentSolution =
-    getVal('Ⅱ　MC　対策立案コメント') || getVal('Ⅱ　MC　対策立案コメント1') || undefined;
+    getVal('Ⅱ MC 対策立案コメント') || getVal('Ⅱ MC 対策立案コメント1') || undefined;
 
   return {
     data: {
@@ -72,14 +83,14 @@ function parseRow(
       response_id: responseId,
       case_name: caseName ?? undefined,
       submitted_at: parseDate(getVal('実施日')) ?? undefined,
-      // 主要スコア（7項目）
-      score_overall: parseScore(getVal('Ⅱ　MC　演習総合評点')) ?? undefined,
-      score_problem: parseScore(getVal('Ⅱ　MC　問題把握評点')) ?? undefined,
-      score_solution: parseScore(getVal('Ⅱ　MC　対策立案評点')) ?? undefined,
-      score_role: parseScore(getVal('Ⅱ　MC　役割理解評点')) ?? undefined,
-      score_leadership: parseScore(getVal('Ⅱ　MC　主導評点')) ?? undefined,
-      score_collaboration: parseScore(getVal('Ⅱ　MC　連携評点')) ?? undefined,
-      score_development: parseScore(getVal('Ⅱ　MC　育成評点')) ?? undefined,
+      // 主要スコア（7項目）- 半角スペースで統一（正規化で全角も対応）
+      score_overall: parseScore(getVal('Ⅱ MC 演習総合評点')) ?? undefined,
+      score_problem: parseScore(getVal('Ⅱ MC 問題把握評点')) ?? undefined,
+      score_solution: parseScore(getVal('Ⅱ MC 対策立案評点')) ?? undefined,
+      score_role: parseScore(getVal('Ⅱ MC 役割理解評点')) ?? undefined,
+      score_leadership: parseScore(getVal('Ⅱ MC 主導評点')) ?? undefined,
+      score_collaboration: parseScore(getVal('Ⅱ MC 連携評点')) ?? undefined,
+      score_development: parseScore(getVal('Ⅱ MC 育成評点')) ?? undefined,
       // 問題把握の詳細スコア（6項目）- Google Sheet実際のヘッダー名に対応
       detail_problem_understanding: parseScore(getVal('Ⅱ MC 問題把握 状況理解')) ?? undefined,
       detail_problem_essence: parseScore(getVal('Ⅱ MC 問題把握 本質把握')) ?? undefined,
@@ -98,7 +109,7 @@ function parseRow(
       detail_collab_supervisor: parseScore(getVal('Ⅱ MC 連携 上司')) ?? undefined,
       detail_collab_external: parseScore(getVal('Ⅱ MC 連携 職場外')) ?? undefined,
       detail_collab_member: parseScore(getVal('Ⅱ MC 連携 メンバー')) ?? undefined,
-      comment_overall: getVal('Ⅱ　MC　総合コメント') || undefined,
+      comment_overall: getVal('Ⅱ MC 総合コメント') || undefined,
       comment_problem: commentProblem,
       comment_solution: commentSolution,
       answer_q1: getVal('【設問ID】　1') || undefined,

@@ -176,10 +176,13 @@ export default async function DashboardPage() {
             {userInfo.isAdmin && (
               <Link
                 href="/admin/upload"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-black transition-all hover:shadow-lg text-white"
-                style={{ background: "var(--primary)" }}
+                className="inline-flex items-center gap-2 px-6 py-3 font-black transition-all hover:opacity-90 text-white text-sm"
+                style={{
+                  background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
+                  borderRadius: "5px"
+                }}
               >
-                <Upload className="w-5 h-5" />
+                <Upload className="w-4 h-4" />
                 データをアップロード
               </Link>
             )}

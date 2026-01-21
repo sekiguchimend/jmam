@@ -260,9 +260,9 @@ export type AIScoringRequest = {
   similarCases?: ScoringCaseContext[]; // 類似ケース（新規ケース予測時）
   isNewCase?: boolean; // 新規ケースかどうか
   embeddingPredictedScores?: {
-    overall: number | null;
     problem: number | null;
     solution: number | null;
+    role: number | null;
     leadership: number | null;
     collaboration: number | null;
     development: number | null;
@@ -276,9 +276,9 @@ export type AIScoringRequest = {
 export type AIScoringResponse = {
   isValidAnswer: boolean;
   scores: {
-    overall: number | null;
     problem: number | null;
     solution: number | null;
+    role: number | null;
     leadership: number | null;
     collaboration: number | null;
     development: number | null;
@@ -297,7 +297,7 @@ function getQuestionFocus(question: 'q1' | 'q2'): string {
 - 問題の本質や根本原因を見抜けているか
 - 対人関係面や組織的な問題も考慮しているか
 
-**設問1では、overall と problem を同じスコアにしてください。solution, leadership, collaboration, development は null にしてください。**`;
+**設問1では、problem と role にスコアを設定してください。solution, leadership, collaboration, development は null にしてください。**`;
   }
   return `この回答は「設問2（対策立案・主導・連携・育成）」への回答です。
 以下の観点から総合的に評価してください：
@@ -306,7 +306,7 @@ function getQuestionFocus(question: 'q1' | 'q2'): string {
 - 連携: 関係者との協力姿勢があるか
 - 育成: メンバー育成の視点があるか
 
-**設問2では、solution, leadership, collaboration, development をそれぞれ評価し、overall はこれらの平均（小数点1位まで）にしてください。problem は null にしてください。**`;
+**設問2では、solution, role, leadership, collaboration, development をそれぞれ評価してください。problem は null にしてください。**`;
 }
 
 /**
@@ -489,26 +489,37 @@ ${taskSection}`;
 function normalizeAIResponse(parsed: any, request: AIScoringRequest): AIScoringResponse {
   const isValidAnswer = parsed.isValidAnswer !== false;
   
-  // スコアを正規化（1.0〜5.0の範囲、0.5刻み）
-  const normalizeScore = (score: any): number | null => {
+  // スコア項目ごとの刻みと上限の定義
+  const SCORE_CONFIG = {
+    problem: { step: 0.5, max: 5 },           // 問題把握：刻み0.5、上限5
+    solution: { step: 0.5, max: 5 },          // 対策立案：刻み0.5、上限5
+    role: { step: 0.1, max: 5 },              // 役割理解：刻み0.1、上限5
+    leadership: { step: 0.5, max: 4 },        // 主導：刻み0.5、上限4
+    collaboration: { step: 0.5, max: 4 },     // 連携：刻み0.5、上限4
+    development: { step: 0.5, max: 4 },       // 育成：刻み0.5、上限4
+  } as const;
+
+  // スコアを正規化（刻みと上限を適用）
+  const normalizeScore = (score: any, field: keyof typeof SCORE_CONFIG): number | null => {
     if (score === null || score === undefined) return null;
     const num = Number(score);
     if (isNaN(num)) return null;
-    const clamped = Math.min(5, Math.max(1, num));
-    return Math.round(clamped * 2) / 2; // 0.5刻みに丸める
+    const config = SCORE_CONFIG[field];
+    const clamped = Math.min(config.max, Math.max(1, num));
+    return Math.round(clamped / config.step) * config.step;
   };
 
   const scores = parsed.scores || {};
-  
+
   return {
     isValidAnswer,
     scores: {
-      overall: normalizeScore(scores.overall),
-      problem: normalizeScore(scores.problem),
-      solution: normalizeScore(scores.solution),
-      leadership: normalizeScore(scores.leadership),
-      collaboration: normalizeScore(scores.collaboration),
-      development: normalizeScore(scores.development),
+      problem: normalizeScore(scores.problem, 'problem'),
+      solution: normalizeScore(scores.solution, 'solution'),
+      role: normalizeScore(scores.role, 'role'),
+      leadership: normalizeScore(scores.leadership, 'leadership'),
+      collaboration: normalizeScore(scores.collaboration, 'collaboration'),
+      development: normalizeScore(scores.development, 'development'),
     },
     explanation: parsed.explanation || generateFallbackExplanation(request, isValidAnswer),
   };
@@ -528,9 +539,9 @@ function generateFallbackScoring(request: AIScoringRequest): AIScoringResponse {
     return {
       isValidAnswer: true,
       scores: {
-        overall: defaultScore,
         problem: request.question === 'q1' ? defaultScore : null,
         solution: request.question === 'q2' ? defaultScore : null,
+        role: defaultScore,
         leadership: request.question === 'q2' ? defaultScore : null,
         collaboration: request.question === 'q2' ? defaultScore : null,
         development: request.question === 'q2' ? defaultScore : null,
@@ -542,9 +553,9 @@ function generateFallbackScoring(request: AIScoringRequest): AIScoringResponse {
   return {
     isValidAnswer: true,
     scores: {
-      overall: request.embeddingPredictedScores.overall,
       problem: request.embeddingPredictedScores.problem,
       solution: request.embeddingPredictedScores.solution,
+      role: request.embeddingPredictedScores.role,
       leadership: request.embeddingPredictedScores.leadership,
       collaboration: request.embeddingPredictedScores.collaboration,
       development: request.embeddingPredictedScores.development,

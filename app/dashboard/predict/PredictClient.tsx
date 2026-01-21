@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { predictAnswer } from "@/actions/predict";
 import type { Case, Scores, PredictionResponse } from "@/types";
 import { defaultScores } from "@/types";
-import { AlertCircle, ChevronDown, ChevronRight, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight, FolderOpen, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
 
 // スコア項目の型定義
 interface ScoreItemConfig {
@@ -266,23 +266,23 @@ export function PredictClient({ cases }: PredictClientProps) {
   return (
     <div className="space-y-6">
       {/* ケース選択 */}
-      <div
-        className="rounded-xl p-5"
-        style={{ background: "var(--surface)" }}
-      >
-        <label className="block text-sm font-black mb-2" style={{ color: "#323232" }}>
-          ケース
-        </label>
+      <div className="p-5">
+        <div className="flex items-center gap-3 mb-3 max-w-md">
+          <FolderOpen className="w-5 h-5 flex-shrink-0" style={{ color: "#323232" }} />
+          <label className="text-sm font-black" style={{ color: "#323232" }}>
+            ケース
+          </label>
+        </div>
         <select
           value={selectedCaseId}
           onChange={(e) => {
             setSelectedCaseId(e.target.value);
             setResult(null);
           }}
-          className="w-full px-4 py-2.5 rounded-lg text-sm font-bold appearance-none cursor-pointer"
+          className="max-w-md px-4 py-2.5 rounded-lg text-sm font-bold appearance-none cursor-pointer"
           style={{
             border: "1px solid var(--border)",
-            background: `var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23323232' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center`,
+            background: `var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23323232' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center`,
             color: "#323232",
             paddingRight: "36px",
           }}
@@ -367,8 +367,11 @@ export function PredictClient({ cases }: PredictClientProps) {
         <button
           onClick={handlePredict}
           disabled={!selectedCaseId || isPending}
-          className="px-6 py-2.5 rounded-lg text-sm font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
-          style={{ background: "var(--primary)" }}
+          className="px-6 py-2.5 text-sm font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
+          style={{
+            background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
+            borderRadius: "5px"
+          }}
         >
           {isPending ? (
             <>

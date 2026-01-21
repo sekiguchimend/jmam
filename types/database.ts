@@ -547,9 +547,35 @@ export type Database = {
         };
         Returns: Array<{
           response_id: string;
-          score: number;
           similarity: number;
           answer_text: string;
+          // 主要スコア
+          score_overall: number | null;
+          score_problem: number | null;
+          score_solution: number | null;
+          score_role: number | null;
+          score_leadership: number | null;
+          score_collaboration: number | null;
+          score_development: number | null;
+          // 問題把握の詳細スコア
+          detail_problem_understanding: number | null;
+          detail_problem_essence: number | null;
+          detail_problem_maintenance_biz: number | null;
+          detail_problem_maintenance_hr: number | null;
+          detail_problem_reform_biz: number | null;
+          detail_problem_reform_hr: number | null;
+          // 対策立案の詳細スコア
+          detail_solution_coverage: number | null;
+          detail_solution_planning: number | null;
+          detail_solution_maintenance_biz: number | null;
+          detail_solution_maintenance_hr: number | null;
+          detail_solution_reform_biz: number | null;
+          detail_solution_reform_hr: number | null;
+          // 連携の詳細スコア
+          detail_collab_supervisor: number | null;
+          detail_collab_external: number | null;
+          detail_collab_member: number | null;
+          // コメント
           comment_problem: string | null;
           comment_solution: string | null;
           comment_overall: string | null;
@@ -578,9 +604,35 @@ export type Database = {
           response_id: string;
           case_id: string;
           case_name: string | null;
-          score: number;
           similarity: number;
           answer_text: string;
+          // 主要スコア
+          score_overall: number | null;
+          score_problem: number | null;
+          score_solution: number | null;
+          score_role: number | null;
+          score_leadership: number | null;
+          score_collaboration: number | null;
+          score_development: number | null;
+          // 問題把握の詳細スコア
+          detail_problem_understanding: number | null;
+          detail_problem_essence: number | null;
+          detail_problem_maintenance_biz: number | null;
+          detail_problem_maintenance_hr: number | null;
+          detail_problem_reform_biz: number | null;
+          detail_problem_reform_hr: number | null;
+          // 対策立案の詳細スコア
+          detail_solution_coverage: number | null;
+          detail_solution_planning: number | null;
+          detail_solution_maintenance_biz: number | null;
+          detail_solution_maintenance_hr: number | null;
+          detail_solution_reform_biz: number | null;
+          detail_solution_reform_hr: number | null;
+          // 連携の詳細スコア
+          detail_collab_supervisor: number | null;
+          detail_collab_external: number | null;
+          detail_collab_member: number | null;
+          // コメント
           comment_problem: string | null;
           comment_solution: string | null;
           comment_overall: string | null;

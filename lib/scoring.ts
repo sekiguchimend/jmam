@@ -5,6 +5,58 @@ import { embedText } from '@/lib/gemini/embeddings';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { generateAIScoring, performEarlyQualityCheck, type ScoringExample, type ScoringCaseContext, type AIScoringResponse, type EarlyQualityCheckResult } from '@/lib/scoring-prompt';
 
+// スコア項目ごとの刻みと上限の定義
+const SCORE_CONFIG = {
+  problem: { step: 0.5, max: 5 },           // 問題把握：刻み0.5、上限5
+  solution: { step: 0.5, max: 5 },          // 対策立案：刻み0.5、上限5
+  role: { step: 0.1, max: 5 },              // 役割理解：刻み0.1、上限5
+  leadership: { step: 0.5, max: 4 },        // 主導：刻み0.5、上限4
+  collaboration: { step: 0.5, max: 4 },     // 連携：刻み0.5、上限4
+  development: { step: 0.5, max: 4 },       // 育成：刻み0.5、上限4
+  // 詳細スコア（すべて）：刻み1、上限4
+  detail: { step: 1, max: 4 },
+} as const;
+
+/**
+ * スコアを指定された刻みと上限に合わせて正規化
+ */
+export function normalizeScore(
+  score: number | null | undefined,
+  step: number,
+  max: number,
+  min: number = 1
+): number | null {
+  if (score === null || score === undefined || !Number.isFinite(score)) return null;
+  
+  // 上限・下限でクランプ
+  const clamped = Math.min(max, Math.max(min, score));
+  
+  // 刻みに合わせて丸める
+  return Math.round(clamped / step) * step;
+}
+
+/**
+ * 主要スコア項目を正規化
+ */
+export function normalizeMainScore(
+  field: 'problem' | 'solution' | 'role' | 'leadership' | 'collaboration' | 'development',
+  score: number | null | undefined
+): number | null {
+  const config = SCORE_CONFIG[field];
+  return normalizeScore(score, config.step, config.max);
+}
+
+/**
+ * 詳細スコア項目を正規化
+ */
+export function normalizeDetailScore(score: number | null | undefined): number | null {
+  return normalizeScore(score, SCORE_CONFIG.detail.step, SCORE_CONFIG.detail.max);
+}
+
+/**
+ * スコア帯（バケット）に変換（0.5刻み、主に問題把握・対策立案用）
+ * @deprecated 新しいコードでは normalizeMainScore を使用してください
+ */
 export function toScoreBucket(score: number): number {
   if (!Number.isFinite(score)) return 0;
   const clamped = Math.min(5, Math.max(0, score));
@@ -171,12 +223,12 @@ function stratifiedSampling<T extends { score: number | null; similarity: number
   return sampled;
 }
 
-// 個別スコア項目の型定義
+// 個別スコア項目の型定義（回答スコアのScores型と一致）
 export type ScoreItems = {
-  // 主要スコア（7項目）
-  overall: number | null;      // 総合評点
+  // 主要スコア（6項目）
   problem: number | null;      // 問題把握
   solution: number | null;     // 対策立案
+  role: number | null;         // 役割理解
   leadership: number | null;   // 主導
   collaboration: number | null; // 連携
   development: number | null;  // 育成
@@ -228,7 +280,8 @@ export type ScorePrediction = {
 function calculateWeightedScoreHybrid(
   data: any[],
   field: string,
-  distributionMap: Map<number, number>
+  distributionMap: Map<number, number>,
+  scoreField?: 'problem' | 'solution' | 'role' | 'leadership' | 'collaboration' | 'development'
 ): number | null {
   const validData = data.filter((r: any) => r[field] != null);
   if (validData.length === 0) return null;
@@ -256,7 +309,9 @@ function calculateWeightedScoreHybrid(
     totalWeight += finalWeight;
   }
 
-  return totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 10) / 10 : null;
+  const rawScore = totalWeight > 0 ? weightedSum / totalWeight : null;
+  // スコアフィールドが指定されている場合は刻みと上限を適用
+  return scoreField ? normalizeMainScore(scoreField, rawScore) : rawScore;
 }
 
 // 回答テキストからスコアを予測（ハイブリッド手法対応）
@@ -319,16 +374,16 @@ export async function predictScoreFromAnswer(params: {
 
     // プロトタイプベースの予測を並列で取得
     const [
-      prototypeOverall,
       prototypeProblem,
       prototypeSolution,
+      prototypeRole,
       prototypeLeadership,
       prototypeCollaboration,
       prototypeDevelopment,
     ] = await Promise.all([
-      predictScoreWithPrototypes(supabase, caseId, question, embedding, 'overall'),
       predictScoreWithPrototypes(supabase, caseId, question, embedding, 'problem'),
       predictScoreWithPrototypes(supabase, caseId, question, embedding, 'solution'),
+      predictScoreWithPrototypes(supabase, caseId, question, embedding, 'role'),
       predictScoreWithPrototypes(supabase, caseId, question, embedding, 'leadership'),
       predictScoreWithPrototypes(supabase, caseId, question, embedding, 'collaboration'),
       predictScoreWithPrototypes(supabase, caseId, question, embedding, 'development'),
@@ -355,27 +410,32 @@ export async function predictScoreFromAnswer(params: {
       return totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 10) / 10 : null;
     };
 
-    const individualOverall = calculateSimpleWeightedScore(filteredData, 'score_overall');
     const individualProblem = calculateSimpleWeightedScore(filteredData, 'score_problem');
     const individualSolution = calculateSimpleWeightedScore(filteredData, 'score_solution');
+    const individualRole = calculateSimpleWeightedScore(filteredData, 'score_role');
     const individualLeadership = calculateSimpleWeightedScore(filteredData, 'score_leadership');
     const individualCollaboration = calculateSimpleWeightedScore(filteredData, 'score_collaboration');
     const individualDevelopment = calculateSimpleWeightedScore(filteredData, 'score_development');
 
     // プロトタイプと個別回答の予測を組み合わせる
-    const combineScores = (prototype: number | null, individual: number | null): number | null => {
+    const combineScores = (
+      prototype: number | null,
+      individual: number | null,
+      field: 'problem' | 'solution' | 'role' | 'leadership' | 'collaboration' | 'development'
+    ): number | null => {
+      let combined: number | null = null;
       if (prototype !== null && individual !== null) {
         // 両方ある場合は重み付き平均
-        const combined = prototype * PROTOTYPE_CONFIG.prototypeWeight + individual * PROTOTYPE_CONFIG.individualWeight;
-        return Math.round(combined * 10) / 10;
+        combined = prototype * PROTOTYPE_CONFIG.prototypeWeight + individual * PROTOTYPE_CONFIG.individualWeight;
       } else if (prototype !== null) {
         // プロトタイプのみ
-        return prototype;
+        combined = prototype;
       } else if (individual !== null) {
         // 個別のみ
-        return individual;
+        combined = individual;
       }
-      return null;
+      // 刻みと上限に合わせて正規化
+      return combined !== null ? normalizeMainScore(field, combined) : null;
     };
 
     // 詳細スコア用の関数（プロトタイプなしで個別回答の平均）
@@ -390,17 +450,19 @@ export async function predictScoreFromAnswer(params: {
         weightedSum += rec[field] * weight;
         totalWeight += weight;
       }
-      return totalWeight > 0 ? Math.round(weightedSum / totalWeight) : null;
+      const rawScore = totalWeight > 0 ? weightedSum / totalWeight : null;
+      // 詳細スコアは刻み1、上限4で正規化
+      return normalizeDetailScore(rawScore);
     };
 
     predictedScores = {
-      // 主要スコア
-      overall: combineScores(prototypeOverall, individualOverall),
-      problem: combineScores(prototypeProblem, individualProblem),
-      solution: combineScores(prototypeSolution, individualSolution),
-      leadership: combineScores(prototypeLeadership, individualLeadership),
-      collaboration: combineScores(prototypeCollaboration, individualCollaboration),
-      development: combineScores(prototypeDevelopment, individualDevelopment),
+      // 主要スコア（刻みと上限を適用）
+      problem: combineScores(prototypeProblem, individualProblem, 'problem'),
+      solution: combineScores(prototypeSolution, individualSolution, 'solution'),
+      role: combineScores(prototypeRole, individualRole, 'role'),
+      leadership: combineScores(prototypeLeadership, individualLeadership, 'leadership'),
+      collaboration: combineScores(prototypeCollaboration, individualCollaboration, 'collaboration'),
+      development: combineScores(prototypeDevelopment, individualDevelopment, 'development'),
       // 問題把握の詳細スコア
       problemUnderstanding: calcDetailScoreProto('detail_problem_understanding'),
       problemEssence: calcDetailScoreProto('detail_problem_essence'),
@@ -425,27 +487,22 @@ export async function predictScoreFromAnswer(params: {
 
     // スコア分布を取得（各スコアフィールドごと）
     const [
-      overallDistribution,
       problemDistribution,
       solutionDistribution,
+      roleDistribution,
       leadershipDistribution,
       collaborationDistribution,
       developmentDistribution,
     ] = await Promise.all([
-      getScoreDistributionMap(supabase, caseId, question, 'overall'),
       getScoreDistributionMap(supabase, caseId, question, 'problem'),
       getScoreDistributionMap(supabase, caseId, question, 'solution'),
+      getScoreDistributionMap(supabase, caseId, question, 'role'),
       getScoreDistributionMap(supabase, caseId, question, 'leadership'),
       getScoreDistributionMap(supabase, caseId, question, 'collaboration'),
       getScoreDistributionMap(supabase, caseId, question, 'development'),
     ]);
 
     // 層別サンプリング（各スコアフィールドごとに個別実施）
-    const sampledOverall = stratifiedSampling(
-      filteredData.map((r: any) => ({ ...r, score: r.score_overall })),
-      'score',
-      HYBRID_CONFIG.maxPerBucket
-    );
     const sampledProblem = stratifiedSampling(
       filteredData.map((r: any) => ({ ...r, score: r.score_problem })),
       'score',
@@ -453,6 +510,11 @@ export async function predictScoreFromAnswer(params: {
     );
     const sampledSolution = stratifiedSampling(
       filteredData.map((r: any) => ({ ...r, score: r.score_solution })),
+      'score',
+      HYBRID_CONFIG.maxPerBucket
+    );
+    const sampledRole = stratifiedSampling(
+      filteredData.map((r: any) => ({ ...r, score: r.score_role })),
       'score',
       HYBRID_CONFIG.maxPerBucket
     );
@@ -478,22 +540,25 @@ export async function predictScoreFromAnswer(params: {
       if (validData.length === 0) return null;
       const weightedSum = validData.reduce((sum: number, r: any) => sum + r[field] * r.similarity, 0);
       const validSimilarity = validData.reduce((sum: number, r: any) => sum + r.similarity, 0);
-      return validSimilarity > 0 ? Math.round(weightedSum / validSimilarity) : null;
+      const rawScore = validSimilarity > 0 ? weightedSum / validSimilarity : null;
+      // 詳細スコアは刻み1、上限4で正規化
+      return normalizeDetailScore(rawScore);
     };
 
     // ハイブリッド手法で各スコアを計算
     predictedScores = {
-      // 主要スコア
-      overall: calculateWeightedScoreHybrid(sampledOverall, 'score_overall', overallDistribution),
-      problem: calculateWeightedScoreHybrid(sampledProblem, 'score_problem', problemDistribution),
-      solution: calculateWeightedScoreHybrid(sampledSolution, 'score_solution', solutionDistribution),
-      leadership: calculateWeightedScoreHybrid(sampledLeadership, 'score_leadership', leadershipDistribution),
+      // 主要スコア（刻みと上限を適用）
+      problem: calculateWeightedScoreHybrid(sampledProblem, 'score_problem', problemDistribution, 'problem'),
+      solution: calculateWeightedScoreHybrid(sampledSolution, 'score_solution', solutionDistribution, 'solution'),
+      role: calculateWeightedScoreHybrid(sampledRole, 'score_role', roleDistribution, 'role'),
+      leadership: calculateWeightedScoreHybrid(sampledLeadership, 'score_leadership', leadershipDistribution, 'leadership'),
       collaboration: calculateWeightedScoreHybrid(
         sampledCollaboration,
         'score_collaboration',
-        collaborationDistribution
+        collaborationDistribution,
+        'collaboration'
       ),
-      development: calculateWeightedScoreHybrid(sampledDevelopment, 'score_development', developmentDistribution),
+      development: calculateWeightedScoreHybrid(sampledDevelopment, 'score_development', developmentDistribution, 'development'),
       // 問題把握の詳細スコア
       problemUnderstanding: calcDetailScore('detail_problem_understanding'),
       problemEssence: calcDetailScore('detail_problem_essence'),
@@ -515,38 +580,44 @@ export async function predictScoreFromAnswer(params: {
     };
   } else {
     // 4c. 従来の単純な重み付き平均
-    const calculateSimpleWeightedScore = (data: any[], field: string): number | null => {
+    const calculateSimpleWeightedScore = (
+      data: any[],
+      field: string,
+      scoreField?: 'problem' | 'solution' | 'role' | 'leadership' | 'collaboration' | 'development'
+    ): number | null => {
       const validData = data.filter((r: any) => r[field] != null);
       if (validData.length === 0) return null;
 
       const weightedSum = validData.reduce((sum: number, r: any) => sum + r[field] * r.similarity, 0);
       const validSimilarity = validData.reduce((sum: number, r: any) => sum + r.similarity, 0);
-      return validSimilarity > 0 ? Math.round((weightedSum / validSimilarity) * 10) / 10 : null;
+      const rawScore = validSimilarity > 0 ? weightedSum / validSimilarity : null;
+      // スコアフィールドが指定されている場合は刻みと上限を適用
+      return scoreField ? normalizeMainScore(scoreField, rawScore) : normalizeDetailScore(rawScore);
     };
 
     predictedScores = {
-      // 主要スコア
-      overall: calculateSimpleWeightedScore(filteredData, 'score_overall'),
-      problem: calculateSimpleWeightedScore(filteredData, 'score_problem'),
-      solution: calculateSimpleWeightedScore(filteredData, 'score_solution'),
-      leadership: calculateSimpleWeightedScore(filteredData, 'score_leadership'),
-      collaboration: calculateSimpleWeightedScore(filteredData, 'score_collaboration'),
-      development: calculateSimpleWeightedScore(filteredData, 'score_development'),
-      // 問題把握の詳細スコア
+      // 主要スコア（刻みと上限を適用）
+      problem: calculateSimpleWeightedScore(filteredData, 'score_problem', 'problem'),
+      solution: calculateSimpleWeightedScore(filteredData, 'score_solution', 'solution'),
+      role: calculateSimpleWeightedScore(filteredData, 'score_role', 'role'),
+      leadership: calculateSimpleWeightedScore(filteredData, 'score_leadership', 'leadership'),
+      collaboration: calculateSimpleWeightedScore(filteredData, 'score_collaboration', 'collaboration'),
+      development: calculateSimpleWeightedScore(filteredData, 'score_development', 'development'),
+      // 問題把握の詳細スコア（刻み1、上限4）
       problemUnderstanding: calculateSimpleWeightedScore(filteredData, 'detail_problem_understanding'),
       problemEssence: calculateSimpleWeightedScore(filteredData, 'detail_problem_essence'),
       problemMaintenanceBiz: calculateSimpleWeightedScore(filteredData, 'detail_problem_maintenance_biz'),
       problemMaintenanceHr: calculateSimpleWeightedScore(filteredData, 'detail_problem_maintenance_hr'),
       problemReformBiz: calculateSimpleWeightedScore(filteredData, 'detail_problem_reform_biz'),
       problemReformHr: calculateSimpleWeightedScore(filteredData, 'detail_problem_reform_hr'),
-      // 対策立案の詳細スコア
+      // 対策立案の詳細スコア（刻み1、上限4）
       solutionCoverage: calculateSimpleWeightedScore(filteredData, 'detail_solution_coverage'),
       solutionPlanning: calculateSimpleWeightedScore(filteredData, 'detail_solution_planning'),
       solutionMaintenanceBiz: calculateSimpleWeightedScore(filteredData, 'detail_solution_maintenance_biz'),
       solutionMaintenanceHr: calculateSimpleWeightedScore(filteredData, 'detail_solution_maintenance_hr'),
       solutionReformBiz: calculateSimpleWeightedScore(filteredData, 'detail_solution_reform_biz'),
       solutionReformHr: calculateSimpleWeightedScore(filteredData, 'detail_solution_reform_hr'),
-      // 連携の詳細スコア
+      // 連携の詳細スコア（刻み1、上限4）
       collabSupervisor: calculateSimpleWeightedScore(filteredData, 'detail_collab_supervisor'),
       collabExternal: calculateSimpleWeightedScore(filteredData, 'detail_collab_external'),
       collabMember: calculateSimpleWeightedScore(filteredData, 'detail_collab_member'),
@@ -582,15 +653,31 @@ export async function predictScoreFromAnswer(params: {
     // 早期チェックで無効と判定された場合
     isValidAnswer = false;
     earlyCheckResult = earlyCheck;
-    
-    // すべてのスコアを無効回答用のスコアに設定
+
+    // すべてのスコアを無効回答用のスコアに設定（詳細スコアはエンベディングベースを保持）
     predictedScores = {
-      overall: AI_SCORING_CONFIG.invalidAnswerScore,
       problem: question === 'q1' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       solution: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
+      role: AI_SCORING_CONFIG.invalidAnswerScore,
       leadership: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       collaboration: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       development: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
+      // 詳細スコア（エンベディングベースを保持、刻み1、上限4で正規化）
+      problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
+      problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
+      problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
+      problemMaintenanceHr: normalizeDetailScore(embeddingScores.problemMaintenanceHr),
+      problemReformBiz: normalizeDetailScore(embeddingScores.problemReformBiz),
+      problemReformHr: normalizeDetailScore(embeddingScores.problemReformHr),
+      solutionCoverage: normalizeDetailScore(embeddingScores.solutionCoverage),
+      solutionPlanning: normalizeDetailScore(embeddingScores.solutionPlanning),
+      solutionMaintenanceBiz: normalizeDetailScore(embeddingScores.solutionMaintenanceBiz),
+      solutionMaintenanceHr: normalizeDetailScore(embeddingScores.solutionMaintenanceHr),
+      solutionReformBiz: normalizeDetailScore(embeddingScores.solutionReformBiz),
+      solutionReformHr: normalizeDetailScore(embeddingScores.solutionReformHr),
+      collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
+      collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
+      collabMember: normalizeDetailScore(embeddingScores.collabMember),
     };
   }
 
@@ -598,9 +685,9 @@ export async function predictScoreFromAnswer(params: {
   const similarExamples: SimilarResponse[] = filteredData.slice(0, 5).map((r: any) => ({
     responseId: r.response_id,
     scores: {
-      overall: r.score_overall != null ? Math.round(r.score_overall * 10) / 10 : null,
       problem: r.score_problem != null ? Math.round(r.score_problem * 10) / 10 : null,
       solution: r.score_solution != null ? Math.round(r.score_solution * 10) / 10 : null,
+      role: r.score_role != null ? Math.round(r.score_role * 10) / 10 : null,
       leadership: r.score_leadership != null ? Math.round(r.score_leadership * 10) / 10 : null,
       collaboration: r.score_collaboration != null ? Math.round(r.score_collaboration * 10) / 10 : null,
       development: r.score_development != null ? Math.round(r.score_development * 10) / 10 : null,
@@ -644,32 +731,73 @@ export async function predictScoreFromAnswer(params: {
       question,
       answerText,
       similarExamples: scoringExamples,
-      embeddingPredictedScores: embeddingScores,
+      embeddingPredictedScores: {
+        problem: embeddingScores.problem,
+        solution: embeddingScores.solution,
+        role: embeddingScores.role,
+        leadership: embeddingScores.leadership,
+        collaboration: embeddingScores.collaboration,
+        development: embeddingScores.development,
+      },
       confidence: roundedConfidence,
     });
 
     // AIの評価結果を反映
     isValidAnswer = aiResult.isValidAnswer;
     
-    if (aiResult.isValidAnswer && aiResult.scores.overall !== null) {
-      // 有効な回答の場合、AIが返したスコアを使用
+    if (aiResult.isValidAnswer && aiResult.scores.problem !== null) {
+      // 有効な回答の場合、AIが返した主要スコアを使用し、詳細スコアはエンベディングベースのものを保持
+      // AI評価の結果は既に正規化されているが、念のため再度正規化を適用
       predictedScores = {
-        overall: aiResult.scores.overall,
-        problem: aiResult.scores.problem,
-        solution: aiResult.scores.solution,
-        leadership: aiResult.scores.leadership,
-        collaboration: aiResult.scores.collaboration,
-        development: aiResult.scores.development,
+        // 主要スコア（AI評価、刻みと上限を適用）
+        problem: normalizeMainScore('problem', aiResult.scores.problem),
+        solution: normalizeMainScore('solution', aiResult.scores.solution),
+        role: normalizeMainScore('role', aiResult.scores.role),
+        leadership: normalizeMainScore('leadership', aiResult.scores.leadership),
+        collaboration: normalizeMainScore('collaboration', aiResult.scores.collaboration),
+        development: normalizeMainScore('development', aiResult.scores.development),
+        // 詳細スコア（エンベディングベースを保持、刻み1、上限4で正規化）
+        problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
+        problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
+        problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
+        problemMaintenanceHr: normalizeDetailScore(embeddingScores.problemMaintenanceHr),
+        problemReformBiz: normalizeDetailScore(embeddingScores.problemReformBiz),
+        problemReformHr: normalizeDetailScore(embeddingScores.problemReformHr),
+        solutionCoverage: normalizeDetailScore(embeddingScores.solutionCoverage),
+        solutionPlanning: normalizeDetailScore(embeddingScores.solutionPlanning),
+        solutionMaintenanceBiz: normalizeDetailScore(embeddingScores.solutionMaintenanceBiz),
+        solutionMaintenanceHr: normalizeDetailScore(embeddingScores.solutionMaintenanceHr),
+        solutionReformBiz: normalizeDetailScore(embeddingScores.solutionReformBiz),
+        solutionReformHr: normalizeDetailScore(embeddingScores.solutionReformHr),
+        collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
+        collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
+        collabMember: normalizeDetailScore(embeddingScores.collabMember),
       };
     } else if (!aiResult.isValidAnswer) {
-      // AIが無効と判断した場合
+      // AIが無効と判断した場合（詳細スコアはエンベディングベースを保持）
       predictedScores = {
-        overall: AI_SCORING_CONFIG.invalidAnswerScore,
         problem: question === 'q1' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         solution: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
+        role: AI_SCORING_CONFIG.invalidAnswerScore,
         leadership: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         collaboration: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         development: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
+        // 詳細スコア（エンベディングベースを保持、刻み1、上限4で正規化）
+        problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
+        problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
+        problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
+        problemMaintenanceHr: normalizeDetailScore(embeddingScores.problemMaintenanceHr),
+        problemReformBiz: normalizeDetailScore(embeddingScores.problemReformBiz),
+        problemReformHr: normalizeDetailScore(embeddingScores.problemReformHr),
+        solutionCoverage: normalizeDetailScore(embeddingScores.solutionCoverage),
+        solutionPlanning: normalizeDetailScore(embeddingScores.solutionPlanning),
+        solutionMaintenanceBiz: normalizeDetailScore(embeddingScores.solutionMaintenanceBiz),
+        solutionMaintenanceHr: normalizeDetailScore(embeddingScores.solutionMaintenanceHr),
+        solutionReformBiz: normalizeDetailScore(embeddingScores.solutionReformBiz),
+        solutionReformHr: normalizeDetailScore(embeddingScores.solutionReformHr),
+        collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
+        collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
+        collabMember: normalizeDetailScore(embeddingScores.collabMember),
       };
     }
     
@@ -699,8 +827,8 @@ function generateExplanation(
   examples: SimilarResponse[],
   confidence: number
 ): string {
-  const overallScore = scores.overall || scores.problem || 0;
-  const scoreLevel = overallScore >= 3.5 ? '高評価' : overallScore >= 2.5 ? '中程度' : '低評価';
+  const representativeScore = scores.problem || scores.solution || 0;
+  const scoreLevel = representativeScore >= 3.5 ? '高評価' : representativeScore >= 2.5 ? '中程度' : '低評価';
 
   let explanation = `この回答は過去の${scoreLevel}回答に類似しています。`;
 
@@ -844,21 +972,40 @@ export async function predictScoreForNewCase(params: {
   // 5. エンベディング予測を計算（参考表示用、AIの最終判断には使用しない）
   const totalSimilarity = responsesData.reduce((sum: number, r: any) => sum + r.similarity, 0);
   
-  // エンベディングベースの予測スコア（参考値として計算）
+  // エンベディングベースの予測スコア（参考値として計算、詳細スコアも含む）
   const embeddingScores: ScoreItems = {
-    overall: calculateWeightedScore(responsesData, 'score_overall', totalSimilarity),
-    problem: calculateWeightedScore(responsesData, 'score_problem', totalSimilarity),
-    solution: calculateWeightedScore(responsesData, 'score_solution', totalSimilarity),
-    leadership: calculateWeightedScore(responsesData, 'score_leadership', totalSimilarity),
-    collaboration: calculateWeightedScore(responsesData, 'score_collaboration', totalSimilarity),
-    development: calculateWeightedScore(responsesData, 'score_development', totalSimilarity),
+    // 主要スコア（刻みと上限を適用）
+    problem: calculateWeightedScore(responsesData, 'score_problem', totalSimilarity, 'problem'),
+    solution: calculateWeightedScore(responsesData, 'score_solution', totalSimilarity, 'solution'),
+    role: calculateWeightedScore(responsesData, 'score_role', totalSimilarity, 'role'),
+    leadership: calculateWeightedScore(responsesData, 'score_leadership', totalSimilarity, 'leadership'),
+    collaboration: calculateWeightedScore(responsesData, 'score_collaboration', totalSimilarity, 'collaboration'),
+    development: calculateWeightedScore(responsesData, 'score_development', totalSimilarity, 'development'),
+    // 問題把握の詳細スコア（刻み1、上限4）
+    problemUnderstanding: calculateWeightedScore(responsesData, 'detail_problem_understanding', totalSimilarity),
+    problemEssence: calculateWeightedScore(responsesData, 'detail_problem_essence', totalSimilarity),
+    problemMaintenanceBiz: calculateWeightedScore(responsesData, 'detail_problem_maintenance_biz', totalSimilarity),
+    problemMaintenanceHr: calculateWeightedScore(responsesData, 'detail_problem_maintenance_hr', totalSimilarity),
+    problemReformBiz: calculateWeightedScore(responsesData, 'detail_problem_reform_biz', totalSimilarity),
+    problemReformHr: calculateWeightedScore(responsesData, 'detail_problem_reform_hr', totalSimilarity),
+    // 対策立案の詳細スコア（刻み1、上限4）
+    solutionCoverage: calculateWeightedScore(responsesData, 'detail_solution_coverage', totalSimilarity),
+    solutionPlanning: calculateWeightedScore(responsesData, 'detail_solution_planning', totalSimilarity),
+    solutionMaintenanceBiz: calculateWeightedScore(responsesData, 'detail_solution_maintenance_biz', totalSimilarity),
+    solutionMaintenanceHr: calculateWeightedScore(responsesData, 'detail_solution_maintenance_hr', totalSimilarity),
+    solutionReformBiz: calculateWeightedScore(responsesData, 'detail_solution_reform_biz', totalSimilarity),
+    solutionReformHr: calculateWeightedScore(responsesData, 'detail_solution_reform_hr', totalSimilarity),
+    // 連携の詳細スコア（刻み1、上限4）
+    collabSupervisor: calculateWeightedScore(responsesData, 'detail_collab_supervisor', totalSimilarity),
+    collabExternal: calculateWeightedScore(responsesData, 'detail_collab_external', totalSimilarity),
+    collabMember: calculateWeightedScore(responsesData, 'detail_collab_member', totalSimilarity),
   };
-  
+
   // 最終スコア（AIが決定、初期値はnull）
   let predictedScores: ScoreItems = {
-    overall: null,
     problem: null,
     solution: null,
+    role: null,
     leadership: null,
     collaboration: null,
     development: null,
@@ -888,15 +1035,31 @@ export async function predictScoreForNewCase(params: {
     // 早期チェックで無効と判定された場合
     isValidAnswer = false;
     earlyCheckResult = earlyCheck;
-    
-    // すべてのスコアを無効回答用のスコアに設定
+
+    // すべてのスコアを無効回答用のスコアに設定（詳細スコアはエンベディングベースを保持）
     predictedScores = {
-      overall: AI_SCORING_CONFIG.invalidAnswerScore,
       problem: question === 'q1' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       solution: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
+      role: AI_SCORING_CONFIG.invalidAnswerScore,
       leadership: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       collaboration: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       development: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
+      // 詳細スコア（エンベディングベースを保持、刻み1、上限4で正規化）
+      problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
+      problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
+      problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
+      problemMaintenanceHr: normalizeDetailScore(embeddingScores.problemMaintenanceHr),
+      problemReformBiz: normalizeDetailScore(embeddingScores.problemReformBiz),
+      problemReformHr: normalizeDetailScore(embeddingScores.problemReformHr),
+      solutionCoverage: normalizeDetailScore(embeddingScores.solutionCoverage),
+      solutionPlanning: normalizeDetailScore(embeddingScores.solutionPlanning),
+      solutionMaintenanceBiz: normalizeDetailScore(embeddingScores.solutionMaintenanceBiz),
+      solutionMaintenanceHr: normalizeDetailScore(embeddingScores.solutionMaintenanceHr),
+      solutionReformBiz: normalizeDetailScore(embeddingScores.solutionReformBiz),
+      solutionReformHr: normalizeDetailScore(embeddingScores.solutionReformHr),
+      collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
+      collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
+      collabMember: normalizeDetailScore(embeddingScores.collabMember),
     };
   }
 
@@ -904,9 +1067,9 @@ export async function predictScoreForNewCase(params: {
   const similarExamples: SimilarResponse[] = responsesData.slice(0, 5).map((r: any) => ({
     responseId: r.response_id,
     scores: {
-      overall: r.score_overall != null ? Math.round(r.score_overall * 10) / 10 : null,
       problem: r.score_problem != null ? Math.round(r.score_problem * 10) / 10 : null,
       solution: r.score_solution != null ? Math.round(r.score_solution * 10) / 10 : null,
+      role: r.score_role != null ? Math.round(r.score_role * 10) / 10 : null,
       leadership: r.score_leadership != null ? Math.round(r.score_leadership * 10) / 10 : null,
       collaboration: r.score_collaboration != null ? Math.round(r.score_collaboration * 10) / 10 : null,
       development: r.score_development != null ? Math.round(r.score_development * 10) / 10 : null,
@@ -967,25 +1130,59 @@ export async function predictScoreForNewCase(params: {
     // AIの評価結果を反映
     isValidAnswer = aiResult.isValidAnswer;
     
-    if (aiResult.isValidAnswer && aiResult.scores.overall !== null) {
-      // 有効な回答の場合、AIが返したスコアを使用
+    if (aiResult.isValidAnswer && aiResult.scores.problem !== null) {
+      // 有効な回答の場合、AIが返した主要スコアを使用し、詳細スコアはエンベディングベースのものを保持
+      // AI評価の結果は既に正規化されているが、念のため再度正規化を適用
       predictedScores = {
-        overall: aiResult.scores.overall,
-        problem: aiResult.scores.problem,
-        solution: aiResult.scores.solution,
-        leadership: aiResult.scores.leadership,
-        collaboration: aiResult.scores.collaboration,
-        development: aiResult.scores.development,
+        // 主要スコア（AI評価、刻みと上限を適用）
+        problem: normalizeMainScore('problem', aiResult.scores.problem),
+        solution: normalizeMainScore('solution', aiResult.scores.solution),
+        role: normalizeMainScore('role', aiResult.scores.role),
+        leadership: normalizeMainScore('leadership', aiResult.scores.leadership),
+        collaboration: normalizeMainScore('collaboration', aiResult.scores.collaboration),
+        development: normalizeMainScore('development', aiResult.scores.development),
+        // 詳細スコア（エンベディングベースを保持、刻み1、上限4で正規化）
+        problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
+        problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
+        problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
+        problemMaintenanceHr: normalizeDetailScore(embeddingScores.problemMaintenanceHr),
+        problemReformBiz: normalizeDetailScore(embeddingScores.problemReformBiz),
+        problemReformHr: normalizeDetailScore(embeddingScores.problemReformHr),
+        solutionCoverage: normalizeDetailScore(embeddingScores.solutionCoverage),
+        solutionPlanning: normalizeDetailScore(embeddingScores.solutionPlanning),
+        solutionMaintenanceBiz: normalizeDetailScore(embeddingScores.solutionMaintenanceBiz),
+        solutionMaintenanceHr: normalizeDetailScore(embeddingScores.solutionMaintenanceHr),
+        solutionReformBiz: normalizeDetailScore(embeddingScores.solutionReformBiz),
+        solutionReformHr: normalizeDetailScore(embeddingScores.solutionReformHr),
+        collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
+        collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
+        collabMember: normalizeDetailScore(embeddingScores.collabMember),
       };
     } else if (!aiResult.isValidAnswer) {
-      // AIが無効と判断した場合
+      // AIが無効と判断した場合（詳細スコアはエンベディングベースを保持）
       predictedScores = {
-        overall: AI_SCORING_CONFIG.invalidAnswerScore,
         problem: question === 'q1' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         solution: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
+        role: AI_SCORING_CONFIG.invalidAnswerScore,
         leadership: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         collaboration: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         development: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
+        // 詳細スコア（エンベディングベースを保持、刻み1、上限4で正規化）
+        problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
+        problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
+        problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
+        problemMaintenanceHr: normalizeDetailScore(embeddingScores.problemMaintenanceHr),
+        problemReformBiz: normalizeDetailScore(embeddingScores.problemReformBiz),
+        problemReformHr: normalizeDetailScore(embeddingScores.problemReformHr),
+        solutionCoverage: normalizeDetailScore(embeddingScores.solutionCoverage),
+        solutionPlanning: normalizeDetailScore(embeddingScores.solutionPlanning),
+        solutionMaintenanceBiz: normalizeDetailScore(embeddingScores.solutionMaintenanceBiz),
+        solutionMaintenanceHr: normalizeDetailScore(embeddingScores.solutionMaintenanceHr),
+        solutionReformBiz: normalizeDetailScore(embeddingScores.solutionReformBiz),
+        solutionReformHr: normalizeDetailScore(embeddingScores.solutionReformHr),
+        collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
+        collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
+        collabMember: normalizeDetailScore(embeddingScores.collabMember),
       };
     }
     
@@ -1014,7 +1211,8 @@ export async function predictScoreForNewCase(params: {
 function calculateWeightedScore(
   data: any[],
   field: string,
-  _totalSimilarity: number // 未使用だが互換性のため残す
+  _totalSimilarity: number, // 未使用だが互換性のため残す
+  scoreField?: 'problem' | 'solution' | 'role' | 'leadership' | 'collaboration' | 'development'
 ): number | null {
   const validData = data.filter((r: any) => r[field] != null);
   if (validData.length === 0) return null;
@@ -1033,7 +1231,10 @@ function calculateWeightedScore(
     totalWeight += weight;
   }
 
-  return totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 10) / 10 : null;
+  const rawScore = totalWeight > 0 ? weightedSum / totalWeight : null;
+  // スコアフィールドが指定されている場合は刻みと上限を適用
+  // 詳細スコアの場合は刻み1、上限4で正規化
+  return scoreField ? normalizeMainScore(scoreField, rawScore) : normalizeDetailScore(rawScore);
 }
 
 // 未知ケース用の説明文を生成
@@ -1043,8 +1244,8 @@ function generateNewCaseExplanation(
   examples: SimilarResponse[],
   confidence: number
 ): string {
-  const overallScore = scores.overall || scores.problem || 0;
-  const scoreLevel = overallScore >= 3.5 ? '高評価' : overallScore >= 2.5 ? '中程度' : '低評価';
+  const representativeScore = scores.problem || scores.solution || 0;
+  const scoreLevel = representativeScore >= 3.5 ? '高評価' : representativeScore >= 2.5 ? '中程度' : '低評価';
   const topCase = similarCases[0];
 
   let explanation = `入力されたシチュエーションは「${topCase.caseName || topCase.caseId}」（類似度${(topCase.similarity * 100).toFixed(0)}%）に最も類似しています。`;
