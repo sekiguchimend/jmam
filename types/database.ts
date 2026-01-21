@@ -638,6 +638,17 @@ export type Database = {
           comment_overall: string | null;
         }>;
       };
+      update_score_distribution: {
+        Args: {
+          p_case_id: string;
+          p_question: string;
+        };
+        Returns: void;
+      };
+      update_all_score_distributions: {
+        Args: Record<string, never>;
+        Returns: void;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

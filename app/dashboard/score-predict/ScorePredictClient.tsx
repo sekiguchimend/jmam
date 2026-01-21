@@ -258,114 +258,139 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
             </div>
 
             {/* スコア階層構造（ツリー形式） */}
-            <div className="space-y-2 font-mono text-sm">
-              {/* 問題把握 */}
-              {problemResult.predictedScores.problem != null && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span style={{ color: "#323232" }}>├──</span>
-                    <span className="font-bold" style={{ color: "#323232" }}>問題把握</span>
-                    <span className="font-black ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problem.toFixed(1)}</span>
+            <div className="p-4 rounded-lg" style={{ background: "#fafafa", maxWidth: "600px" }}>
+              <div className="text-sm" style={{ marginLeft: "8px" }}>
+                {/* 問題把握 */}
+                {problemResult.predictedScores.problem != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>問題把握</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{problemResult.predictedScores.problem.toFixed(1)}</span>
+                    </div>
+                    {/* 子項目 */}
+                    <div className="relative" style={{ paddingLeft: "16px" }}>
+                      <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "10px" }}></div>
+                      {problemResult.predictedScores.problemUnderstanding != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>状況理解</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemUnderstanding}</span>
+                        </div>
+                      )}
+                      {problemResult.predictedScores.problemEssence != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>本質把握</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemEssence}</span>
+                        </div>
+                      )}
+                      {problemResult.predictedScores.problemMaintenanceBiz != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>維持・業務</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemMaintenanceBiz}</span>
+                        </div>
+                      )}
+                      {problemResult.predictedScores.problemMaintenanceHr != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>維持・人</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemMaintenanceHr}</span>
+                        </div>
+                      )}
+                      {problemResult.predictedScores.problemReformBiz != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>改革・業務</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemReformBiz}</span>
+                        </div>
+                      )}
+                      {problemResult.predictedScores.problemReformHr != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>改革・人</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemReformHr}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {problemResult.predictedScores.problemUnderstanding != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>状況理解</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemUnderstanding}</span>
-                    </div>
-                  )}
-                  {problemResult.predictedScores.problemEssence != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>本質把握</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemEssence}</span>
-                    </div>
-                  )}
-                  {problemResult.predictedScores.problemMaintenanceBiz != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>維持・業務</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemMaintenanceBiz}</span>
-                    </div>
-                  )}
-                  {problemResult.predictedScores.problemMaintenanceHr != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>維持・人</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemMaintenanceHr}</span>
-                    </div>
-                  )}
-                  {problemResult.predictedScores.problemReformBiz != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>改革・業務</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemReformBiz}</span>
-                    </div>
-                  )}
-                  {problemResult.predictedScores.problemReformHr != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>└──</span>
-                      <span style={{ color: "#323232" }}>改革・人</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.problemReformHr}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
 
-              {/* 役割理解 */}
-              {problemResult.predictedScores.role != null && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span style={{ color: "#323232" }}>└──</span>
-                    <span className="font-bold" style={{ color: "#323232" }}>役割理解</span>
-                    <span className="font-black ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.role.toFixed(1)}</span>
-                  </div>
-                  {problemResult.predictedScores.leadership != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>主導</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.leadership.toFixed(1)}</span>
+                {/* 役割理解 */}
+                {problemResult.predictedScores.role != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>役割理解</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{problemResult.predictedScores.role.toFixed(1)}</span>
                     </div>
-                  )}
-                  {problemResult.predictedScores.collaboration != null && (
-                    <div>
-                      <div className="flex items-center gap-2 ml-6">
-                        <span style={{ color: "#323232" }}>├──</span>
-                        <span style={{ color: "#323232" }}>連携</span>
-                        <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.collaboration.toFixed(1)}</span>
-                      </div>
+                  </div>
+                )}
+
+                {/* 主導 */}
+                {problemResult.predictedScores.leadership != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>主導</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{problemResult.predictedScores.leadership.toFixed(1)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 連携 */}
+                {problemResult.predictedScores.collaboration != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>連携</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{problemResult.predictedScores.collaboration.toFixed(1)}</span>
+                    </div>
+                    {/* 子項目 */}
+                    <div className="relative" style={{ paddingLeft: "16px" }}>
+                      <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "10px" }}></div>
                       {problemResult.predictedScores.collabSupervisor != null && (
-                        <div className="flex items-center gap-2 ml-12">
-                          <span style={{ color: "#323232" }}>├──</span>
-                          <span style={{ color: "#323232" }}>上司</span>
-                          <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.collabSupervisor}</span>
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>上司</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.collabSupervisor}</span>
                         </div>
                       )}
                       {problemResult.predictedScores.collabExternal != null && (
-                        <div className="flex items-center gap-2 ml-12">
-                          <span style={{ color: "#323232" }}>├──</span>
-                          <span style={{ color: "#323232" }}>職場外</span>
-                          <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.collabExternal}</span>
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>職場外</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.collabExternal}</span>
                         </div>
                       )}
                       {problemResult.predictedScores.collabMember != null && (
-                        <div className="flex items-center gap-2 ml-12">
-                          <span style={{ color: "#323232" }}>└──</span>
-                          <span style={{ color: "#323232" }}>メンバー</span>
-                          <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.collabMember}</span>
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>メンバー</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.collabMember}</span>
                         </div>
                       )}
                     </div>
-                  )}
-                  {problemResult.predictedScores.development != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>└──</span>
-                      <span style={{ color: "#323232" }}>育成</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{problemResult.predictedScores.development.toFixed(1)}</span>
+                  </div>
+                )}
+
+                {/* 育成（最後の項目） */}
+                {problemResult.predictedScores.development != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, height: "12px" }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>育成</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{problemResult.predictedScores.development.toFixed(1)}</span>
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -448,114 +473,137 @@ export function ScorePredictClient({ cases }: ScorePredictClientProps) {
             </div>
 
             {/* スコア階層構造（ツリー形式） */}
-            <div className="space-y-2 font-mono text-sm">
-              {/* 対策立案 */}
-              {solutionResult.predictedScores.solution != null && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span style={{ color: "#323232" }}>├──</span>
-                    <span className="font-bold" style={{ color: "#323232" }}>対策立案</span>
-                    <span className="font-black ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solution.toFixed(1)}</span>
+            <div className="p-4 rounded-lg" style={{ background: "#fafafa", maxWidth: "600px" }}>
+              <div className="text-sm" style={{ marginLeft: "8px" }}>
+                {/* 対策立案 */}
+                {solutionResult.predictedScores.solution != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>対策立案</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{solutionResult.predictedScores.solution.toFixed(1)}</span>
+                    </div>
+                    <div className="relative" style={{ paddingLeft: "16px" }}>
+                      <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "10px" }}></div>
+                      {solutionResult.predictedScores.solutionCoverage != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>網羅性</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionCoverage}</span>
+                        </div>
+                      )}
+                      {solutionResult.predictedScores.solutionPlanning != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>計画性</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionPlanning}</span>
+                        </div>
+                      )}
+                      {solutionResult.predictedScores.solutionMaintenanceBiz != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>維持・業務</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionMaintenanceBiz}</span>
+                        </div>
+                      )}
+                      {solutionResult.predictedScores.solutionMaintenanceHr != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>維持・人</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionMaintenanceHr}</span>
+                        </div>
+                      )}
+                      {solutionResult.predictedScores.solutionReformBiz != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>改革・業務</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionReformBiz}</span>
+                        </div>
+                      )}
+                      {solutionResult.predictedScores.solutionReformHr != null && (
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>改革・人</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionReformHr}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {solutionResult.predictedScores.solutionCoverage != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>網羅性</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionCoverage}</span>
-                    </div>
-                  )}
-                  {solutionResult.predictedScores.solutionPlanning != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>計画性</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionPlanning}</span>
-                    </div>
-                  )}
-                  {solutionResult.predictedScores.solutionMaintenanceBiz != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>維持・業務</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionMaintenanceBiz}</span>
-                    </div>
-                  )}
-                  {solutionResult.predictedScores.solutionMaintenanceHr != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>維持・人</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionMaintenanceHr}</span>
-                    </div>
-                  )}
-                  {solutionResult.predictedScores.solutionReformBiz != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>改革・業務</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionReformBiz}</span>
-                    </div>
-                  )}
-                  {solutionResult.predictedScores.solutionReformHr != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>└──</span>
-                      <span style={{ color: "#323232" }}>改革・人</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.solutionReformHr}</span>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
 
-              {/* 役割理解 */}
-              {solutionResult.predictedScores.role != null && (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span style={{ color: "#323232" }}>└──</span>
-                    <span className="font-bold" style={{ color: "#323232" }}>役割理解</span>
-                    <span className="font-black ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.role.toFixed(1)}</span>
-                  </div>
-                  {solutionResult.predictedScores.leadership != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>├──</span>
-                      <span style={{ color: "#323232" }}>主導</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.leadership.toFixed(1)}</span>
+                {/* 役割理解 */}
+                {solutionResult.predictedScores.role != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>役割理解</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{solutionResult.predictedScores.role.toFixed(1)}</span>
                     </div>
-                  )}
-                  {solutionResult.predictedScores.collaboration != null && (
-                    <div>
-                      <div className="flex items-center gap-2 ml-6">
-                        <span style={{ color: "#323232" }}>├──</span>
-                        <span style={{ color: "#323232" }}>連携</span>
-                        <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.collaboration.toFixed(1)}</span>
-                      </div>
+                  </div>
+                )}
+
+                {/* 主導 */}
+                {solutionResult.predictedScores.leadership != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>主導</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{solutionResult.predictedScores.leadership.toFixed(1)}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 連携 */}
+                {solutionResult.predictedScores.collaboration != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>連携</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{solutionResult.predictedScores.collaboration.toFixed(1)}</span>
+                    </div>
+                    <div className="relative" style={{ paddingLeft: "16px" }}>
+                      <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "10px" }}></div>
                       {solutionResult.predictedScores.collabSupervisor != null && (
-                        <div className="flex items-center gap-2 ml-12">
-                          <span style={{ color: "#323232" }}>├──</span>
-                          <span style={{ color: "#323232" }}>上司</span>
-                          <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.collabSupervisor}</span>
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>上司</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.collabSupervisor}</span>
                         </div>
                       )}
                       {solutionResult.predictedScores.collabExternal != null && (
-                        <div className="flex items-center gap-2 ml-12">
-                          <span style={{ color: "#323232" }}>├──</span>
-                          <span style={{ color: "#323232" }}>職場外</span>
-                          <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.collabExternal}</span>
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>職場外</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.collabExternal}</span>
                         </div>
                       )}
                       {solutionResult.predictedScores.collabMember != null && (
-                        <div className="flex items-center gap-2 ml-12">
-                          <span style={{ color: "#323232" }}>└──</span>
-                          <span style={{ color: "#323232" }}>メンバー</span>
-                          <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.collabMember}</span>
+                        <div className="relative flex items-center" style={{ height: "24px" }}>
+                          <div className="absolute h-px" style={{ background: "#cbd5e1", left: "-15px", top: "12px", width: "15px" }}></div>
+                          <span className="text-xs" style={{ color: "#64748b" }}>メンバー</span>
+                          <span className="text-xs font-semibold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.collabMember}</span>
                         </div>
                       )}
                     </div>
-                  )}
-                  {solutionResult.predictedScores.development != null && (
-                    <div className="flex items-center gap-2 ml-6">
-                      <span style={{ color: "#323232" }}>└──</span>
-                      <span style={{ color: "#323232" }}>育成</span>
-                      <span className="font-bold ml-auto" style={{ color: "#323232" }}>{solutionResult.predictedScores.development.toFixed(1)}</span>
+                  </div>
+                )}
+
+                {/* 育成（最後の項目） */}
+                {solutionResult.predictedScores.development != null && (
+                  <div className="relative" style={{ paddingLeft: "16px" }}>
+                    <div className="absolute w-px" style={{ background: "#cbd5e1", left: 0, top: 0, height: "12px" }}></div>
+                    <div className="absolute h-px" style={{ background: "#cbd5e1", left: "1px", top: "12px", width: "15px" }}></div>
+                    <div className="flex items-center" style={{ height: "24px" }}>
+                      <span className="font-bold text-sm" style={{ color: "#6366f1" }}>育成</span>
+                      <span className="font-black text-base ml-auto" style={{ color: "#6366f1" }}>{solutionResult.predictedScores.development.toFixed(1)}</span>
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

@@ -350,10 +350,11 @@ function formatEmbeddingScores(scores: AIScoringRequest['embeddingPredictedScore
     return '（エンベディング予測値なし）';
   }
   if (question === 'q1') {
-    return `- 問題把握（参考値）: ${scores.problem ?? scores.overall ?? '不明'}点`;
+    return `- 問題把握（参考値）: ${scores.problem ?? '不明'}点
+- 役割理解: ${scores.role ?? '不明'}点`;
   }
-  return `- 総合（参考値）: ${scores.overall ?? '不明'}点
-- 対策立案: ${scores.solution ?? '不明'}点
+  return `- 対策立案（参考値）: ${scores.solution ?? '不明'}点
+- 役割理解: ${scores.role ?? '不明'}点
 - 主導: ${scores.leadership ?? '不明'}点
 - 連携: ${scores.collaboration ?? '不明'}点
 - 育成: ${scores.development ?? '不明'}点`;
@@ -587,7 +588,7 @@ function generateFallbackExplanation(request: AIScoringRequest, isValid: boolean
   }
 
   const { embeddingPredictedScores, confidence, similarExamples, question } = request;
-  const predictedScore = embeddingPredictedScores.overall || embeddingPredictedScores.problem || 2.5;
+  const predictedScore = embeddingPredictedScores.problem || embeddingPredictedScores.solution || 2.5;
   const avgScore = similarExamples.length > 0
     ? similarExamples.reduce((sum, ex) => sum + ex.score, 0) / similarExamples.length
     : predictedScore;

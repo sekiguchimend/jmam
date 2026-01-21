@@ -456,7 +456,7 @@ export async function updateCaseSituation(
     .from('cases')
     .update({
       situation_text: data.situation_text,
-      situation_embedding: data.situation_embedding as unknown as string,
+      situation_embedding: data.situation_embedding,
       embedding_model: data.embedding_model,
     })
     .eq('case_id', caseId);
