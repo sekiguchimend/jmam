@@ -139,52 +139,48 @@ function NavItem({
 // システム概要セクション
 function OverviewSection() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-black mb-3" style={{ color: "#323232" }}>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: "#1a1a1a" }}>
           システム概要
         </h2>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "#323232" }}>
-          このシステムは、ケーススタディに対する回答を評価し、スコアを予測するAI支援システムです。
+        <p className="text-base leading-relaxed" style={{ color: "#666" }}>
+          ケーススタディに対する回答を評価し、スコアを予測するAI支援システムです。
           過去の回答データとAI分析を組み合わせて、より正確なスコア予測を提供します。
         </p>
       </div>
 
       <div className="space-y-4">
+        <h3 className="text-lg font-bold mb-3" style={{ color: "#1a1a1a" }}>主な機能</h3>
         <FeatureCard
-          icon={<Calculator className="w-6 h-6" style={{ color: "var(--primary)" }} />}
+          icon={<Calculator className="w-5 h-5" style={{ color: "var(--primary)" }} />}
           title="スコア予測"
           description="既存のケースに対する回答のスコアを予測します。類似回答との比較とAI分析により、6つの主要スコアと15の詳細スコアを算出します。"
         />
         <FeatureCard
-          icon={<Search className="w-6 h-6" style={{ color: "var(--primary)" }} />}
+          icon={<Search className="w-5 h-5" style={{ color: "var(--primary)" }} />}
           title="新規ケース予測"
           description="新しいシチュエーションを入力して、類似ケースを見つけながらスコアを予測します。未知の状況でも過去の類似事例から学習します。"
         />
         <FeatureCard
-          icon={<TrendingUp className="w-6 h-6" style={{ color: "var(--primary)" }} />}
+          icon={<TrendingUp className="w-5 h-5" style={{ color: "var(--primary)" }} />}
           title="スコア参照"
           description="過去の回答とそのスコアを確認できます。学習や参考資料として活用できます。"
         />
       </div>
 
-      <div className="p-4 rounded-lg" style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
-        <div className="flex items-start gap-3">
-          <Lightbulb className="w-5 h-5 flex-shrink-0" style={{ color: "var(--primary)" }} />
-          <div>
-            <h3 className="text-sm font-bold mb-1" style={{ color: "#323232" }}>
-              評価される6つの主要スコア
-            </h3>
-            <ul className="text-sm space-y-1" style={{ color: "#323232" }}>
-              <li>• <strong>問題把握</strong>: 状況の理解と問題の本質把握</li>
-              <li>• <strong>対策立案</strong>: 具体的な解決策の立案</li>
-              <li>• <strong>役割理解</strong>: 自身の役割の認識</li>
-              <li>• <strong>主導</strong>: リーダーシップと主体性</li>
-              <li>• <strong>連携</strong>: 関係者との協力</li>
-              <li>• <strong>育成</strong>: メンバーの成長支援</li>
-            </ul>
-          </div>
-        </div>
+      <div className="border-l-4 pl-4" style={{ borderColor: "#ddd" }}>
+        <h3 className="text-base font-bold mb-2" style={{ color: "#1a1a1a" }}>
+          評価される6つの主要スコア
+        </h3>
+        <ul className="text-sm space-y-1.5 leading-relaxed" style={{ color: "#666" }}>
+          <li><strong style={{ color: "#1a1a1a" }}>問題把握</strong> - 状況の理解と問題の本質把握</li>
+          <li><strong style={{ color: "#1a1a1a" }}>対策立案</strong> - 具体的な解決策の立案</li>
+          <li><strong style={{ color: "#1a1a1a" }}>役割理解</strong> - 自身の役割の認識</li>
+          <li><strong style={{ color: "#1a1a1a" }}>主導</strong> - リーダーシップと主体性</li>
+          <li><strong style={{ color: "#1a1a1a" }}>連携</strong> - 関係者との協力</li>
+          <li><strong style={{ color: "#1a1a1a" }}>育成</strong> - メンバーの成長支援</li>
+        </ul>
       </div>
     </div>
   );
@@ -193,12 +189,12 @@ function OverviewSection() {
 // スコア予測セクション
 function ScorePredictSection() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-black mb-3" style={{ color: "#323232" }}>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: "#1a1a1a" }}>
           スコア予測の使い方
         </h2>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "#323232" }}>
+        <p className="text-base leading-relaxed" style={{ color: "#666" }}>
           既存のケースに対する回答を入力して、スコアを予測します。
         </p>
       </div>
@@ -229,7 +225,7 @@ function ScorePredictSection() {
       />
 
       <div className="space-y-4">
-        <h3 className="text-lg font-black" style={{ color: "#323232" }}>
+        <h3 className="text-lg font-bold" style={{ color: "#1a1a1a" }}>
           予測結果の見方
         </h3>
 
@@ -271,20 +267,15 @@ function ScorePredictSection() {
         />
       </div>
 
-      <div className="p-4 rounded-lg" style={{ background: "#fff3cd", border: "1px solid #ffc107" }}>
-        <div className="flex items-start gap-3">
-          <HelpCircle className="w-5 h-5 flex-shrink-0" style={{ color: "#ff6b00" }} />
-          <div>
-            <h3 className="text-sm font-bold mb-1" style={{ color: "#323232" }}>
-              ポイント
-            </h3>
-            <ul className="text-sm space-y-1" style={{ color: "#323232" }}>
-              <li>• 詳細で具体的な回答ほど、より正確なスコア予測が得られます</li>
-              <li>• 類似回答例を参考にして、評価されやすい回答の特徴を学びましょう</li>
-              <li>• 設問1と設問2は別々に予測されますが、両方を入力することで総合的な評価が可能です</li>
-            </ul>
-          </div>
-        </div>
+      <div className="border-l-4 pl-4" style={{ borderColor: "#ddd" }}>
+        <h3 className="text-base font-semibold mb-2" style={{ color: "#1a1a1a" }}>
+          ポイント
+        </h3>
+        <ul className="text-sm space-y-1.5 leading-relaxed ml-4" style={{ color: "#666" }}>
+          <li className="list-disc">詳細で具体的な回答ほど、より正確なスコア予測が得られます</li>
+          <li className="list-disc">類似回答例を参考にして、評価されやすい回答の特徴を学びましょう</li>
+          <li className="list-disc">設問1と設問2は別々に予測されますが、両方を入力することで総合的な評価が可能です</li>
+        </ul>
       </div>
     </div>
   );
@@ -293,12 +284,12 @@ function ScorePredictSection() {
 // 新規ケース予測セクション
 function NewCasePredictSection() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-black mb-3" style={{ color: "#323232" }}>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: "#1a1a1a" }}>
           新規ケース予測の使い方
         </h2>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "#323232" }}>
+        <p className="text-base leading-relaxed" style={{ color: "#666" }}>
           新しいシチュエーションを入力して、類似ケースからスコアを予測します。
         </p>
       </div>
@@ -329,7 +320,7 @@ function NewCasePredictSection() {
       />
 
       <div className="space-y-4">
-        <h3 className="text-lg font-black" style={{ color: "#323232" }}>
+        <h3 className="text-lg font-bold" style={{ color: "#1a1a1a" }}>
           新規ケース予測の特徴
         </h3>
 
@@ -361,20 +352,15 @@ function NewCasePredictSection() {
         />
       </div>
 
-      <div className="p-4 rounded-lg" style={{ background: "#d1ecf1", border: "1px solid #0dcaf0" }}>
-        <div className="flex items-start gap-3">
-          <Lightbulb className="w-5 h-5 flex-shrink-0" style={{ color: "#0a7ea4" }} />
-          <div>
-            <h3 className="text-sm font-bold mb-1" style={{ color: "#323232" }}>
-              効果的な使い方
-            </h3>
-            <ul className="text-sm space-y-1" style={{ color: "#323232" }}>
-              <li>• シチュエーションは具体的に記述しましょう（組織規模、業種、具体的な状況など）</li>
-              <li>• 類似ケースの名前を確認し、そのケースの特徴を理解しましょう</li>
-              <li>• 信頼度が低い場合は、シチュエーションの記述を追加・修正してみましょう</li>
-            </ul>
-          </div>
-        </div>
+      <div className="border-l-4 pl-4" style={{ borderColor: "#ddd" }}>
+        <h3 className="text-base font-semibold mb-2" style={{ color: "#1a1a1a" }}>
+          効果的な使い方
+        </h3>
+        <ul className="text-sm space-y-1.5 leading-relaxed ml-4" style={{ color: "#666" }}>
+          <li className="list-disc">シチュエーションは具体的に記述しましょう（組織規模、業種、具体的な状況など）</li>
+          <li className="list-disc">類似ケースの名前を確認し、そのケースの特徴を理解しましょう</li>
+          <li className="list-disc">信頼度が低い場合は、シチュエーションの記述を追加・修正してみましょう</li>
+        </ul>
       </div>
     </div>
   );
@@ -383,12 +369,12 @@ function NewCasePredictSection() {
 // スコア参照セクション
 function PredictSection() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-black mb-3" style={{ color: "#323232" }}>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: "#1a1a1a" }}>
           スコア参照の使い方
         </h2>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "#323232" }}>
+        <p className="text-base leading-relaxed" style={{ color: "#666" }}>
           過去の回答とそのスコアを確認できます。学習や参考資料として活用しましょう。
         </p>
       </div>
@@ -414,7 +400,7 @@ function PredictSection() {
       />
 
       <div className="space-y-4">
-        <h3 className="text-lg font-black" style={{ color: "#323232" }}>
+        <h3 className="text-lg font-bold" style={{ color: "#1a1a1a" }}>
           活用方法
         </h3>
 
@@ -443,12 +429,12 @@ function PredictSection() {
 // プロフィールセクション
 function ProfileSection() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-black mb-3" style={{ color: "#323232" }}>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: "#1a1a1a" }}>
           プロフィール設定
         </h2>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "#323232" }}>
+        <p className="text-base leading-relaxed" style={{ color: "#666" }}>
           表示名の変更やパスワードの更新ができます。
         </p>
       </div>
@@ -477,12 +463,12 @@ function ProfileSection() {
 // スコア評価基準セクション
 function ScoringGuideSection() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-black mb-3" style={{ color: "#323232" }}>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: "#1a1a1a" }}>
           スコア評価基準
         </h2>
-        <p className="text-sm leading-relaxed mb-4" style={{ color: "#323232" }}>
+        <p className="text-base leading-relaxed" style={{ color: "#666" }}>
           各スコア項目の評価基準を理解しましょう。
         </p>
       </div>
@@ -545,16 +531,16 @@ function ScoringGuideSection() {
         />
       </div>
 
-      <div className="p-4 rounded-lg" style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
-        <h3 className="text-sm font-bold mb-2" style={{ color: "#323232" }}>
+      <div className="border-l-4 pl-4" style={{ borderColor: "#ddd" }}>
+        <h3 className="text-base font-semibold mb-2" style={{ color: "#1a1a1a" }}>
           評価のポイント
         </h3>
-        <ul className="text-sm space-y-2" style={{ color: "#323232" }}>
-          <li>• <strong>具体性</strong>: 抽象的な表現ではなく、具体的な行動や施策を記述する</li>
-          <li>• <strong>実現可能性</strong>: 現実的で実行可能な内容である</li>
-          <li>• <strong>多面性</strong>: 業務面・人的面の両方を考慮している</li>
-          <li>• <strong>時間軸</strong>: 短期・中長期の視点を持っている</li>
-          <li>• <strong>影響範囲</strong>: 個人・チーム・組織への影響を考えている</li>
+        <ul className="text-sm space-y-1.5 leading-relaxed ml-4" style={{ color: "#666" }}>
+          <li className="list-disc"><strong style={{ color: "#1a1a1a" }}>具体性</strong> - 抽象的な表現ではなく、具体的な行動や施策を記述する</li>
+          <li className="list-disc"><strong style={{ color: "#1a1a1a" }}>実現可能性</strong> - 現実的で実行可能な内容である</li>
+          <li className="list-disc"><strong style={{ color: "#1a1a1a" }}>多面性</strong> - 業務面・人的面の両方を考慮している</li>
+          <li className="list-disc"><strong style={{ color: "#1a1a1a" }}>時間軸</strong> - 短期・中長期の視点を持っている</li>
+          <li className="list-disc"><strong style={{ color: "#1a1a1a" }}>影響範囲</strong> - 個人・チーム・組織への影響を考えている</li>
         </ul>
       </div>
     </div>
@@ -572,17 +558,15 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <div className="p-4 rounded-lg" style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
-      <div className="flex items-start gap-3">
-        {icon}
-        <div>
-          <h3 className="text-sm font-bold mb-1" style={{ color: "#323232" }}>
-            {title}
-          </h3>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            {description}
-          </p>
-        </div>
+    <div className="flex items-start gap-3 py-2">
+      <div className="flex-shrink-0 mt-0.5" style={{ color: "#666" }}>{icon}</div>
+      <div>
+        <h4 className="text-base font-semibold mb-1" style={{ color: "#1a1a1a" }}>
+          {title}
+        </h4>
+        <p className="text-sm leading-relaxed" style={{ color: "#666" }}>
+          {description}
+        </p>
       </div>
     </div>
   );
@@ -590,31 +574,26 @@ function FeatureCard({
 
 function StepByStep({ steps }: { steps: Array<{ title: string; description: string; icon: React.ReactNode }> }) {
   return (
-    <div className="space-y-3">
-      <h3 className="text-lg font-black" style={{ color: "#323232" }}>
+    <div className="space-y-4">
+      <h3 className="text-lg font-bold mb-3" style={{ color: "#1a1a1a" }}>
         使い方の手順
       </h3>
       {steps.map((step, index) => (
-        <div
-          key={index}
-          className="flex items-start gap-3 p-4 rounded-lg"
-          style={{ background: "var(--background)", border: "1px solid var(--border)" }}
-        >
+        <div key={index} className="flex items-start gap-3 py-2">
           <div
-            className="flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0"
-            style={{ background: "var(--primary)", color: "#fff" }}
+            className="flex items-center justify-center w-6 h-6 rounded-full flex-shrink-0 text-sm font-semibold"
+            style={{ background: "#666", color: "#fff" }}
           >
-            <span className="text-sm font-black">{index + 1}</span>
+            {index + 1}
           </div>
           <div className="flex-1">
-            <h4 className="text-sm font-bold mb-1" style={{ color: "#323232" }}>
+            <h4 className="text-base font-semibold mb-1" style={{ color: "#1a1a1a" }}>
               {step.title}
             </h4>
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            <p className="text-sm leading-relaxed" style={{ color: "#666" }}>
               {step.description}
             </p>
           </div>
-          <div style={{ color: "var(--primary)" }}>{step.icon}</div>
         </div>
       ))}
     </div>
@@ -623,13 +602,13 @@ function StepByStep({ steps }: { steps: Array<{ title: string; description: stri
 
 function ResultCard({ title, items }: { title: string; items: string[] }) {
   return (
-    <div className="p-4 rounded-lg" style={{ background: "var(--background)", border: "1px solid var(--border)" }}>
-      <h4 className="text-sm font-bold mb-2" style={{ color: "#323232" }}>
+    <div className="py-2">
+      <h4 className="text-base font-semibold mb-2" style={{ color: "#1a1a1a" }}>
         {title}
       </h4>
-      <ul className="text-sm space-y-1" style={{ color: "var(--text-muted)" }}>
+      <ul className="text-sm space-y-1.5 leading-relaxed ml-4" style={{ color: "#666" }}>
         {items.map((item, index) => (
-          <li key={index}>• {item}</li>
+          <li key={index} className="list-disc">{item}</li>
         ))}
       </ul>
     </div>
@@ -638,16 +617,13 @@ function ResultCard({ title, items }: { title: string; items: string[] }) {
 
 function ScoreGuideCard({ title, criteria }: { title: string; criteria: string[] }) {
   return (
-    <div className="p-4 rounded-lg" style={{ background: "#fff", border: "2px solid var(--primary)" }}>
-      <h4 className="text-sm font-bold mb-3" style={{ color: "var(--primary)" }}>
+    <div className="py-3 border-l-4 pl-4" style={{ borderColor: "#ddd" }}>
+      <h4 className="text-base font-semibold mb-2" style={{ color: "#1a1a1a" }}>
         {title}
       </h4>
-      <ul className="text-sm space-y-2" style={{ color: "#323232" }}>
+      <ul className="text-sm space-y-1.5 leading-relaxed ml-4" style={{ color: "#666" }}>
         {criteria.map((criterion, index) => (
-          <li key={index} className="flex items-start gap-2">
-            <span style={{ color: "var(--primary)" }}>✓</span>
-            <span>{criterion}</span>
-          </li>
+          <li key={index} className="list-disc">{criterion}</li>
         ))}
       </ul>
     </div>
