@@ -29,79 +29,77 @@ export default function HelpClient() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--background)" }}>
-      <div className="max-w-7xl mx-auto p-6">
-        {/* ヘッダー */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <BookOpen className="w-8 h-8" style={{ color: "var(--primary)" }} />
-            <h1 className="text-3xl font-black" style={{ color: "#323232" }}>
-              使い方ガイド
-            </h1>
+    <div className="max-w-7xl mx-auto animate-fade-in">
+      {/* ヘッダー */}
+      <div className="mb-6 lg:mb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <BookOpen className="w-6 lg:w-8 h-6 lg:h-8" style={{ color: "var(--primary)" }} />
+          <h1 className="text-xl lg:text-3xl font-black" style={{ color: "#323232" }}>
+            使い方ガイド
+          </h1>
+        </div>
+        <p className="text-sm lg:text-base" style={{ color: "var(--text-muted)" }}>
+          スコア予測システムの各機能の使い方を説明します
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 lg:gap-6">
+        {/* サイドバーナビゲーション */}
+        <div className="lg:col-span-1">
+          <div className="p-4 rounded-lg sticky top-6" style={{ background: "#fff" }}>
+            <h2 className="text-sm font-black mb-3" style={{ color: "var(--text-muted)" }}>
+              目次
+            </h2>
+            <nav className="space-y-1">
+              <NavItem
+                icon={<Home className="w-4 h-4" />}
+                label="システム概要"
+                active={activeSection === "overview"}
+                onClick={() => setActiveSection("overview")}
+              />
+              <NavItem
+                icon={<Calculator className="w-4 h-4" />}
+                label="スコア予測"
+                active={activeSection === "score-predict"}
+                onClick={() => setActiveSection("score-predict")}
+              />
+              <NavItem
+                icon={<Search className="w-4 h-4" />}
+                label="新規ケース予測"
+                active={activeSection === "new-case-predict"}
+                onClick={() => setActiveSection("new-case-predict")}
+              />
+              <NavItem
+                icon={<TrendingUp className="w-4 h-4" />}
+                label="スコア参照"
+                active={activeSection === "predict"}
+                onClick={() => setActiveSection("predict")}
+              />
+              <NavItem
+                icon={<User className="w-4 h-4" />}
+                label="プロフィール"
+                active={activeSection === "profile"}
+                onClick={() => setActiveSection("profile")}
+              />
+              <NavItem
+                icon={<Target className="w-4 h-4" />}
+                label="スコア評価基準"
+                active={activeSection === "scoring-guide"}
+                onClick={() => setActiveSection("scoring-guide")}
+              />
+            </nav>
           </div>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            スコア予測システムの各機能の使い方を説明します
-          </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* サイドバーナビゲーション */}
-          <div className="lg:col-span-1">
-            <div className="p-4 rounded-lg sticky top-6" style={{ background: "#fff", border: "1px solid var(--border)" }}>
-              <h2 className="text-sm font-black mb-3" style={{ color: "var(--text-muted)" }}>
-                目次
-              </h2>
-              <nav className="space-y-1">
-                <NavItem
-                  icon={<Home className="w-4 h-4" />}
-                  label="システム概要"
-                  active={activeSection === "overview"}
-                  onClick={() => setActiveSection("overview")}
-                />
-                <NavItem
-                  icon={<Calculator className="w-4 h-4" />}
-                  label="スコア予測"
-                  active={activeSection === "score-predict"}
-                  onClick={() => setActiveSection("score-predict")}
-                />
-                <NavItem
-                  icon={<Search className="w-4 h-4" />}
-                  label="新規ケース予測"
-                  active={activeSection === "new-case-predict"}
-                  onClick={() => setActiveSection("new-case-predict")}
-                />
-                <NavItem
-                  icon={<TrendingUp className="w-4 h-4" />}
-                  label="スコア参照"
-                  active={activeSection === "predict"}
-                  onClick={() => setActiveSection("predict")}
-                />
-                <NavItem
-                  icon={<User className="w-4 h-4" />}
-                  label="プロフィール"
-                  active={activeSection === "profile"}
-                  onClick={() => setActiveSection("profile")}
-                />
-                <NavItem
-                  icon={<Target className="w-4 h-4" />}
-                  label="スコア評価基準"
-                  active={activeSection === "scoring-guide"}
-                  onClick={() => setActiveSection("scoring-guide")}
-                />
-              </nav>
-            </div>
-          </div>
-
-          {/* メインコンテンツ */}
-          <div className="lg:col-span-3">
-            <div className="p-6 rounded-lg" style={{ background: "#fff", border: "1px solid var(--border)" }}>
-              {activeSection === "overview" && <OverviewSection />}
-              {activeSection === "score-predict" && <ScorePredictSection />}
-              {activeSection === "new-case-predict" && <NewCasePredictSection />}
-              {activeSection === "predict" && <PredictSection />}
-              {activeSection === "profile" && <ProfileSection />}
-              {activeSection === "scoring-guide" && <ScoringGuideSection />}
-            </div>
+        {/* メインコンテンツ */}
+        <div className="lg:col-span-3">
+          <div className="p-4 lg:p-6">
+            {activeSection === "overview" && <OverviewSection />}
+            {activeSection === "score-predict" && <ScorePredictSection />}
+            {activeSection === "new-case-predict" && <NewCasePredictSection />}
+            {activeSection === "predict" && <PredictSection />}
+            {activeSection === "profile" && <ProfileSection />}
+            {activeSection === "scoring-guide" && <ScoringGuideSection />}
           </div>
         </div>
       </div>
