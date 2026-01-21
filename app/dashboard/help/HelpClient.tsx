@@ -122,14 +122,16 @@ function NavItem({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors"
+      className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-gray-50"
       style={{
-        background: active ? "var(--primary)" : "transparent",
-        color: active ? "#fff" : "#323232",
+        background: active ? "var(--background)" : "transparent",
+        color: active ? "var(--primary)" : "#666",
+        fontWeight: active ? "bold" : "normal",
+        borderLeft: active ? "3px solid var(--primary)" : "3px solid transparent",
       }}
     >
       {icon}
-      <span className="text-sm font-bold">{label}</span>
+      <span className="text-sm">{label}</span>
     </button>
   );
 }
