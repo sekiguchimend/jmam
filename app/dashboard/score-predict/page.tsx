@@ -1,10 +1,20 @@
 // スコア予測ページ（Server Component）
 import { redirect } from "next/navigation";
+import dynamic from "next/dynamic";
 import { hasAnyAccessToken, getUserWithRole } from "@/lib/supabase/server";
 import { fetchCasesForScorePrediction } from "@/actions/predictScore";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { ScorePredictClient } from "./ScorePredictClient";
 import { Calculator } from "lucide-react";
+
+// dynamic importでクライアントコンポーネントを遅延ロード
+const ScorePredictClient = dynamic(
+  () => import("./ScorePredictClient").then(mod => mod.ScorePredictClient),
+  { loading: () => <div className="animate-pulse p-8 text-center">読み込み中...</div> }
+);
+
+export const metadata = {
+  title: "スコア予測",
+};
 
 export default async function ScorePredictPage() {
   if (!(await hasAnyAccessToken())) {

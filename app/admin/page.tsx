@@ -7,6 +7,10 @@ import { AdminDatasetList } from "./AdminDatasetList";
 import Link from "next/link";
 import { Briefcase, Database, CheckCircle, Plus } from "lucide-react";
 
+export const metadata = {
+  title: "学習データ管理",
+};
+
 export default async function AdminPage() {
   // ミドルウェアで admin_access_token をチェック済み
   const userInfo = await getUserWithRole();

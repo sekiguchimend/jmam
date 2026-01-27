@@ -4,8 +4,13 @@ import { getUserWithRole } from "@/lib/supabase/server";
 import { fetchCases } from "@/actions/predict";
 import { fetchTotalCount, fetchDatasetStats } from "@/actions/upload";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { GradientButton } from "@/components/ui";
 import Link from "next/link";
 import { Briefcase, Database, CheckCircle, User, Lightbulb, Upload, Inbox, ChevronRight } from "lucide-react";
+
+export const metadata = {
+  title: "ダッシュボード",
+};
 
 export default async function DashboardPage() {
   // ミドルウェアでアクセストークンをチェック済み
@@ -174,16 +179,10 @@ export default async function DashboardPage() {
               回答予測を行うには、まずデータをアップロードしてください
             </p>
             {userInfo.isAdmin && (
-              <Link
-                href="/admin/upload"
-                className="inline-flex items-center gap-2 px-6 py-3 font-black transition-all hover:opacity-90 text-white text-sm"
-                style={{
-                  background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
-                  borderRadius: "5px"
-                }}
-              >
-                <Upload className="w-4 h-4" />
-                データをアップロード
+              <Link href="/admin/upload">
+                <GradientButton icon={<Upload className="w-4 h-4" />}>
+                  データをアップロード
+                </GradientButton>
               </Link>
             )}
           </div>
@@ -205,17 +204,17 @@ function StatCard({
   return (
     <div
       className="p-4 lg:p-6 rounded-xl"
-      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+      style={{ background: "var(--primary)" }}
     >
       <div className="flex items-center gap-3 lg:gap-4">
-        <div className="flex-shrink-0 hidden sm:block" style={{ color: "var(--primary)" }}>
+        <div className="flex-shrink-0 hidden sm:block" style={{ color: "#fff" }}>
           {icon}
         </div>
         <div>
-          <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
+          <p className="text-xs lg:text-sm font-bold" style={{ color: "#fff" }}>
             {title}
           </p>
-          <p className="text-lg lg:text-2xl font-black" style={{ color: "#323232" }}>
+          <p className="text-lg lg:text-2xl font-black" style={{ color: "#fff" }}>
             {value}
           </p>
         </div>

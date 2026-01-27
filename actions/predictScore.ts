@@ -5,6 +5,10 @@
 import { getAnyAccessToken } from '@/lib/supabase/server';
 import { predictScoreFromAnswer, type ScorePrediction } from '@/lib/scoring';
 import { supabaseAnonServer } from '@/lib/supabase/anon-server';
+import { stripControlChars, truncateString } from '@/lib/security';
+
+// 入力テキストの最大長
+const MAX_ANSWER_LENGTH = 20000;
 
 // ケース一覧を取得
 export async function fetchCasesForScorePrediction(): Promise<{
@@ -51,12 +55,16 @@ export async function submitAnswerForScorePrediction(params: {
   try {
     const { caseId, question, answerText } = params;
 
+    // XSS対策: 制御文字除去と長さ制限
+    const sanitizedCaseId = truncateString(stripControlChars(caseId), 100);
+    const sanitizedAnswer = truncateString(stripControlChars(answerText), MAX_ANSWER_LENGTH);
+
     // バリデーション
-    if (!caseId || !answerText.trim()) {
+    if (!sanitizedCaseId || !sanitizedAnswer.trim()) {
       return { success: false, error: 'ケースIDと回答テキストは必須です' };
     }
 
-    if (answerText.trim().length < 10) {
+    if (sanitizedAnswer.trim().length < 10) {
       return { success: false, error: '回答は10文字以上入力してください' };
     }
 
@@ -69,9 +77,9 @@ export async function submitAnswerForScorePrediction(params: {
     // スコア予測を実行
     const prediction = await predictScoreFromAnswer({
       token,
-      caseId,
+      caseId: sanitizedCaseId,
       question,
-      answerText: answerText.trim(),
+      answerText: sanitizedAnswer.trim(),
       topK: 10,
     });
 

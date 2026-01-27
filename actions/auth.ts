@@ -23,6 +23,7 @@ import { setMfaPendingCookies } from '@/actions/mfa';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { headers } from 'next/headers';
 import type { AuthError } from '@supabase/supabase-js';
+import { getSafeRedirectUrl } from '@/lib/security';
 
 // クッキーの有効期限（7日間）
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -149,7 +150,8 @@ export async function login(formData: FormData): Promise<{
       cookieStore.delete(ADMIN_REFRESH_TOKEN_COOKIE);
     }
 
-    const resolvedRedirect = redirectTo ?? (isAdmin ? '/admin' : '/dashboard');
+    // XSS/Open Redirect対策: リダイレクト先を検証
+    const resolvedRedirect = getSafeRedirectUrl(redirectTo, isAdmin);
     revalidatePath('/', 'layout');
     return { success: true, redirectTo: resolvedRedirect };
   }
@@ -162,11 +164,12 @@ export async function login(formData: FormData): Promise<{
   }
   if (aal.data.currentLevel !== 'aal2') {
     // MFA途中用の一時トークンを保存（10分）
+    // XSS/Open Redirect対策: リダイレクト先を検証
     await setMfaPendingCookies({
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,
       isAdmin,
-      redirectTo: redirectTo ?? (isAdmin ? '/admin' : '/dashboard'),
+      redirectTo: getSafeRedirectUrl(redirectTo, isAdmin),
     });
 
     // 既存ログインCookieを念のため削除
@@ -207,7 +210,8 @@ export async function login(formData: FormData): Promise<{
     cookieStore.delete(ADMIN_REFRESH_TOKEN_COOKIE);
   }
 
-  const resolvedRedirect = redirectTo ?? (isAdmin ? '/admin' : '/dashboard');
+  // XSS/Open Redirect対策: リダイレクト先を検証
+  const resolvedRedirect = getSafeRedirectUrl(redirectTo, isAdmin);
   revalidatePath('/', 'layout');
   return { success: true, redirectTo: resolvedRedirect };
 }

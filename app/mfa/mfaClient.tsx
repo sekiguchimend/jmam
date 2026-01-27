@@ -5,7 +5,8 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { startTotpEnroll, verifyTotp, cancelMfa } from '@/actions/mfa';
-import { Mail, ShieldCheck, QrCode, AlertCircle, ArrowRight, Loader2, Copy } from 'lucide-react';
+import { ErrorMessage, SurfaceCard, LoadingSpinner, FormInput } from '@/components/ui';
+import { Mail, ShieldCheck, QrCode, ArrowRight, Copy } from 'lucide-react';
 
 type MfaStatus =
   | { ok: false; error: string }
@@ -20,8 +21,6 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
   const [isPending, startTransition] = useTransition();
 
   const effectiveFactorId = useMemo(() => enroll?.factorId ?? (status.ok ? status.factorId : undefined), [enroll, status]);
-
-  // status更新でエラーを自動クリアしない（react-hooks/set-state-in-effect対策）
 
   const handleStartEnroll = () => {
     startTransition(async () => {
@@ -71,18 +70,10 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
 
   return (
     <div className="space-y-5">
-      {error && (
-        <div
-          className="p-4 rounded-lg text-sm font-bold flex items-center gap-3 animate-slide-up"
-          style={{ background: 'var(--error-light)', color: '#323232' }}
-        >
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          {error}
-        </div>
-      )}
+      {error && <ErrorMessage message={error} className="animate-slide-up" />}
 
       {status.ok && (
-        <div className="rounded-xl p-4" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
+        <div className="rounded-xl" style={{ background: 'var(--background)', padding: '1rem' }}>
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
               <Mail className="w-5 h-5" style={{ color: '#323232' }} />
@@ -101,7 +92,7 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
 
       {/* enroll */}
       {status.ok && status.mode === 'needsEnroll' && !enroll && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <SurfaceCard className="space-y-3">
           <div className="flex items-start gap-3">
             <QrCode className="w-6 h-6 flex-shrink-0" style={{ color: 'var(--primary)' }} />
             <div>
@@ -121,10 +112,7 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
             style={{ background: 'var(--primary)', color: 'white' }}
           >
             {isPending ? (
-              <span className="flex items-center justify-center gap-2 font-extrabold">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                準備中...
-              </span>
+              <LoadingSpinner text="準備中..." className="font-extrabold" />
             ) : (
               <span className="flex items-center justify-center gap-2 font-extrabold">
                 QRコードを表示
@@ -132,11 +120,11 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
               </span>
             )}
           </button>
-        </div>
+        </SurfaceCard>
       )}
 
       {enroll && (
-        <div className="rounded-xl p-4 space-y-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <SurfaceCard className="space-y-4">
           <div className="flex items-start gap-3">
             <ShieldCheck className="w-6 h-6 flex-shrink-0" style={{ color: 'var(--primary)' }} />
             <div>
@@ -150,7 +138,6 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
           </div>
 
           <div className="rounded-lg p-3 flex items-center justify-center" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
-            {/* data URL のSVG/PNGを表示するだけなので img を使用 */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={enroll.qrCode} alt="TOTP QR code" className="w-48 h-48" />
           </div>
@@ -172,7 +159,7 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
               <Copy className="w-4 h-4" />
             </button>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* verify */}
@@ -201,10 +188,7 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
             style={{ background: 'var(--primary)', color: 'white' }}
           >
             {isPending ? (
-              <span className="flex items-center justify-center gap-2 font-extrabold">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                検証中...
-              </span>
+              <LoadingSpinner text="検証中..." className="font-extrabold" />
             ) : (
               <span className="flex items-center justify-center gap-2 font-extrabold">
                 ログインを完了
@@ -227,5 +211,3 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
     </div>
   );
 }
-
-

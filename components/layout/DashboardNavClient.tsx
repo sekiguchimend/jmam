@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Sidebar } from "./Sidebar";
 import { Menu } from "lucide-react";
 
@@ -12,12 +12,42 @@ export function DashboardNavClient({
   isAdmin,
   userName,
   userEmail,
+  initialCollapsed = false,
 }: {
   isAdmin: boolean;
   userName?: string | null;
   userEmail?: string;
+  initialCollapsed?: boolean;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+
+  // 開閉状態をCookieに保存
+  const handleToggleCollapse = useCallback(() => {
+    const newValue = !collapsed;
+    setCollapsed(newValue);
+    document.cookie = `sidebar-collapsed=${newValue}; path=/; max-age=31536000`;
+  }, [collapsed]);
+
+  // メインコンテンツの左パディングを調整（デスクトップのみ）
+  useEffect(() => {
+    const main = document.querySelector("main");
+    if (!main) return;
+
+    const updatePadding = () => {
+      const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+      if (isDesktop) {
+        main.style.transition = "padding-left 0.3s ease-in-out";
+        main.style.paddingLeft = collapsed ? "80px" : "256px";
+      } else {
+        main.style.paddingLeft = "0px";
+      }
+    };
+
+    updatePadding();
+    window.addEventListener("resize", updatePadding);
+    return () => window.removeEventListener("resize", updatePadding);
+  }, [collapsed]);
 
   return (
     <>
@@ -46,6 +76,8 @@ export function DashboardNavClient({
         userEmail={userEmail}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        collapsed={collapsed}
+        onToggleCollapse={handleToggleCollapse}
       />
     </>
   );

@@ -1,10 +1,20 @@
 // CSVアップロードページ（Server Component）
 import { redirect } from "next/navigation";
+import dynamic from "next/dynamic";
 import { hasAccessToken, getUserWithRole } from "@/lib/supabase/server";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { UploadClientForm } from "./UploadClientForm";
 import Link from "next/link";
 import { ChevronRight, Info, Check } from "lucide-react";
+
+// dynamic importでクライアントコンポーネントを遅延ロード
+const UploadClientForm = dynamic(
+  () => import("./UploadClientForm").then(mod => mod.UploadClientForm),
+  { loading: () => <div className="animate-pulse p-8 text-center">読み込み中...</div> }
+);
+
+export const metadata = {
+  title: "データアップロード",
+};
 
 export default async function UploadPage() {
   if (!(await hasAccessToken())) {

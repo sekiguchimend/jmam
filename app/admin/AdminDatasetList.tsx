@@ -7,6 +7,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { deleteDatasetByCaseId } from "@/actions/upload";
 import type { DatasetStats } from "@/types";
+import { GradientButton } from "@/components/ui";
 import { FileText, Trash2, Loader2, Package } from "lucide-react";
 
 interface AdminDatasetListProps {
@@ -42,15 +43,10 @@ export function AdminDatasetList({ initialStats }: AdminDatasetListProps) {
         <div className="p-8 lg:p-12 text-center">
           <Package className="w-12 lg:w-16 h-12 lg:h-16 mx-auto mb-3 lg:mb-4" style={{ color: "var(--text-muted)" }} />
           <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>データがありません</p>
-          <Link
-            href="/admin/upload"
-            className="inline-block mt-3 lg:mt-4 px-6 py-3 font-black transition-all hover:opacity-90 text-white text-sm"
-            style={{
-              background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
-              borderRadius: "5px"
-            }}
-          >
-            データ追加
+          <Link href="/admin/upload">
+            <GradientButton className="mt-3 lg:mt-4">
+              データ追加
+            </GradientButton>
           </Link>
         </div>
       ) : (

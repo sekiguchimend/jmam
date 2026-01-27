@@ -4,6 +4,48 @@
 import { embedText } from '@/lib/gemini/embeddings';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { generateAIScoring, performEarlyQualityCheck, type ScoringExample, type ScoringCaseContext, type AIScoringResponse, type EarlyQualityCheckResult } from '@/lib/scoring-prompt';
+import {
+  calculateProblemScore,
+  calculateSolutionScore,
+  calculateCollaborationScore,
+  estimateLeadershipScore,
+  estimateDevelopmentScore,
+} from '@/lib/score-calculation';
+
+// スコア分布キャッシュ（インメモリ、TTL: 5分）
+const SCORE_DISTRIBUTION_CACHE_TTL_MS = 5 * 60 * 1000;
+const scoreDistributionCache = new Map<string, { data: Map<number, number>; expireAt: number }>();
+
+function getCachedScoreDistribution(key: string): Map<number, number> | null {
+  const cached = scoreDistributionCache.get(key);
+  if (!cached) return null;
+  if (Date.now() > cached.expireAt) {
+    scoreDistributionCache.delete(key);
+    return null;
+  }
+  return cached.data;
+}
+
+function setCachedScoreDistribution(key: string, data: Map<number, number>): void {
+  // キャッシュが大きくなりすぎないよう、1000件を超えたら古いものを削除
+  if (scoreDistributionCache.size > 1000) {
+    const keysToDelete: string[] = [];
+    const now = Date.now();
+    for (const [k, v] of scoreDistributionCache) {
+      if (now > v.expireAt) keysToDelete.push(k);
+    }
+    for (const k of keysToDelete) scoreDistributionCache.delete(k);
+    // まだ多い場合は最初の100件を削除
+    if (scoreDistributionCache.size > 900) {
+      let count = 0;
+      for (const k of scoreDistributionCache.keys()) {
+        if (count++ < 100) scoreDistributionCache.delete(k);
+        else break;
+      }
+    }
+  }
+  scoreDistributionCache.set(key, { data, expireAt: Date.now() + SCORE_DISTRIBUTION_CACHE_TTL_MS });
+}
 
 // スコア項目ごとの刻みと上限の定義
 const SCORE_CONFIG = {
@@ -65,7 +107,7 @@ export function toScoreBucket(score: number): number {
 
 // ハイブリッド手法用の設定
 const HYBRID_CONFIG = {
-  topK: 100,              // 多めに取得
+  topK: 50,               // 効率化のため50件に削減（精度への影響は軽微）
   maxPerBucket: 5,        // 各スコア帯から最大5個
   minSimilarity: 0.5,     // 類似度の最低閾値（50%以上）
   highConfidenceSimilarity: 0.7, // 高信頼度とみなす類似度（70%以上）
@@ -86,6 +128,93 @@ const AI_SCORING_CONFIG = {
   enabled: true,                    // AI統合評価を有効にするか
   invalidAnswerScore: 1.0,          // 無効な回答の場合の固定スコア
 };
+
+/**
+ * 詳細スコアから主要スコア（problem, solution, collaboration）を計算
+ * role, leadership, developmentは詳細スコアがないため、AIまたは推定値を使用
+ */
+function calculateMainScoresFromDetailScores(detailScores: {
+  problemUnderstanding?: number | null;
+  problemEssence?: number | null;
+  problemMaintenanceBiz?: number | null;
+  problemMaintenanceHr?: number | null;
+  problemReformBiz?: number | null;
+  problemReformHr?: number | null;
+  solutionCoverage?: number | null;
+  solutionPlanning?: number | null;
+  solutionMaintenanceBiz?: number | null;
+  solutionMaintenanceHr?: number | null;
+  solutionReformBiz?: number | null;
+  solutionReformHr?: number | null;
+  collabSupervisor?: number | null;
+  collabExternal?: number | null;
+  collabMember?: number | null;
+}, aiScores?: {
+  role?: number | null;
+  leadership?: number | null;
+  development?: number | null;
+}): {
+  problem: number | null;
+  solution: number | null;
+  collaboration: number | null;
+  role: number | null;
+  leadership: number | null;
+  development: number | null;
+} {
+  // 問題把握を詳細スコアから計算
+  const problem = calculateProblemScore(
+    detailScores.problemUnderstanding,
+    detailScores.problemEssence,
+    detailScores.problemMaintenanceBiz,
+    detailScores.problemMaintenanceHr,
+    detailScores.problemReformBiz,
+    detailScores.problemReformHr
+  );
+
+  // 対策立案を詳細スコアから計算
+  const solution = calculateSolutionScore(
+    detailScores.solutionCoverage,
+    detailScores.solutionPlanning,
+    detailScores.solutionMaintenanceBiz,
+    detailScores.solutionMaintenanceHr,
+    detailScores.solutionReformBiz,
+    detailScores.solutionReformHr
+  );
+
+  // 連携を詳細スコアから計算
+  const collaboration = calculateCollaborationScore(
+    detailScores.collabSupervisor,
+    detailScores.collabExternal,
+    detailScores.collabMember
+  );
+
+  // role, leadership, developmentはAI予測値を使用、なければ推定
+  let role = aiScores?.role ?? null;
+  let leadership = aiScores?.leadership ?? null;
+  let development = aiScores?.development ?? null;
+
+  // AI予測がない場合は推定値を使用
+  if (leadership == null && solution != null) {
+    leadership = estimateLeadershipScore(solution);
+  }
+  if (development == null && detailScores.solutionMaintenanceHr != null) {
+    development = estimateDevelopmentScore(detailScores.solutionMaintenanceHr);
+  }
+  // roleは(collaboration + leadership) / 2 で推定
+  if (role == null && collaboration != null && leadership != null) {
+    const rawRole = (collaboration + leadership) / 2;
+    role = Math.round(rawRole * 10) / 10; // 0.1刻み
+  }
+
+  return {
+    problem,
+    solution,
+    collaboration,
+    role,
+    leadership,
+    development,
+  };
+}
 
 // 平滑化逆頻度重み計算
 function calculateClassWeight(count: number): number {
@@ -168,13 +297,18 @@ async function predictScoreWithPrototypes(
   return totalWeight > 0 ? Math.round((weightedSum / totalWeight) * 10) / 10 : null;
 }
 
-// スコア分布を取得してMap化
+// スコア分布を取得してMap化（キャッシュ付き）
 async function getScoreDistributionMap(
   supabase: any,
   caseId: string,
   question: string,
   scoreField: string
 ): Promise<Map<number, number>> {
+  // キャッシュをチェック
+  const cacheKey = `${caseId}__${question}__${scoreField}`;
+  const cached = getCachedScoreDistribution(cacheKey);
+  if (cached) return cached;
+
   const { data, error } = await supabase.rpc('get_score_distribution', {
     p_case_id: caseId,
     p_question: question,
@@ -192,6 +326,10 @@ async function getScoreDistributionMap(
       map.set(Number(row.score_bucket), row.sample_count);
     }
   }
+
+  // キャッシュに保存
+  setCachedScoreDistribution(cacheKey, map);
+
   return map;
 }
 
@@ -744,19 +882,11 @@ export async function predictScoreFromAnswer(params: {
 
     // AIの評価結果を反映
     isValidAnswer = aiResult.isValidAnswer;
-    
-    if (aiResult.isValidAnswer && aiResult.scores.problem !== null) {
-      // 有効な回答の場合、AIが返した主要スコアを使用し、詳細スコアはエンベディングベースのものを保持
-      // AI評価の結果は既に正規化されているが、念のため再度正規化を適用
-      predictedScores = {
-        // 主要スコア（AI評価、刻みと上限を適用）
-        problem: normalizeMainScore('problem', aiResult.scores.problem),
-        solution: normalizeMainScore('solution', aiResult.scores.solution),
-        role: normalizeMainScore('role', aiResult.scores.role),
-        leadership: normalizeMainScore('leadership', aiResult.scores.leadership),
-        collaboration: normalizeMainScore('collaboration', aiResult.scores.collaboration),
-        development: normalizeMainScore('development', aiResult.scores.development),
-        // 詳細スコア（エンベディングベースを保持、刻み1、上限4で正規化）
+
+    if (aiResult.isValidAnswer) {
+      // 有効な回答の場合、詳細スコアから主要スコア（problem, solution, collaboration）を計算
+      // role, leadership, developmentはAI予測または推定値を使用
+      const normalizedDetailScores = {
         problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
         problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
         problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
@@ -772,6 +902,28 @@ export async function predictScoreFromAnswer(params: {
         collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
         collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
         collabMember: normalizeDetailScore(embeddingScores.collabMember),
+      };
+
+      // 詳細スコアから主要スコアを計算
+      const calculatedMainScores = calculateMainScoresFromDetailScores(
+        normalizedDetailScores,
+        {
+          role: aiResult.scores.role,
+          leadership: aiResult.scores.leadership,
+          development: aiResult.scores.development,
+        }
+      );
+
+      predictedScores = {
+        // 主要スコア（詳細スコアから計算、役割等はAI予測または推定）
+        problem: question === 'q1' ? calculatedMainScores.problem : null,
+        solution: question === 'q2' ? calculatedMainScores.solution : null,
+        role: normalizeMainScore('role', calculatedMainScores.role),
+        leadership: question === 'q2' ? normalizeMainScore('leadership', calculatedMainScores.leadership) : null,
+        collaboration: question === 'q2' ? normalizeMainScore('collaboration', calculatedMainScores.collaboration) : null,
+        development: question === 'q2' ? normalizeMainScore('development', calculatedMainScores.development) : null,
+        // 詳細スコア
+        ...normalizedDetailScores,
       };
     } else if (!aiResult.isValidAnswer) {
       // AIが無効と判断した場合（詳細スコアはエンベディングベースを保持）
@@ -800,13 +952,43 @@ export async function predictScoreFromAnswer(params: {
         collabMember: normalizeDetailScore(embeddingScores.collabMember),
       };
     }
-    
+
     explanation = lowSimilarityWarning + aiResult.explanation;
   } else if (earlyCheckResult) {
     // 早期チェックで弾かれた場合
     explanation = earlyCheckWarning + `ケースの状況を踏まえた具体的な回答を記述してください。`;
   } else {
-    // AIを使用しない場合はエンベディングベースのスコアをそのまま使用
+    // AIを使用しない場合も詳細スコアから主要スコアを計算
+    const normalizedDetailScores = {
+      problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
+      problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
+      problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
+      problemMaintenanceHr: normalizeDetailScore(embeddingScores.problemMaintenanceHr),
+      problemReformBiz: normalizeDetailScore(embeddingScores.problemReformBiz),
+      problemReformHr: normalizeDetailScore(embeddingScores.problemReformHr),
+      solutionCoverage: normalizeDetailScore(embeddingScores.solutionCoverage),
+      solutionPlanning: normalizeDetailScore(embeddingScores.solutionPlanning),
+      solutionMaintenanceBiz: normalizeDetailScore(embeddingScores.solutionMaintenanceBiz),
+      solutionMaintenanceHr: normalizeDetailScore(embeddingScores.solutionMaintenanceHr),
+      solutionReformBiz: normalizeDetailScore(embeddingScores.solutionReformBiz),
+      solutionReformHr: normalizeDetailScore(embeddingScores.solutionReformHr),
+      collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
+      collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
+      collabMember: normalizeDetailScore(embeddingScores.collabMember),
+    };
+
+    const calculatedMainScores = calculateMainScoresFromDetailScores(normalizedDetailScores);
+
+    predictedScores = {
+      problem: question === 'q1' ? calculatedMainScores.problem : null,
+      solution: question === 'q2' ? calculatedMainScores.solution : null,
+      role: normalizeMainScore('role', calculatedMainScores.role),
+      leadership: question === 'q2' ? normalizeMainScore('leadership', calculatedMainScores.leadership) : null,
+      collaboration: question === 'q2' ? normalizeMainScore('collaboration', calculatedMainScores.collaboration) : null,
+      development: question === 'q2' ? normalizeMainScore('development', calculatedMainScores.development) : null,
+      ...normalizedDetailScores,
+    };
+
     explanation = lowSimilarityWarning + generateExplanation(predictedScores, similarExamples, roundedConfidence);
   }
 
@@ -1129,19 +1311,10 @@ export async function predictScoreForNewCase(params: {
 
     // AIの評価結果を反映
     isValidAnswer = aiResult.isValidAnswer;
-    
-    if (aiResult.isValidAnswer && aiResult.scores.problem !== null) {
-      // 有効な回答の場合、AIが返した主要スコアを使用し、詳細スコアはエンベディングベースのものを保持
-      // AI評価の結果は既に正規化されているが、念のため再度正規化を適用
-      predictedScores = {
-        // 主要スコア（AI評価、刻みと上限を適用）
-        problem: normalizeMainScore('problem', aiResult.scores.problem),
-        solution: normalizeMainScore('solution', aiResult.scores.solution),
-        role: normalizeMainScore('role', aiResult.scores.role),
-        leadership: normalizeMainScore('leadership', aiResult.scores.leadership),
-        collaboration: normalizeMainScore('collaboration', aiResult.scores.collaboration),
-        development: normalizeMainScore('development', aiResult.scores.development),
-        // 詳細スコア（エンベディングベースを保持、刻み1、上限4で正規化）
+
+    if (aiResult.isValidAnswer) {
+      // 有効な回答の場合、詳細スコアから主要スコア（problem, solution, collaboration）を計算
+      const normalizedDetailScores = {
         problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
         problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
         problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
@@ -1157,6 +1330,28 @@ export async function predictScoreForNewCase(params: {
         collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
         collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
         collabMember: normalizeDetailScore(embeddingScores.collabMember),
+      };
+
+      // 詳細スコアから主要スコアを計算
+      const calculatedMainScores = calculateMainScoresFromDetailScores(
+        normalizedDetailScores,
+        {
+          role: aiResult.scores.role,
+          leadership: aiResult.scores.leadership,
+          development: aiResult.scores.development,
+        }
+      );
+
+      predictedScores = {
+        // 主要スコア（詳細スコアから計算、役割等はAI予測または推定）
+        problem: question === 'q1' ? calculatedMainScores.problem : null,
+        solution: question === 'q2' ? calculatedMainScores.solution : null,
+        role: normalizeMainScore('role', calculatedMainScores.role),
+        leadership: question === 'q2' ? normalizeMainScore('leadership', calculatedMainScores.leadership) : null,
+        collaboration: question === 'q2' ? normalizeMainScore('collaboration', calculatedMainScores.collaboration) : null,
+        development: question === 'q2' ? normalizeMainScore('development', calculatedMainScores.development) : null,
+        // 詳細スコア
+        ...normalizedDetailScores,
       };
     } else if (!aiResult.isValidAnswer) {
       // AIが無効と判断した場合（詳細スコアはエンベディングベースを保持）
@@ -1185,13 +1380,43 @@ export async function predictScoreForNewCase(params: {
         collabMember: normalizeDetailScore(embeddingScores.collabMember),
       };
     }
-    
+
     explanation = lowSimilarityWarning + aiResult.explanation;
   } else if (earlyCheckResult) {
     // 早期チェックで弾かれた場合
     explanation = earlyCheckWarning + `ケースの状況を踏まえた具体的な回答を記述してください。`;
   } else {
-    // AIを使用しない場合はエンベディングベースのスコアをそのまま使用
+    // AIを使用しない場合も詳細スコアから主要スコアを計算
+    const normalizedDetailScores = {
+      problemUnderstanding: normalizeDetailScore(embeddingScores.problemUnderstanding),
+      problemEssence: normalizeDetailScore(embeddingScores.problemEssence),
+      problemMaintenanceBiz: normalizeDetailScore(embeddingScores.problemMaintenanceBiz),
+      problemMaintenanceHr: normalizeDetailScore(embeddingScores.problemMaintenanceHr),
+      problemReformBiz: normalizeDetailScore(embeddingScores.problemReformBiz),
+      problemReformHr: normalizeDetailScore(embeddingScores.problemReformHr),
+      solutionCoverage: normalizeDetailScore(embeddingScores.solutionCoverage),
+      solutionPlanning: normalizeDetailScore(embeddingScores.solutionPlanning),
+      solutionMaintenanceBiz: normalizeDetailScore(embeddingScores.solutionMaintenanceBiz),
+      solutionMaintenanceHr: normalizeDetailScore(embeddingScores.solutionMaintenanceHr),
+      solutionReformBiz: normalizeDetailScore(embeddingScores.solutionReformBiz),
+      solutionReformHr: normalizeDetailScore(embeddingScores.solutionReformHr),
+      collabSupervisor: normalizeDetailScore(embeddingScores.collabSupervisor),
+      collabExternal: normalizeDetailScore(embeddingScores.collabExternal),
+      collabMember: normalizeDetailScore(embeddingScores.collabMember),
+    };
+
+    const calculatedMainScores = calculateMainScoresFromDetailScores(normalizedDetailScores);
+
+    predictedScores = {
+      problem: question === 'q1' ? calculatedMainScores.problem : null,
+      solution: question === 'q2' ? calculatedMainScores.solution : null,
+      role: normalizeMainScore('role', calculatedMainScores.role),
+      leadership: question === 'q2' ? normalizeMainScore('leadership', calculatedMainScores.leadership) : null,
+      collaboration: question === 'q2' ? normalizeMainScore('collaboration', calculatedMainScores.collaboration) : null,
+      development: question === 'q2' ? normalizeMainScore('development', calculatedMainScores.development) : null,
+      ...normalizedDetailScores,
+    };
+
     explanation = lowSimilarityWarning + generateNewCaseExplanation(predictedScores, similarCases, similarExamples.slice(0, 3), roundedConfidence);
   }
 

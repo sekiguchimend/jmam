@@ -10,8 +10,9 @@ import { enqueueEmbeddingJobs, upsertCase, upsertResponses } from '@/lib/supabas
 import type { CsvRowData } from '@/types';
 import { toScoreBucket } from '@/lib/scoring';
 import { processEmbeddingQueueBatchWithToken, rebuildTypicalExamplesForBucketWithToken } from '@/lib/prepare/worker';
+import { sanitizeText, stripControlChars, truncateString } from '@/lib/security';
 
-const BATCH_SIZE = 1000;
+const BATCH_SIZE = 5000; // DB往復を減らすため大きめに設定
 // 必須ヘッダー（正規化後の形式で定義 - 半角スペース）
 const REQUIRED_HEADERS_NORMALIZED = ['受注番号', 'Ⅱ MC 題材コード'];
 // 5000行程度のアップロードを想定し、アップロード後の自動準備に使う上限を少し長めに確保
@@ -48,7 +49,7 @@ function parseRow(
 ): { data: CsvRowData | null; caseName: string | null; error: string | null } {
   // ヘッダーを正規化（全角/半角スペースどちらでも対応）
   const normalizedHeaders = headers.map(normalizeSpaces);
-  
+
   const getVal = (key: string) => {
     // 正規化したキーで検索
     const normalizedKey = normalizeSpaces(key);
@@ -56,8 +57,15 @@ function parseRow(
     return idx >= 0 && idx < values.length ? values[idx]?.trim() ?? '' : '';
   };
 
-  const responseId = getVal('受注番号');
-  const caseId = getVal('Ⅱ MC 題材コード');
+  // XSS対策: IDフィールドは制御文字除去のみ（HTMLタグを含む可能性は低い）
+  // テキストフィールドはサニタイズ（HTMLエスケープ + 制御文字除去 + 長さ制限）
+  const sanitizeId = (val: string) => truncateString(stripControlChars(val), 100);
+  const sanitizeName = (val: string) => sanitizeText(val, 255);
+  const sanitizeComment = (val: string) => sanitizeText(val, 5000);
+  const sanitizeAnswer = (val: string) => sanitizeText(val, 10000);
+
+  const responseId = sanitizeId(getVal('受注番号'));
+  const caseId = sanitizeId(getVal('Ⅱ MC 題材コード'));
 
   if (!responseId || !caseId) {
     return {
@@ -67,15 +75,15 @@ function parseRow(
     };
   }
 
-  const caseName = getVal('Ⅱ MC 題材名') || null;
+  const caseName = sanitizeName(getVal('Ⅱ MC 題材名')) || null;
   const commentProblem =
-    getVal('Ⅱ MC 問題把握コメント') ||
-    [getVal('Ⅱ MC 問題把握コメント1'), getVal('Ⅱ MC 問題把握コメント2')]
+    sanitizeComment(getVal('Ⅱ MC 問題把握コメント')) ||
+    [sanitizeComment(getVal('Ⅱ MC 問題把握コメント1')), sanitizeComment(getVal('Ⅱ MC 問題把握コメント2'))]
       .filter(Boolean)
       .join('\n') ||
     undefined;
   const commentSolution =
-    getVal('Ⅱ MC 対策立案コメント') || getVal('Ⅱ MC 対策立案コメント1') || undefined;
+    sanitizeComment(getVal('Ⅱ MC 対策立案コメント')) || sanitizeComment(getVal('Ⅱ MC 対策立案コメント1')) || undefined;
 
   return {
     data: {
@@ -109,18 +117,19 @@ function parseRow(
       detail_collab_supervisor: parseScore(getVal('Ⅱ MC 連携 上司')) ?? undefined,
       detail_collab_external: parseScore(getVal('Ⅱ MC 連携 職場外')) ?? undefined,
       detail_collab_member: parseScore(getVal('Ⅱ MC 連携 メンバー')) ?? undefined,
-      comment_overall: getVal('Ⅱ MC 総合コメント') || undefined,
+      // XSS対策: コメントと回答フィールドをサニタイズ
+      comment_overall: sanitizeComment(getVal('Ⅱ MC 総合コメント')) || undefined,
       comment_problem: commentProblem,
       comment_solution: commentSolution,
-      answer_q1: getVal('【設問ID】　1') || undefined,
-      answer_q2: getVal('【設問ID】　2') || undefined,
-      answer_q3: getVal('【設問ID】　3') || undefined,
-      answer_q4: getVal('【設問ID】　4') || undefined,
-      answer_q5: getVal('【設問ID】　5') || undefined,
-      answer_q6: getVal('【設問ID】　6') || undefined,
-      answer_q7: getVal('【設問ID】　7') || undefined,
-      answer_q8: getVal('【設問ID】　8') || undefined,
-      answer_q9: getVal('【設問ID】　9') || undefined,
+      answer_q1: sanitizeAnswer(getVal('【設問ID】　1')) || undefined,
+      answer_q2: sanitizeAnswer(getVal('【設問ID】　2')) || undefined,
+      answer_q3: sanitizeAnswer(getVal('【設問ID】　3')) || undefined,
+      answer_q4: sanitizeAnswer(getVal('【設問ID】　4')) || undefined,
+      answer_q5: sanitizeAnswer(getVal('【設問ID】　5')) || undefined,
+      answer_q6: sanitizeAnswer(getVal('【設問ID】　6')) || undefined,
+      answer_q7: sanitizeAnswer(getVal('【設問ID】　7')) || undefined,
+      answer_q8: sanitizeAnswer(getVal('【設問ID】　8')) || undefined,
+      answer_q9: sanitizeAnswer(getVal('【設問ID】　9')) || undefined,
     },
     caseName,
     error: null,

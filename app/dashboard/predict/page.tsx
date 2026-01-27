@@ -1,10 +1,19 @@
 // 回答予測ページ（Server Component）
 import { redirect } from "next/navigation";
+import dynamic from "next/dynamic";
 import { hasAnyAccessToken, getUserWithRole } from "@/lib/supabase/server";
 import { fetchCases } from "@/actions/predict";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { PredictClient } from "./PredictClient";
 import { Inbox } from "lucide-react";
+
+// dynamic importでクライアントコンポーネントを遅延ロード
+const PredictClient = dynamic(() => import("./PredictClient").then(mod => mod.PredictClient), {
+  loading: () => <div className="animate-pulse p-8 text-center">読み込み中...</div>,
+});
+
+export const metadata = {
+  title: "回答予測",
+};
 
 export default async function PredictPage() {
   if (!(await hasAnyAccessToken())) {

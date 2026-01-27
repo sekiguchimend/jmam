@@ -1,23 +1,14 @@
 import { Metadata } from "next";
-import { getUserWithRole } from "@/lib/supabase/server";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import HelpClient from "./HelpClient";
+import HelpPageClient from "./HelpPageClient";
 
 export const metadata: Metadata = {
-  title: "使い方 - スコア予測システム",
+  title: "使い方ガイド",
   description: "スコア予測システムの使い方ガイド",
 };
 
-export default async function HelpPage() {
-  const userInfo = await getUserWithRole();
+// 完全なSSGを有効化
+export const dynamic = "force-static";
 
-  return (
-    <DashboardLayout
-      isAdmin={userInfo.isAdmin}
-      userName={userInfo.name}
-      userEmail={userInfo.email}
-    >
-      <HelpClient />
-    </DashboardLayout>
-  );
+export default function HelpPage() {
+  return <HelpPageClient />;
 }

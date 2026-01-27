@@ -2,19 +2,14 @@
 
 import { useState } from "react";
 import {
-  BookOpen,
   Calculator,
   FileText,
-  HelpCircle,
   Home,
-  Lightbulb,
   MessageSquare,
   Search,
-  Settings,
   Target,
   TrendingUp,
   User,
-  Users,
 } from "lucide-react";
 
 type Section =
@@ -25,20 +20,17 @@ type Section =
   | "profile"
   | "scoring-guide";
 
-export default function HelpClient() {
+export default function HelpContent() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
 
   return (
     <div className="max-w-7xl mx-auto animate-fade-in">
       {/* ヘッダー */}
       <div className="mb-6 lg:mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <BookOpen className="w-6 lg:w-8 h-6 lg:h-8" style={{ color: "var(--primary)" }} />
-          <h1 className="text-xl lg:text-3xl font-black" style={{ color: "#323232" }}>
-            使い方ガイド
-          </h1>
-        </div>
-        <p className="text-sm lg:text-base" style={{ color: "var(--text-muted)" }}>
+        <h1 className="text-xl lg:text-2xl font-black mb-1" style={{ color: "#323232" }}>
+          使い方ガイド
+        </h1>
+        <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
           スコア予測システムの各機能の使い方を説明します
         </p>
       </div>
@@ -122,12 +114,10 @@ function NavItem({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-gray-50"
+      className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
       style={{
-        background: active ? "var(--background)" : "transparent",
         color: active ? "var(--primary)" : "#666",
         fontWeight: active ? "bold" : "normal",
-        borderLeft: active ? "3px solid var(--primary)" : "3px solid transparent",
       }}
     >
       {icon}
@@ -617,7 +607,7 @@ function ResultCard({ title, items }: { title: string; items: string[] }) {
 
 function ScoreGuideCard({ title, criteria }: { title: string; criteria: string[] }) {
   return (
-    <div className="py-3 border-l-4 pl-4" style={{ borderColor: "#ddd" }}>
+    <div className="py-3">
       <h4 className="text-base font-semibold mb-2" style={{ color: "#1a1a1a" }}>
         {title}
       </h4>

@@ -4,6 +4,11 @@
 
 import { getAnyAccessToken } from '@/lib/supabase/server';
 import { predictScoreForNewCase, predictScoreFromAnswer, type NewCaseScorePrediction, type ScoreItems } from '@/lib/scoring';
+import { stripControlChars, truncateString } from '@/lib/security';
+
+// 入力テキストの最大長
+const MAX_SITUATION_LENGTH = 10000;
+const MAX_ANSWER_LENGTH = 20000;
 
 // 統合予測結果の型
 export type CombinedPredictionResult = {
@@ -29,20 +34,24 @@ export async function submitAnswerForNewCasePrediction(params: {
   try {
     const { situationText, question, answerText } = params;
 
+    // XSS対策: 制御文字除去と長さ制限
+    const sanitizedSituation = truncateString(stripControlChars(situationText), MAX_SITUATION_LENGTH);
+    const sanitizedAnswer = truncateString(stripControlChars(answerText), MAX_ANSWER_LENGTH);
+
     // バリデーション
-    if (!situationText.trim()) {
+    if (!sanitizedSituation.trim()) {
       return { success: false, error: 'ケース内容（シチュエーション）を入力してください' };
     }
 
-    if (situationText.trim().length < 20) {
+    if (sanitizedSituation.trim().length < 20) {
       return { success: false, error: 'ケース内容は20文字以上入力してください' };
     }
 
-    if (!answerText.trim()) {
+    if (!sanitizedAnswer.trim()) {
       return { success: false, error: '回答テキストを入力してください' };
     }
 
-    if (answerText.trim().length < 10) {
+    if (sanitizedAnswer.trim().length < 10) {
       return { success: false, error: '回答は10文字以上入力してください' };
     }
 
@@ -55,9 +64,9 @@ export async function submitAnswerForNewCasePrediction(params: {
     // スコア予測を実行
     const prediction = await predictScoreForNewCase({
       token,
-      situationText: situationText.trim(),
+      situationText: sanitizedSituation.trim(),
       question,
-      answerText: answerText.trim(),
+      answerText: sanitizedAnswer.trim(),
       topKCases: 5,
       topKResponses: 10,
     });
@@ -85,16 +94,20 @@ export async function submitAnswerForExistingCasePrediction(params: {
   try {
     const { caseId, question, answerText } = params;
 
+    // XSS対策: 制御文字除去と長さ制限
+    const sanitizedCaseId = truncateString(stripControlChars(caseId), 100);
+    const sanitizedAnswer = truncateString(stripControlChars(answerText), MAX_ANSWER_LENGTH);
+
     // バリデーション
-    if (!caseId) {
+    if (!sanitizedCaseId) {
       return { success: false, error: 'ケースを選択してください' };
     }
 
-    if (!answerText.trim()) {
+    if (!sanitizedAnswer.trim()) {
       return { success: false, error: '回答テキストを入力してください' };
     }
 
-    if (answerText.trim().length < 10) {
+    if (sanitizedAnswer.trim().length < 10) {
       return { success: false, error: '回答は10文字以上入力してください' };
     }
 
@@ -107,9 +120,9 @@ export async function submitAnswerForExistingCasePrediction(params: {
     // 既存のスコア予測を実行
     const result = await predictScoreFromAnswer({
       token,
-      caseId,
+      caseId: sanitizedCaseId,
       question,
-      answerText: answerText.trim(),
+      answerText: sanitizedAnswer.trim(),
       topK: 10,
     });
 
@@ -145,24 +158,29 @@ export async function submitCombinedPrediction(params: {
   try {
     const { caseId, q1Answer, q2Answer } = params;
 
+    // XSS対策: 制御文字除去と長さ制限
+    const sanitizedCaseId = truncateString(stripControlChars(caseId), 100);
+    const sanitizedQ1Answer = truncateString(stripControlChars(q1Answer), MAX_ANSWER_LENGTH);
+    const sanitizedQ2Answer = truncateString(stripControlChars(q2Answer), MAX_ANSWER_LENGTH);
+
     // バリデーション
-    if (!caseId) {
+    if (!sanitizedCaseId) {
       return { success: false, error: 'ケースを選択してください' };
     }
 
-    if (!q1Answer.trim()) {
+    if (!sanitizedQ1Answer.trim()) {
       return { success: false, error: '設問1の回答を入力してください' };
     }
 
-    if (q1Answer.trim().length < 10) {
+    if (sanitizedQ1Answer.trim().length < 10) {
       return { success: false, error: '設問1の回答は10文字以上入力してください' };
     }
 
-    if (!q2Answer.trim()) {
+    if (!sanitizedQ2Answer.trim()) {
       return { success: false, error: '設問2の回答を入力してください' };
     }
 
-    if (q2Answer.trim().length < 10) {
+    if (sanitizedQ2Answer.trim().length < 10) {
       return { success: false, error: '設問2の回答は10文字以上入力してください' };
     }
 
@@ -176,16 +194,16 @@ export async function submitCombinedPrediction(params: {
     const [q1Result, q2Result] = await Promise.all([
       predictScoreFromAnswer({
         token,
-        caseId,
+        caseId: sanitizedCaseId,
         question: 'q1',
-        answerText: q1Answer.trim(),
+        answerText: sanitizedQ1Answer.trim(),
         topK: 10,
       }),
       predictScoreFromAnswer({
         token,
-        caseId,
+        caseId: sanitizedCaseId,
         question: 'q2',
-        answerText: q2Answer.trim(),
+        answerText: sanitizedQ2Answer.trim(),
         topK: 10,
       }),
     ]);
@@ -273,28 +291,33 @@ export async function submitCombinedNewCasePrediction(params: {
   try {
     const { situationText, q1Answer, q2Answer } = params;
 
+    // XSS対策: 制御文字除去と長さ制限
+    const sanitizedSituation = truncateString(stripControlChars(situationText), MAX_SITUATION_LENGTH);
+    const sanitizedQ1Answer = truncateString(stripControlChars(q1Answer), MAX_ANSWER_LENGTH);
+    const sanitizedQ2Answer = truncateString(stripControlChars(q2Answer), MAX_ANSWER_LENGTH);
+
     // バリデーション
-    if (!situationText.trim()) {
+    if (!sanitizedSituation.trim()) {
       return { success: false, error: 'ケース内容（シチュエーション）を入力してください' };
     }
 
-    if (situationText.trim().length < 20) {
+    if (sanitizedSituation.trim().length < 20) {
       return { success: false, error: 'ケース内容は20文字以上入力してください' };
     }
 
-    if (!q1Answer.trim()) {
+    if (!sanitizedQ1Answer.trim()) {
       return { success: false, error: '設問1の回答を入力してください' };
     }
 
-    if (q1Answer.trim().length < 10) {
+    if (sanitizedQ1Answer.trim().length < 10) {
       return { success: false, error: '設問1の回答は10文字以上入力してください' };
     }
 
-    if (!q2Answer.trim()) {
+    if (!sanitizedQ2Answer.trim()) {
       return { success: false, error: '設問2の回答を入力してください' };
     }
 
-    if (q2Answer.trim().length < 10) {
+    if (sanitizedQ2Answer.trim().length < 10) {
       return { success: false, error: '設問2の回答は10文字以上入力してください' };
     }
 
@@ -308,17 +331,17 @@ export async function submitCombinedNewCasePrediction(params: {
     const [q1Result, q2Result] = await Promise.all([
       predictScoreForNewCase({
         token,
-        situationText: situationText.trim(),
+        situationText: sanitizedSituation.trim(),
         question: 'q1',
-        answerText: q1Answer.trim(),
+        answerText: sanitizedQ1Answer.trim(),
         topKCases: 5,
         topKResponses: 10,
       }),
       predictScoreForNewCase({
         token,
-        situationText: situationText.trim(),
+        situationText: sanitizedSituation.trim(),
         question: 'q2',
-        answerText: q2Answer.trim(),
+        answerText: sanitizedQ2Answer.trim(),
         topKCases: 5,
         topKResponses: 10,
       }),

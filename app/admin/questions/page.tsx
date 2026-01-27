@@ -1,7 +1,17 @@
+import dynamic from "next/dynamic";
 import { getCases } from "@/lib/supabase";
 import { getUserWithRole } from "@/lib/supabase/server";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { QuestionsClient } from "./QuestionsClient";
+
+// dynamic importでクライアントコンポーネントを遅延ロード
+const QuestionsClient = dynamic(
+  () => import("./QuestionsClient").then(mod => mod.QuestionsClient),
+  { loading: () => <div className="animate-pulse p-8 text-center">読み込み中...</div> }
+);
+
+export const metadata = {
+  title: "設問管理",
+};
 
 export default async function QuestionsPage() {
   const userInfo = await getUserWithRole();

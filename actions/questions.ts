@@ -7,10 +7,11 @@ import type { Question } from '@/types';
 
 const EMBEDDING_MODEL = 'models/text-embedding-001';
 
-// 設問一覧を取得
+// 設問一覧とケース情報を取得
 export async function fetchQuestions(caseId: string): Promise<{
   success: boolean;
   questions?: Question[];
+  situationText?: string;
   error?: string;
 }> {
   try {
@@ -24,7 +25,16 @@ export async function fetchQuestions(caseId: string): Promise<{
     }
 
     const questions = await getQuestionsByCase(caseId, token);
-    return { success: true, questions };
+
+    // ケース情報も取得（キャッシュを回避するため）
+    const { getCaseById } = await import('@/lib/supabase/queries');
+    const caseData = await getCaseById(caseId);
+
+    return {
+      success: true,
+      questions,
+      situationText: caseData?.situation_text || '',
+    };
   } catch (error) {
     console.error('fetchQuestions error:', error);
     return {

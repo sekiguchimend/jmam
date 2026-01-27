@@ -4,6 +4,10 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { User, Mail, Shield, Calendar, Settings, Key } from "lucide-react";
 import { DisplayNameEditor } from "./DisplayNameEditor";
 
+export const metadata = {
+  title: "プロフィール",
+};
+
 export default async function ProfilePage() {
   const userInfo = await getUserWithRole();
 

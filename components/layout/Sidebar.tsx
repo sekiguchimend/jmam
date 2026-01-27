@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/actions/auth";
 import { useTransition } from "react";
-import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, FileQuestion, Sparkles, BookOpen } from "lucide-react";
+import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, FileQuestion, Sparkles, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 
 interface SidebarProps {
@@ -13,9 +13,11 @@ interface SidebarProps {
   userEmail?: string;
   isOpen?: boolean;
   onClose?: () => void;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: SidebarProps) {
+export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose, collapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
 
@@ -89,18 +91,38 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
       {/* サイドバー */}
       <aside
         className={`
-          fixed left-0 top-0 h-full w-64 flex flex-col z-50
-          transition-transform duration-300 ease-in-out
+          fixed left-0 top-0 h-full flex flex-col z-50
           lg:translate-x-0
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
         `}
-        style={{ background: "var(--sidebar)" }}
+        style={{
+          background: "var(--sidebar)",
+          width: collapsed ? "80px" : "256px",
+          transition: "width 0.3s ease-in-out, transform 0.3s ease-in-out",
+          boxShadow: "4px 0 16px rgba(0, 0, 0, 0.15)",
+        }}
       >
         {/* ロゴ */}
-        <div className="p-6 border-b flex items-center justify-between" style={{ borderColor: "var(--sidebar-border)" }}>
-          <Link href="/dashboard" onClick={handleNavClick}>
-            <Image src="/jlogo.png" alt="JMAM" width={120} height={48} />
-          </Link>
+        <div
+          className="p-4 border-b flex items-center"
+          style={{
+            borderColor: "var(--sidebar-border)",
+            justifyContent: collapsed ? "center" : "space-between",
+          }}
+        >
+          {!collapsed && (
+            <Link href="/dashboard" onClick={handleNavClick}>
+              <Image src="/jlogo.png" alt="JMAM" width={120} height={48} />
+            </Link>
+          )}
+          {/* デスクトップ用開閉ボタン */}
+          <button
+            onClick={onToggleCollapse}
+            className="hidden lg:flex p-2 rounded-lg hover:bg-white/10 transition-colors"
+            style={{ color: "var(--text-muted)" }}
+          >
+            {collapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+          </button>
           {/* モバイル用閉じるボタン */}
           <button
             onClick={onClose}
@@ -112,11 +134,13 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
         </div>
 
         {/* ナビゲーション */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        <nav className={`flex-1 ${collapsed ? "p-2" : "p-4"} space-y-1 overflow-y-auto overflow-x-hidden`}>
           <div className="mb-4">
-            <p className="px-3 text-xs font-black uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
-              メニュー
-            </p>
+            {!collapsed && (
+              <p className="px-3 text-xs font-black uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                メニュー
+              </p>
+            )}
             <div className="space-y-2">
               {navItems.map((item) => {
                 const isActive = item.href === "/dashboard"
@@ -127,14 +151,15 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
                     key={item.href}
                     href={item.href}
                     onClick={handleNavClick}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200"
+                    className={`flex items-center rounded-lg transition-all duration-200 ${collapsed ? "justify-center p-3" : "gap-3 px-3 py-2.5"}`}
                     style={{
                       background: isActive ? "var(--sidebar-active)" : "transparent",
                       color: isActive ? "#fff" : "var(--text-muted)",
                     }}
+                    title={collapsed ? item.name : undefined}
                   >
                     {item.icon}
-                    <span className="font-bold">{item.name}</span>
+                    {!collapsed && <span className="font-bold whitespace-nowrap">{item.name}</span>}
                   </Link>
                 );
               })}
@@ -143,9 +168,11 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
 
           {isAdmin && (
             <div className="pt-4 border-t" style={{ borderColor: "var(--sidebar-border)" }}>
-              <p className="px-3 text-xs font-black uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
-                管理者
-              </p>
+              {!collapsed && (
+                <p className="px-3 text-xs font-black uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                  管理者
+                </p>
+              )}
               <div className="space-y-2">
                 {adminItems.map((item) => {
                   const isActive = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
@@ -154,14 +181,15 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
                       key={item.href}
                       href={item.href}
                       onClick={handleNavClick}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200"
+                      className={`flex items-center rounded-lg transition-all duration-200 ${collapsed ? "justify-center p-3" : "gap-3 px-3 py-2.5"}`}
                       style={{
                         background: isActive ? "var(--sidebar-active)" : "transparent",
                         color: isActive ? "#fff" : "var(--text-muted)",
                       }}
+                      title={collapsed ? item.name : undefined}
                     >
                       {item.icon}
-                      <span className="font-bold">{item.name}</span>
+                      {!collapsed && <span className="font-bold whitespace-nowrap">{item.name}</span>}
                     </Link>
                   );
                 })}
@@ -171,42 +199,46 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose }: Sideb
         </nav>
 
         {/* ユーザー情報 */}
-        <div className="p-4 border-t" style={{ borderColor: "var(--sidebar-border)" }}>
+        <div className={`${collapsed ? "p-2" : "p-4"} border-t`} style={{ borderColor: "var(--sidebar-border)" }}>
           <Link
             href="/dashboard/profile"
             onClick={handleNavClick}
-            className="flex items-center gap-3 mb-3 p-2 -mx-2 rounded-lg transition-all duration-200 hover:bg-white/10"
+            className={`flex items-center mb-3 rounded-lg transition-all duration-200 hover:bg-white/10 ${collapsed ? "justify-center p-2" : "gap-3 p-2 -mx-2"}`}
+            title={collapsed ? (userName || "プロフィール") : undefined}
           >
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0"
+              className={`rounded-full flex items-center justify-center font-black flex-shrink-0 ${collapsed ? "w-10 h-10 text-sm" : "w-10 h-10 text-sm"}`}
               style={{ background: "var(--primary)", color: "#fff" }}
             >
               {(userName || userEmail || "U").charAt(0).toUpperCase()}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold truncate" style={{ color: "var(--text-inverse)" }}>
-                {userName || "ユーザー"}
-              </p>
-              <p className="text-xs font-bold truncate" style={{ color: "var(--text-muted)" }}>
-                {isAdmin ? "管理者" : "一般ユーザー"}
-              </p>
-            </div>
+            {!collapsed && (
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold truncate" style={{ color: "var(--text-inverse)" }}>
+                  {userName || "ユーザー"}
+                </p>
+                <p className="text-xs font-bold truncate" style={{ color: "var(--text-muted)" }}>
+                  {isAdmin ? "管理者" : "一般ユーザー"}
+                </p>
+              </div>
+            )}
           </Link>
           <button
             onClick={handleLogout}
             disabled={isPending}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-bold transition-all duration-200 disabled:opacity-50"
+            className={`w-full flex items-center justify-center rounded-lg text-sm font-bold transition-all duration-200 disabled:opacity-50 ${collapsed ? "p-3" : "gap-2 px-3 py-2"}`}
             style={{
               background: "var(--sidebar-hover)",
               color: "var(--text-inverse)",
             }}
+            title={collapsed ? "ログアウト" : undefined}
           >
             {isPending ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <LogOut className="w-4 h-4" />
             )}
-            ログアウト
+            {!collapsed && "ログアウト"}
           </button>
         </div>
       </aside>

@@ -21,6 +21,39 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 export const EMBEDDING_MODEL = 'models/gemini-embedding-001';
 export const EMBEDDING_DIM = 3072;
 
+// 並行処理設定
+const EMBEDDING_CONCURRENCY = 15; // API制限と効率のバランス
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 1000;
+
+// 指数バックオフ付きリトライ
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES,
+  initialDelayMs: number = INITIAL_RETRY_DELAY_MS
+): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      const isRateLimit = lastError.message.includes('429') ||
+                          lastError.message.toLowerCase().includes('rate') ||
+                          lastError.message.toLowerCase().includes('quota');
+
+      if (attempt < maxRetries) {
+        // 指数バックオフ（レート制限時は長めに待機）
+        const delay = isRateLimit
+          ? initialDelayMs * Math.pow(3, attempt) // レート制限: 1s, 3s, 9s
+          : initialDelayMs * Math.pow(2, attempt); // 通常: 1s, 2s, 4s
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 function parseVector(v: unknown): Vector {
   if (Array.isArray(v)) return v.map((x) => Number(x));
   if (typeof v === 'string') {
@@ -95,8 +128,7 @@ export async function processEmbeddingQueueBatchWithToken(
     | { key: string; ok: true; row: Database['public']['Tables']['response_embeddings']['Insert'] }
     | { key: string; ok: false; error: string };
 
-  const concurrency = 6; // 5000行程度を想定し、API制限/安定性を優先した控えめ並列
-  const computed = await mapWithConcurrency(jobs, concurrency, async (job): Promise<JobResult> => {
+  const computed = await mapWithConcurrency(jobs, EMBEDDING_CONCURRENCY, async (job): Promise<JobResult> => {
     const key = `${job.case_id}__${job.response_id}`;
     const src = rowMap.get(key);
     // q1 → answer_q1, q2 → answer_q2〜q8を結合
@@ -111,7 +143,8 @@ export async function processEmbeddingQueueBatchWithToken(
       return { key: `${key}__${job.question}`, ok: false, error: 'テキストが見つかりません' };
     }
     try {
-      const emb = await embedText(text);
+      // 指数バックオフ付きリトライでAPIレート制限に対応
+      const emb = await withRetry(() => embedText(text));
       if (emb.values.length !== EMBEDDING_DIM) {
         throw new Error(`embedding次元が想定外です: ${emb.values.length}`);
       }

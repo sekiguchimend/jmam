@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback, useMemo } from "react";
 import { predictAnswer } from "@/actions/predict";
 import type { Case, Scores, PredictionResponse } from "@/types";
 import { defaultScores } from "@/types";
@@ -132,32 +132,44 @@ function RecursiveScoreSection({
           background: isRoot ? bgColor : "transparent",
         }}
       >
-        {/* 折りたたみボタン */}
+        {/* 折りたたみボタン + ラベル部分（クリックで開閉） */}
         {hasChildren ? (
           <button
             onClick={() => toggleSection(item.key)}
-            className="w-5 h-5 rounded flex items-center justify-center hover:opacity-70 transition-opacity flex-shrink-0"
-            style={{ background: isRoot ? "var(--surface)" : "var(--background)" }}
+            className="flex items-center gap-2 flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
           >
-            {isExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5" style={{ color: "var(--text-muted)" }} />
-            )}
+            <div
+              className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
+              style={{ background: isRoot ? "var(--surface)" : "var(--background)" }}
+            >
+              {isExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5" style={{ color: "#323232" }} />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" style={{ color: "#323232" }} />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className={`font-bold ${fontSize}`} style={{ color: "#323232" }}>
+                {item.label}
+              </p>
+              <p className={`${descFontSize} mt-0.5 leading-relaxed`} style={{ color: "var(--text-muted)" }}>
+                {item.description}
+              </p>
+            </div>
           </button>
         ) : (
-          <div className="w-5" />
+          <>
+            <div className="w-5" />
+            <div className="flex-1 min-w-0">
+              <p className={`font-bold ${fontSize}`} style={{ color: "#323232" }}>
+                {item.label}
+              </p>
+              <p className={`${descFontSize} mt-0.5 leading-relaxed`} style={{ color: "var(--text-muted)" }}>
+                {item.description}
+              </p>
+            </div>
+          </>
         )}
-
-        {/* ラベルと説明 */}
-        <div className="flex-1 min-w-0">
-          <p className={`font-bold ${fontSize}`} style={{ color: "#323232" }}>
-            {item.label}
-          </p>
-          <p className={`${descFontSize} mt-0.5 leading-relaxed`} style={{ color: "var(--text-muted)" }}>
-            {item.description}
-          </p>
-        </div>
 
         {/* 数値入力 */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -215,7 +227,7 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(["q1", "q2"]));
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
-  const toggleAccordion = (key: string) => {
+  const toggleAccordion = useCallback((key: string) => {
     setOpenAccordions((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -225,9 +237,9 @@ export function PredictClient({ cases }: PredictClientProps) {
       }
       return next;
     });
-  };
+  }, []);
 
-  const toggleSection = (key: string) => {
+  const toggleSection = useCallback((key: string) => {
     setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -237,9 +249,12 @@ export function PredictClient({ cases }: PredictClientProps) {
       }
       return next;
     });
-  };
+  }, []);
 
-  const selectedCase = cases.find((c) => c.case_id === selectedCaseId);
+  const selectedCase = useMemo(
+    () => cases.find((c) => c.case_id === selectedCaseId),
+    [cases, selectedCaseId]
+  );
 
   const handleScoreChange = (key: keyof Scores, value: number) => {
     setScores((prev) => ({ ...prev, [key]: value }));

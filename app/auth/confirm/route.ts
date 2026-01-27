@@ -13,6 +13,7 @@ import {
 } from '@/lib/supabase/server';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import type { EmailOtpType } from '@supabase/supabase-js';
+import { isAllowedRedirect } from '@/lib/security';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -105,7 +106,8 @@ export async function GET(req: Request) {
       maxAge: 60 * 10,
       path: '/',
     });
-    if (redirectTo) {
+    // XSS/Open Redirect対策: リダイレクト先を検証してからクッキーに保存
+    if (redirectTo && isAllowedRedirect(redirectTo)) {
       res.cookies.set(MFA_PENDING_REDIRECT_COOKIE, redirectTo, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',

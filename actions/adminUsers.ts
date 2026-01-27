@@ -74,30 +74,29 @@ export async function adminListUsers(params?: {
 
   const page = params?.page ?? 1;
   const perPage = params?.perPage ?? 50;
+  const offset = (page - 1) * perPage;
 
-  // anon keyのみで実現するため、Authの管理APIは使わず public.profiles を参照する
+  // RPC関数で1クエリでprofilesとadmin_usersをLEFT JOINして取得
   const supabase = createAuthedAnonServerClient(token);
-  const from = (page - 1) * perPage;
-  const to = from + perPage - 1;
 
-  type ProfileRow = Pick<
-    Database['public']['Tables']['profiles']['Row'],
-    'id' | 'email' | 'name' | 'created_at' | 'status'
-  >;
+  type UserRow = {
+    id: string;
+    email: string | null;
+    name: string | null;
+    status: 'active' | 'suspended' | 'deleted';
+    created_at: string;
+    is_admin: boolean;
+  };
 
-  const res = await supabase
-    .from('profiles')
-    .select('id, email, name, status, created_at', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(from, to);
-  const { data, error } = res;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const res = await (supabase.rpc as any)('list_users_with_admin_status', {
+    p_limit: perPage,
+    p_offset: offset,
+  });
 
-  if (error) {
-    // supabase-jsのerrorは列挙不可プロパティが多いので、見える形でログを出す
-    const e = error as unknown as PostgrestErrorLike;
+  if (res.error) {
+    const e = res.error as unknown as PostgrestErrorLike;
     console.error('adminListUsers error:', {
-      status: res.status,
-      statusText: res.statusText,
       message: e?.message,
       details: e?.details,
       hint: e?.hint,
@@ -109,30 +108,16 @@ export async function adminListUsers(params?: {
     throw new Error('ユーザー一覧の取得に失敗しました');
   }
 
-  const profileRows = (data as ProfileRow[] | null) ?? [];
-  const userIds = profileRows.map((p) => p.id);
+  const rows = (res.data as UserRow[] | null) ?? [];
 
-  // 同ページ内の管理者IDをまとめて取得
-  const adminIdSet = new Set<string>();
-  if (userIds.length > 0) {
-    const adminsRes = await supabase
-      .from('admin_users')
-      .select('id')
-      .in('id', userIds)
-      .eq('is_active', true);
-    if (!adminsRes.error) {
-      for (const a of adminsRes.data ?? []) adminIdSet.add(a.id);
-    }
-  }
-
-  const users: AuthUser[] = profileRows.map((p) => ({
-    id: p.id,
-    email: p.email ?? null,
-    created_at: p.created_at,
+  const users: AuthUser[] = rows.map((r) => ({
+    id: r.id,
+    email: r.email ?? null,
+    created_at: r.created_at,
     last_sign_in_at: null, // anon key運用ではAuthの最終ログインは取得しない
-    user_metadata: { name: p.name ?? '' },
-    status: p.status,
-    is_admin: adminIdSet.has(p.id),
+    user_metadata: { name: r.name ?? '' },
+    status: r.status,
+    is_admin: r.is_admin,
   }));
 
   return { users, page, perPage };

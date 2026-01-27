@@ -6,6 +6,10 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { SetupForm } from "./SetupForm";
 
+export const metadata = {
+  title: "初期設定",
+};
+
 export default async function SetupPage() {
   // 既に管理者が存在する場合はログインページへリダイレクト
   const supabase = await createSupabaseServerClient();

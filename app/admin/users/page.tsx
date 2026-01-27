@@ -1,8 +1,18 @@
 // 管理者：ユーザー管理（一覧）
+import dynamic from 'next/dynamic';
 import { getUserWithRole } from '@/lib/supabase/server';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { adminListUsers } from '@/actions/adminUsers';
-import { AdminUsersClient } from './usersClient';
+
+// dynamic importでクライアントコンポーネントを遅延ロード
+const AdminUsersClient = dynamic(
+  () => import('./usersClient').then(mod => mod.AdminUsersClient),
+  { loading: () => <div className="animate-pulse p-8 text-center">読み込み中...</div> }
+);
+
+export const metadata = {
+  title: "ユーザー管理",
+};
 
 export default async function AdminUsersPage() {
   const userInfo = await getUserWithRole();

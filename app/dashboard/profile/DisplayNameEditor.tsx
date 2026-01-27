@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui";
 import { updateMyDisplayName } from "@/actions/profile";
 
@@ -61,13 +62,18 @@ export function DisplayNameEditor({ initialName }: Props) {
 
   if (!editing) {
     return (
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
         <p className="text-sm lg:text-base font-bold truncate" style={{ color: "#323232" }}>
           {display}
         </p>
-        <Button type="button" variant="secondary" size="sm" onClick={startEdit} disabled={isPending}>
-          編集
-        </Button>
+        <button
+          type="button"
+          onClick={startEdit}
+          disabled={isPending}
+          className="p-1 hover:opacity-70 transition-opacity disabled:opacity-50"
+        >
+          <Pencil className="w-4 h-4" style={{ color: "#323232" }} />
+        </button>
       </div>
     );
   }

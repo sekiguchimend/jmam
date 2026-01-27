@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, Button } from '@/components/ui';
 import { adminDeleteUser, adminListUsers, adminSetUserAdmin, adminSetUserStatus } from '@/actions/adminUsers';
-import { Search } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { CreateUserInline } from './CreateUserInline';
 
 type AuthUser = {
@@ -18,6 +18,13 @@ type AuthUser = {
   status: 'active' | 'suspended' | 'deleted';
   is_admin: boolean;
 };
+
+// ステータス設定の定数マップ
+const STATUS_CONFIG = {
+  active: { label: '稼働', bg: '#16a34a' },
+  suspended: { label: '停止', bg: '#f59e0b' },
+  deleted: { label: '消去', bg: '#6b7280' },
+} as const;
 
 export function AdminUsersClient(props: {
   initial: { users: AuthUser[]; page: number; perPage: number };
@@ -133,10 +140,10 @@ export function AdminUsersClient(props: {
             onClick={() => loadPage(Math.max(1, page - 1))}
             disabled={isPending || page <= 1}
           >
-            前へ
+            <ChevronLeft className="w-4 h-4" />
           </Button>
-          <Button variant="secondary" onClick={() => loadPage(page + 1)} disabled={isPending}>
-            次へ
+          <Button variant="secondary" onClick={() => loadPage(page + 1)} disabled={isPending || users.length < perPage}>
+            <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
 
@@ -154,8 +161,7 @@ export function AdminUsersClient(props: {
             </thead>
             <tbody>
               {filtered.map((u) => {
-                const statusLabel = u.status === 'active' ? '稼働' : u.status === 'suspended' ? '停止' : '消去';
-                const statusBg = u.status === 'active' ? '#16a34a' : u.status === 'suspended' ? '#f59e0b' : '#6b7280';
+                const { label: statusLabel, bg: statusBg } = STATUS_CONFIG[u.status];
                 return (
                   <tr key={u.id} className="border-t" style={{ borderColor: 'var(--border)', color: '#323232' }}>
                     <td className="py-3 pr-4 font-bold text-left truncate" title={u.email ?? '-'}>{u.email ?? '-'}</td>

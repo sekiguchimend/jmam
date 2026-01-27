@@ -129,11 +129,3 @@ export function parseScore(value: string): number | null {
   return Math.round(num * 10) / 10;
 }
 
-// バッチ処理用のチャンク分割
-export function chunk<T>(array: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < array.length; i += size) {
-    chunks.push(array.slice(i, i + size));
-  }
-  return chunks;
-}

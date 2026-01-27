@@ -16,6 +16,7 @@ import {
   USER_REFRESH_TOKEN_COOKIE,
   getMfaPendingTokens,
 } from '@/lib/supabase/server';
+import { getSafeRedirectUrl } from '@/lib/security';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -208,7 +209,8 @@ export async function verifyTotp(params: { factorId: string; code: string }): Pr
   cookieStore.delete(MFA_PENDING_IS_ADMIN_COOKIE);
   cookieStore.delete(MFA_PENDING_REDIRECT_COOKIE);
 
-  const redirectTo = pending.redirectTo ?? (pending.isAdmin ? '/admin' : '/dashboard');
+  // XSS/Open Redirect対策: リダイレクト先を検証
+  const redirectTo = getSafeRedirectUrl(pending.redirectTo, pending.isAdmin);
   return { ok: true, redirectTo };
 }
 

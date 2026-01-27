@@ -3,6 +3,10 @@ import { redirect } from "next/navigation";
 import { hasAnyAccessToken } from "@/lib/supabase/server";
 import { LoginForm } from "./LoginForm";
 
+export const metadata = {
+  title: "ログイン",
+};
+
 export default async function LoginPage() {
   // 既にログイン済みの場合はダッシュボードへ
   if (await hasAnyAccessToken()) {

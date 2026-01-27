@@ -359,41 +359,39 @@ export async function findResponsesForRAG(
 // データセット統計クエリ (FR-12)
 // ============================================
 
-// ケースごとの回答数を取得
+// ケースごとの回答数を取得（DB側でGROUP BY集計して効率化）
 export async function getDatasetStats(): Promise<DatasetStats[]> {
   const supabase = await createSupabaseServerClient();
 
-  // casesテーブルから全ケース情報を取得
-  const { data: cases, error: casesError } = await supabase
-    .from('cases')
-    .select('case_id, case_name')
-    .order('case_id') as { data: { case_id: string; case_name: string | null }[] | null; error: Error | null };
+  // casesテーブルとレスポンスカウントを並行取得
+  const [casesResult, countsResult] = await Promise.all([
+    supabase
+      .from('cases')
+      .select('case_id, case_name')
+      .order('case_id') as unknown as Promise<{ data: { case_id: string; case_name: string | null }[] | null; error: Error | null }>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase.rpc as any)('get_response_counts_by_case') as Promise<{ data: { case_id: string; record_count: number }[] | null; error: Error | null }>,
+  ]);
 
-  if (casesError) {
-    console.error('getDatasetStats cases error:', casesError);
-    throw new Error(`ケース一覧の取得に失敗しました: ${casesError.message}`);
+  if (casesResult.error) {
+    console.error('getDatasetStats cases error:', casesResult.error);
+    throw new Error(`ケース一覧の取得に失敗しました: ${casesResult.error.message}`);
   }
 
-  // responsesからcase_idのみを取得（データ転送量削減）
-  const { data: responses, error: responsesError } = await supabase
-    .from('responses')
-    .select('case_id') as { data: { case_id: string }[] | null; error: Error | null };
-
-  if (responsesError) {
-    console.error('getDatasetStats responses error:', responsesError);
-    throw new Error(`データセット統計の取得に失敗しました: ${responsesError.message}`);
+  if (countsResult.error) {
+    console.error('getDatasetStats counts error:', countsResult.error);
+    throw new Error(`データセット統計の取得に失敗しました: ${countsResult.error.message}`);
   }
 
-  // ケースごとにカウント
+  // カウント結果をMapに変換
   const countMap = new Map<string, number>();
-  for (const row of responses ?? []) {
-    const count = countMap.get(row.case_id) ?? 0;
-    countMap.set(row.case_id, count + 1);
+  for (const row of countsResult.data ?? []) {
+    countMap.set(row.case_id, row.record_count);
   }
 
   // 結果を作成（カウントが0より大きいケースのみ）
   const stats: DatasetStats[] = [];
-  for (const c of cases ?? []) {
+  for (const c of casesResult.data ?? []) {
     const recordCount = countMap.get(c.case_id) ?? 0;
     if (recordCount > 0) {
       stats.push({

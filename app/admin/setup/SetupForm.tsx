@@ -5,7 +5,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createAdminUser } from "@/actions/auth";
-import { Check, Loader2 } from "lucide-react";
+import { FormInput, LoadingSpinner } from "@/components/ui";
+import { Check } from "lucide-react";
 
 export function SetupForm() {
   const router = useRouter();
@@ -85,97 +86,53 @@ export function SetupForm() {
 
         {/* 名前 */}
         <div className="mb-6">
-          <label
-            htmlFor="name"
-            className="block text-sm font-bold mb-2"
-            style={{ color: "#323232" }}
-          >
-            管理者名（任意）
-          </label>
-          <input
+          <FormInput
             type="text"
             id="name"
             name="name"
-            className="w-full px-4 py-3 rounded-xl text-base font-bold"
-            style={{
-              border: "2px solid #e5e5e5",
-              background: "#fff",
-              color: "#323232",
-            }}
+            label="管理者名（任意）"
+            variant="setup"
             placeholder="管理者"
           />
         </div>
 
         {/* メールアドレス */}
         <div className="mb-6">
-          <label
-            htmlFor="email"
-            className="block text-sm font-bold mb-2"
-            style={{ color: "#323232" }}
-          >
-            メールアドレス <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <input
+          <FormInput
             type="email"
             id="email"
             name="email"
+            label="メールアドレス"
             required
-            className="w-full px-4 py-3 rounded-xl text-base font-bold"
-            style={{
-              border: "2px solid #e5e5e5",
-              background: "#fff",
-              color: "#323232",
-            }}
+            variant="setup"
             placeholder="admin@example.com"
           />
         </div>
 
         {/* パスワード */}
         <div className="mb-6">
-          <label
-            htmlFor="password"
-            className="block text-sm font-bold mb-2"
-            style={{ color: "#323232" }}
-          >
-            パスワード <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <input
+          <FormInput
             type="password"
             id="password"
             name="password"
+            label="パスワード"
             required
             minLength={8}
-            className="w-full px-4 py-3 rounded-xl text-base font-bold"
-            style={{
-              border: "2px solid #e5e5e5",
-              background: "#fff",
-              color: "#323232",
-            }}
+            variant="setup"
             placeholder="8文字以上"
           />
         </div>
 
         {/* パスワード確認 */}
         <div className="mb-6">
-          <label
-            htmlFor="confirmPassword"
-            className="block text-sm font-bold mb-2"
-            style={{ color: "#323232" }}
-          >
-            パスワード確認 <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <input
+          <FormInput
             type="password"
             id="confirmPassword"
             name="confirmPassword"
+            label="パスワード確認"
             required
             minLength={8}
-            className="w-full px-4 py-3 rounded-xl text-base font-bold"
-            style={{
-              border: "2px solid #e5e5e5",
-              background: "#fff",
-              color: "#323232",
-            }}
+            variant="setup"
             placeholder="パスワードを再入力"
           />
         </div>
@@ -188,10 +145,7 @@ export function SetupForm() {
           style={{ background: "#323232", color: "#fff" }}
         >
           {isPending ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              作成中...
-            </span>
+            <LoadingSpinner text="作成中..." />
           ) : (
             "管理者アカウントを作成"
           )}

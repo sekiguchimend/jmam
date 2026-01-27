@@ -1,15 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback, useMemo } from "react";
 import { submitCombinedPrediction, submitCombinedNewCasePrediction, type CombinedPredictionResult } from "@/actions/predictScoreNewCase";
 import type { ScoreItems } from "@/lib/scoring";
 import {
-  AlertCircle,
+  FormSelect,
+  FormTextarea,
+  GradientButton,
+  ErrorMessage,
+  SituationDisplay,
+} from "@/components/ui";
+import {
   Calculator,
   FileText,
   FolderOpen,
   Lightbulb,
-  Loader2,
   Send,
   TrendingUp,
 } from "lucide-react";
@@ -36,10 +41,13 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const selectedCase = cases.find((c) => c.case_id === selectedCaseId);
+  const selectedCase = useMemo(
+    () => cases.find((c) => c.case_id === selectedCaseId),
+    [cases, selectedCaseId]
+  );
 
   // モード切替時にリセット
-  const handleModeChange = (mode: CaseMode) => {
+  const handleModeChange = useCallback((mode: CaseMode) => {
     setCaseMode(mode);
     setSelectedCaseId("");
     setSituationText("");
@@ -47,16 +55,16 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
     setQ2Answer("");
     setResult(null);
     setError(null);
-  };
+  }, []);
 
   // ケース選択時
-  const handleCaseSelect = (caseId: string) => {
+  const handleCaseSelect = useCallback((caseId: string) => {
     setSelectedCaseId(caseId);
     const selected = cases.find((c) => c.case_id === caseId);
     setSituationText(selected?.situation_text || "");
     setResult(null);
     setError(null);
-  };
+  }, [cases]);
 
   // 統合予測を実行
   const handleSubmit = async () => {
@@ -100,16 +108,14 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
     setError(null);
     startTransition(async () => {
       let response;
-      
+
       if (caseMode === "existing") {
-        // 既存ケースの場合
         response = await submitCombinedPrediction({
           caseId: selectedCaseId,
           q1Answer: q1Answer.trim(),
           q2Answer: q2Answer.trim(),
         });
       } else {
-        // 新規ケースの場合
         response = await submitCombinedNewCasePrediction({
           situationText: situationText.trim(),
           q1Answer: q1Answer.trim(),
@@ -130,13 +136,18 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
     if (isPending) return true;
     if (!q1Answer.trim() || q1Answer.trim().length < 10) return true;
     if (!q2Answer.trim() || q2Answer.trim().length < 10) return true;
-    
+
     if (caseMode === "existing") {
       return !selectedCaseId;
     } else {
       return !situationText.trim() || situationText.trim().length < 20;
     }
   };
+
+  const caseOptions = useMemo(
+    () => cases.map((c) => ({ value: c.case_id, label: c.case_name || c.case_id })),
+    [cases]
+  );
 
   return (
     <div className="space-y-6">
@@ -172,72 +183,31 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
             </button>
           </div>
         </div>
-        <button
+        <GradientButton
           onClick={handleSubmit}
           disabled={isSubmitDisabled()}
-          className="px-6 py-3 text-sm font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center justify-center gap-2 flex-shrink-0"
-          style={{
-            background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
-            borderRadius: "5px"
-          }}
+          isLoading={isPending}
+          loadingText="予測中..."
+          icon={<Send className="w-4 h-4" />}
+          className="flex-shrink-0"
         >
-          {isPending ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              予測中...
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              スコアを予測する
-            </>
-          )}
-        </button>
+          スコアを予測する
+        </GradientButton>
       </div>
 
       {/* 既存ケースモード: ケース選択 */}
       {caseMode === "existing" && (
         <div className="p-5">
-          {/* ケースを選択（アイコンとラベル） */}
-          <div className="flex items-center gap-3 mb-3 max-w-md">
-            <FolderOpen className="w-5 h-5 flex-shrink-0" style={{ color: "#323232" }} />
-            <label className="text-sm font-black" style={{ color: "#323232" }}>
-              ケースを選択
-            </label>
-          </div>
-          
-          {/* セレクトボックス */}
-          <div>
-            <select
-              value={selectedCaseId}
-              onChange={(e) => handleCaseSelect(e.target.value)}
-              className="max-w-md px-4 py-2.5 rounded-lg text-sm font-bold appearance-none cursor-pointer"
-              style={{
-                border: "1px solid var(--border)",
-                background: `var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23323232' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center`,
-                color: "#323232",
-                paddingRight: "36px",
-              }}
-            >
-              <option value="">選択してください</option>
-              {cases.map((c) => (
-                <option key={c.case_id} value={c.case_id}>
-                  {c.case_name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <FormSelect
+            label="ケースを選択"
+            icon={<FolderOpen className="w-5 h-5 flex-shrink-0" style={{ color: "#323232" }} />}
+            options={caseOptions}
+            value={selectedCaseId}
+            onChange={(e) => handleCaseSelect(e.target.value)}
+          />
 
-          {/* シチュエーション表示（読み取り専用） */}
           {selectedCase?.situation_text && (
-            <div className="mt-4 p-4 rounded-lg" style={{ background: "var(--background)" }}>
-              <p className="text-xs font-black mb-1" style={{ color: "var(--text-muted)" }}>
-                シチュエーション
-              </p>
-              <p className="text-sm leading-relaxed" style={{ color: "#323232" }}>
-                {selectedCase.situation_text}
-              </p>
-            </div>
+            <SituationDisplay text={selectedCase.situation_text} />
           )}
         </div>
       )}
@@ -245,13 +215,9 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
       {/* 新規ケースモード: シチュエーション入力 */}
       {caseMode === "new" && (
         <div className="p-5">
-          <div className="flex items-center gap-3 mb-3">
-            <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "#323232" }} />
-            <label className="text-sm font-black" style={{ color: "#323232" }}>
-              ケース内容（シチュエーション）を入力
-            </label>
-          </div>
-          <textarea
+          <FormTextarea
+            label="ケース内容（シチュエーション）を入力"
+            icon={<FileText className="w-5 h-5 flex-shrink-0" style={{ color: "#323232" }} />}
             value={situationText}
             onChange={(e) => {
               setSituationText(e.target.value);
@@ -260,28 +226,15 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
             }}
             placeholder="新しいケースのシチュエーション（状況説明）を入力してください...&#10;例：あなたは〇〇部門の課長です。部下に△△という問題が発生しています..."
             rows={8}
-            className="w-full px-4 py-3 rounded-lg text-sm font-bold resize-none"
-            style={{
-              border: "1px solid var(--border)",
-              background: "var(--background)",
-              color: "#323232",
-            }}
+            hint={`${situationText.length} / 20文字以上`}
           />
-          <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-            {situationText.length} / 20文字以上
-          </p>
         </div>
       )}
 
       {/* 設問1の回答入力 */}
-      <div
-        className="p-5"
-        style={{ background: "transparent" }}
-      >
-        <label className="text-sm font-black mb-3 block" style={{ color: "#323232" }}>
-          設問1の回答（問題把握）
-        </label>
-        <textarea
+      <div className="p-5" style={{ background: "transparent" }}>
+        <FormTextarea
+          label="設問1の回答（問題把握）"
           value={q1Answer}
           onChange={(e) => {
             setQ1Answer(e.target.value);
@@ -290,27 +243,14 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
           }}
           placeholder="設問1の回答を入力してください...&#10;（職場の問題点を挙げてください）"
           rows={6}
-          className="w-full px-4 py-3 rounded-lg text-sm font-bold resize-none"
-          style={{
-            border: "1px solid var(--border)",
-            background: "var(--background)",
-            color: "#323232",
-          }}
+          hint={`${q1Answer.length} / 10文字以上`}
         />
-        <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-          {q1Answer.length} / 10文字以上
-        </p>
       </div>
 
       {/* 設問2の回答入力 */}
-      <div
-        className="p-5"
-        style={{ background: "transparent" }}
-      >
-        <label className="text-sm font-black mb-3 block" style={{ color: "#323232" }}>
-          設問2の回答（対策立案・主導・連携・育成）
-        </label>
-        <textarea
+      <div className="p-5" style={{ background: "transparent" }}>
+        <FormTextarea
+          label="設問2の回答（対策立案・主導・連携・育成）"
           value={q2Answer}
           onChange={(e) => {
             setQ2Answer(e.target.value);
@@ -319,28 +259,12 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
           }}
           placeholder="設問2の回答を入力してください...&#10;（問題に対する対策と実行計画を示してください）"
           rows={6}
-          className="w-full px-4 py-3 rounded-lg text-sm font-bold resize-none"
-          style={{
-            border: "1px solid var(--border)",
-            background: "var(--background)",
-            color: "#323232",
-          }}
+          hint={`${q2Answer.length} / 10文字以上`}
         />
-        <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-          {q2Answer.length} / 10文字以上
-        </p>
       </div>
 
       {/* エラー */}
-      {error && (
-        <div
-          className="p-4 rounded-xl flex items-center gap-3 mx-5"
-          style={{ background: "var(--error-light)", color: "var(--error)" }}
-        >
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span className="font-bold text-sm">{error}</span>
-        </div>
-      )}
+      {error && <ErrorMessage message={error} className="mx-5" />}
 
       {/* 統合予測結果 */}
       {result && !isPending && (
@@ -348,10 +272,7 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
       )}
 
       {/* 説明 */}
-      <div
-        className="rounded-xl p-5"
-        style={{ background: "#f5f5f5" }}
-      >
+      <div className="rounded-xl p-5" style={{ background: "#f5f5f5" }}>
         <h3 className="text-sm font-black mb-2" style={{ color: "#323232" }}>
           スコア予測について
         </h3>
@@ -369,11 +290,7 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
 }
 
 // 統合予測結果表示コンポーネント
-function CombinedPredictionResultView({
-  result,
-}: {
-  result: CombinedPredictionResult;
-}) {
+function CombinedPredictionResultView({ result }: { result: CombinedPredictionResult }) {
   return (
     <div className="space-y-4 px-5">
       <h3 className="text-base font-black" style={{ color: "#323232" }}>
@@ -402,196 +319,7 @@ function CombinedPredictionResultView({
           </div>
         </div>
 
-        {/* スコア階層構造（ツリー形式） */}
-        <div className="p-4 rounded-lg" style={{ background: "#fafafa", maxWidth: "600px" }}>
-          <div style={{ marginLeft: "8px", fontFamily: "inherit" }}>
-            {/* 問題把握 */}
-            {result.predictedScores.problem != null && (
-              <div className="relative" style={{ paddingLeft: "62px" }}>
-                <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
-                <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "1px", top: "32px", width: "60px" }}></div>
-                <div className="flex items-center" style={{ height: "64px" }}>
-                  <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>問題把握</span>
-                  <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>{result.predictedScores.problem.toFixed(1)}</span>
-                </div>
-                <div className="relative" style={{ paddingLeft: "62px" }}>
-                  <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "32px" }}></div>
-                  {result.predictedScores.problemUnderstanding != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>状況理解</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.problemUnderstanding}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.problemEssence != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>本質把握</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.problemEssence}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.problemMaintenanceBiz != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>維持・業務</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.problemMaintenanceBiz}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.problemMaintenanceHr != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>維持・人</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.problemMaintenanceHr}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.problemReformBiz != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>改革・業務</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.problemReformBiz}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.problemReformHr != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>改革・人</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.problemReformHr}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 対策立案 */}
-            {result.predictedScores.solution != null && (
-              <div className="relative" style={{ paddingLeft: "62px" }}>
-                <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
-                <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "1px", top: "32px", width: "60px" }}></div>
-                <div className="flex items-center" style={{ height: "64px" }}>
-                  <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>対策立案</span>
-                  <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>{result.predictedScores.solution.toFixed(1)}</span>
-                </div>
-                <div className="relative" style={{ paddingLeft: "62px" }}>
-                  <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "32px" }}></div>
-                  {result.predictedScores.solutionCoverage != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>網羅性</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.solutionCoverage}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.solutionPlanning != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>計画性</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.solutionPlanning}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.solutionMaintenanceBiz != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>維持・業務</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.solutionMaintenanceBiz}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.solutionMaintenanceHr != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>維持・人</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.solutionMaintenanceHr}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.solutionReformBiz != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>改革・業務</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.solutionReformBiz}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.solutionReformHr != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>改革・人</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.solutionReformHr}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 役割理解 */}
-            {result.predictedScores.role != null && (
-              <div className="relative" style={{ paddingLeft: "62px" }}>
-                <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
-                <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "1px", top: "32px", width: "60px" }}></div>
-                <div className="flex items-center" style={{ height: "64px" }}>
-                  <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>役割理解</span>
-                  <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>{result.predictedScores.role.toFixed(1)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* 主導 */}
-            {result.predictedScores.leadership != null && (
-              <div className="relative" style={{ paddingLeft: "62px" }}>
-                <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
-                <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "1px", top: "32px", width: "60px" }}></div>
-                <div className="flex items-center" style={{ height: "64px" }}>
-                  <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>主導</span>
-                  <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>{result.predictedScores.leadership.toFixed(1)}</span>
-                </div>
-              </div>
-            )}
-
-            {/* 連携 */}
-            {result.predictedScores.collaboration != null && (
-              <div className="relative" style={{ paddingLeft: "62px" }}>
-                <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: 0 }}></div>
-                <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "1px", top: "32px", width: "60px" }}></div>
-                <div className="flex items-center" style={{ height: "64px" }}>
-                  <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>連携</span>
-                  <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>{result.predictedScores.collaboration.toFixed(1)}</span>
-                </div>
-                <div className="relative" style={{ paddingLeft: "62px" }}>
-                  <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "32px" }}></div>
-                  {result.predictedScores.collabSupervisor != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>上司</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.collabSupervisor}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.collabExternal != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>職場外</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.collabExternal}</span>
-                    </div>
-                  )}
-                  {result.predictedScores.collabMember != null && (
-                    <div className="relative flex items-center" style={{ height: "64px" }}>
-                      <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}></div>
-                      <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>メンバー</span>
-                      <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>{result.predictedScores.collabMember}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* 育成（最後の項目） */}
-            {result.predictedScores.development != null && (
-              <div className="relative" style={{ paddingLeft: "62px" }}>
-                <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, height: "32px" }}></div>
-                <div className="absolute h-0.5" style={{ background: "#cbd5e1", left: "1px", top: "32px", width: "60px" }}></div>
-                <div className="flex items-center" style={{ height: "64px" }}>
-                  <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>育成</span>
-                  <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>{result.predictedScores.development.toFixed(1)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <ScoreTreeView scores={result.predictedScores} />
 
         {/* エンベディング予測スコア（参考値） */}
         {result.embeddingScores && (
@@ -601,52 +329,22 @@ function CombinedPredictionResultView({
             </p>
             <div className="grid grid-cols-6 gap-1">
               {result.embeddingScores.problem != null && (
-                <div className="text-center">
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>問題</p>
-                  <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                    {result.embeddingScores.problem.toFixed(1)}
-                  </p>
-                </div>
+                <EmbeddingScoreItem label="問題" value={result.embeddingScores.problem} />
               )}
               {result.embeddingScores.solution != null && (
-                <div className="text-center">
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>対策</p>
-                  <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                    {result.embeddingScores.solution.toFixed(1)}
-                  </p>
-                </div>
+                <EmbeddingScoreItem label="対策" value={result.embeddingScores.solution} />
               )}
               {result.embeddingScores.role != null && (
-                <div className="text-center">
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>役割</p>
-                  <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                    {result.embeddingScores.role.toFixed(1)}
-                  </p>
-                </div>
+                <EmbeddingScoreItem label="役割" value={result.embeddingScores.role} />
               )}
               {result.embeddingScores.leadership != null && (
-                <div className="text-center">
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>主導</p>
-                  <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                    {result.embeddingScores.leadership.toFixed(1)}
-                  </p>
-                </div>
+                <EmbeddingScoreItem label="主導" value={result.embeddingScores.leadership} />
               )}
               {result.embeddingScores.collaboration != null && (
-                <div className="text-center">
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>連携</p>
-                  <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                    {result.embeddingScores.collaboration.toFixed(1)}
-                  </p>
-                </div>
+                <EmbeddingScoreItem label="連携" value={result.embeddingScores.collaboration} />
               )}
               {result.embeddingScores.development != null && (
-                <div className="text-center">
-                  <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>育成</p>
-                  <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-                    {result.embeddingScores.development.toFixed(1)}
-                  </p>
-                </div>
+                <EmbeddingScoreItem label="育成" value={result.embeddingScores.development} />
               )}
             </div>
           </div>
@@ -669,3 +367,119 @@ function CombinedPredictionResultView({
   );
 }
 
+// エンベディングスコアアイテム
+function EmbeddingScoreItem({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="text-center">
+      <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{label}</p>
+      <p className="text-sm font-bold" style={{ color: "var(--text-muted)" }}>
+        {value.toFixed(1)}
+      </p>
+    </div>
+  );
+}
+
+// スコアツリービューコンポーネント
+function ScoreTreeView({ scores }: { scores: Partial<ScoreItems> }) {
+  return (
+    <div className="p-4 rounded-lg" style={{ background: "#fafafa", maxWidth: "600px" }}>
+      <div style={{ marginLeft: "8px", fontFamily: "inherit" }}>
+        {scores.problem != null && (
+          <ScoreTreeNode
+            label="問題把握"
+            value={scores.problem}
+            isLast={false}
+            children={[
+              scores.problemUnderstanding != null && { label: "状況理解", value: scores.problemUnderstanding },
+              scores.problemEssence != null && { label: "本質把握", value: scores.problemEssence },
+              scores.problemMaintenanceBiz != null && { label: "維持・業務", value: scores.problemMaintenanceBiz },
+              scores.problemMaintenanceHr != null && { label: "維持・人", value: scores.problemMaintenanceHr },
+              scores.problemReformBiz != null && { label: "改革・業務", value: scores.problemReformBiz },
+              scores.problemReformHr != null && { label: "改革・人", value: scores.problemReformHr },
+            ].filter(Boolean) as { label: string; value: number }[]}
+          />
+        )}
+        {scores.solution != null && (
+          <ScoreTreeNode
+            label="対策立案"
+            value={scores.solution}
+            isLast={false}
+            children={[
+              scores.solutionCoverage != null && { label: "網羅性", value: scores.solutionCoverage },
+              scores.solutionPlanning != null && { label: "計画性", value: scores.solutionPlanning },
+              scores.solutionMaintenanceBiz != null && { label: "維持・業務", value: scores.solutionMaintenanceBiz },
+              scores.solutionMaintenanceHr != null && { label: "維持・人", value: scores.solutionMaintenanceHr },
+              scores.solutionReformBiz != null && { label: "改革・業務", value: scores.solutionReformBiz },
+              scores.solutionReformHr != null && { label: "改革・人", value: scores.solutionReformHr },
+            ].filter(Boolean) as { label: string; value: number }[]}
+          />
+        )}
+        {scores.role != null && <ScoreTreeNode label="役割理解" value={scores.role} isLast={false} />}
+        {scores.leadership != null && <ScoreTreeNode label="主導" value={scores.leadership} isLast={false} />}
+        {scores.collaboration != null && (
+          <ScoreTreeNode
+            label="連携"
+            value={scores.collaboration}
+            isLast={false}
+            children={[
+              scores.collabSupervisor != null && { label: "上司", value: scores.collabSupervisor },
+              scores.collabExternal != null && { label: "職場外", value: scores.collabExternal },
+              scores.collabMember != null && { label: "メンバー", value: scores.collabMember },
+            ].filter(Boolean) as { label: string; value: number }[]}
+          />
+        )}
+        {scores.development != null && <ScoreTreeNode label="育成" value={scores.development} isLast={true} />}
+      </div>
+    </div>
+  );
+}
+
+// スコアツリーノードコンポーネント
+function ScoreTreeNode({
+  label,
+  value,
+  isLast,
+  children = [],
+}: {
+  label: string;
+  value: number;
+  isLast: boolean;
+  children?: { label: string; value: number }[];
+}) {
+  return (
+    <div className="relative" style={{ paddingLeft: "62px" }}>
+      <div
+        className="absolute w-0.5"
+        style={{ background: "#cbd5e1", left: 0, top: 0, bottom: isLast ? "32px" : 0 }}
+      />
+      <div
+        className="absolute h-0.5"
+        style={{ background: "#cbd5e1", left: "1px", top: "32px", width: "60px" }}
+      />
+      <div className="flex items-center" style={{ height: "64px" }}>
+        <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>{label}</span>
+        <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>{value.toFixed(1)}</span>
+      </div>
+
+      {children.length > 0 && (
+        <div className="relative" style={{ paddingLeft: "62px" }}>
+          <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "32px" }} />
+          {children.map((child) => (
+            <div key={child.label} className="relative flex items-center" style={{ height: "64px" }}>
+              <div
+                className="absolute h-0.5"
+                style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}
+              />
+              <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>
+                {child.label}
+              </span>
+              <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>
+                {child.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

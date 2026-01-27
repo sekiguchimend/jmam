@@ -4,6 +4,10 @@ import { hasAnyAccessToken, getMfaPendingTokens } from '@/lib/supabase/server';
 import { MfaClient } from './mfaClient';
 import { getMfaStatus } from '@/actions/mfa';
 
+export const metadata = {
+  title: "二段階認証",
+};
+
 export default async function MfaPage() {
   // 既にログイン済みなら不要
   if (await hasAnyAccessToken()) {
