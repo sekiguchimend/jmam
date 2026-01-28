@@ -229,14 +229,16 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 **各評価項目には個別の刻みと上限が設定されています。必ず以下に従ってください：**
 
 ### 主要評価項目
-| 項目 | 刻み | 範囲 |
-|------|------|------|
-| 問題把握 | 0.5 | 1.0〜5.0 |
-| 対策立案 | 0.5 | 1.0〜5.0 |
-| 役割理解 | 0.1 | 1.0〜5.0 |
-| 主導 | 0.5 | 1.0〜4.0 |
-| 連携 | 0.5 | 1.0〜4.0 |
-| 育成 | 0.5 | 1.0〜4.0 |
+| 項目 | 刻み | 範囲 | 備考 |
+|------|------|------|------|
+| 問題把握 | 0.5 | 1.0〜5.0 | 詳細スコアから計算 |
+| 対策立案 | 0.5 | 1.0〜5.0 | 詳細スコアから計算 |
+| 役割理解 | 0.1 | 1.0〜4.0 | **自動計算（主導+連携+育成）÷3** |
+| 主導 | 0.5 | 1.0〜4.0 | AIが直接評価 |
+| 連携 | 0.5 | 1.0〜4.0 | 詳細スコアから計算 |
+| 育成 | 0.5 | 1.0〜4.0 | AIが直接評価 |
+
+**重要：役割理解は主導・連携・育成の平均として自動計算されるため、AIが直接評価する必要はありません。**
 
 ### 問題把握の詳細項目（すべて刻み1、上限4）
 - 状況理解: 1〜4（整数）
@@ -321,7 +323,6 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
     "collabMember": 1〜4の整数または null（メンバーとの連携、設問2のみ）
   },
   "scores": {
-    "role": 1.0〜5.0の数値（役割理解評点、両設問で評価、0.1刻み）,
     "leadership": 1.0〜4.0の数値または null（主導評点、設問2のみ、0.5刻み）,
     "development": 1.0〜4.0の数値または null（育成評点、設問2のみ、0.5刻み）
   },
@@ -338,9 +339,10 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 
 **重要な注意点**:
 - 無効な回答（意味のない文字列など）の場合、isValidAnswer を false にし、すべての詳細スコアを 1、scoresも最低値にしてください
-- 設問1（q1）の場合：detailScoresはproblemUnderstanding〜problemReformHrの6項目、scoresはroleのみを評価。他はnull
-- 設問2（q2）の場合：detailScoresはsolutionCoverage〜collabMemberの9項目、scoresはrole/leadership/developmentを評価。他はnull
-- **problem, solution, collaborationは詳細スコアから計算式で算出するため、出力不要です**
+- 設問1（q1）の場合：detailScoresはproblemUnderstanding〜problemReformHrの6項目のみ評価。scoresは空オブジェクト。
+- 設問2（q2）の場合：detailScoresはsolutionCoverage〜collabMemberの9項目、scoresはleadership/developmentを評価。
+- **problem, solution, collaboration, roleは詳細スコアから計算式で算出するため、出力不要です**
+- **役割理解（role）は主導・連携・育成の平均として自動計算されるため、評価不要です**
 
 ## 説明文のガイドライン
 
@@ -511,7 +513,7 @@ function getQuestionFocus(question: 'q1' | 'q2'): string {
 - 問題の本質や根本原因を見抜けているか
 - 対人関係面や組織的な問題も考慮しているか
 
-**設問1では、problem と role にスコアを設定してください。solution, leadership, collaboration, development は null にしてください。**`;
+**設問1では、detailScoresのproblemUnderstanding〜problemReformHrの6項目のみ評価してください。scoresは空オブジェクトにしてください。**`;
   }
   return `この回答は「設問2（対策立案・主導・連携・育成）」への回答です。
 以下の観点から総合的に評価してください：
@@ -520,7 +522,7 @@ function getQuestionFocus(question: 'q1' | 'q2'): string {
 - 連携: 関係者との協力姿勢があるか
 - 育成: メンバー育成の視点があるか
 
-**設問2では、solution, role, leadership, collaboration, development をそれぞれ評価してください。problem は null にしてください。**`;
+**設問2では、detailScoresの9項目とscoresのleadership/developmentを評価してください。roleは主導・連携・育成の平均として自動計算されます。**`;
 }
 
 /**
@@ -959,16 +961,9 @@ function calculateMainScoresFromDetail(
     return Math.max(1, Math.min(5, Math.round(raw / 0.5) * 0.5));
   };
 
-  // role, leadership, developmentはAIが直接評価（aiScoresから取得）
+  // leadership, developmentはAIが直接評価（aiScoresから取得）
+  // roleは常に (leadership + collaboration + development) / 3 で計算
   // AIスコアがない場合のフォールバック用推定関数
-  const estimateRole = (collaboration: number | null, leadership: number | null): number | null => {
-    if (collaboration !== null && leadership !== null) {
-      const raw = (collaboration + leadership) / 2;
-      return Math.max(1, Math.min(5, Math.round(raw * 10) / 10)); // 0.1刻み
-    }
-    return null;
-  };
-
   const estimateLeadership = (solution: number | null): number | null => {
     if (solution !== null) {
       return Math.max(1, Math.min(4, Math.round(solution * 2) / 2));
@@ -984,14 +979,22 @@ function calculateMainScoresFromDetail(
     return null;
   };
 
+  // 役割理解は常に (主導 + 連携 + 育成) / 3 で計算
+  const calculateRole = (leadership: number | null, collaboration: number | null, development: number | null): number | null => {
+    if (leadership !== null && collaboration !== null && development !== null) {
+      const raw = (leadership + collaboration + development) / 3;
+      return Math.max(1, Math.min(5, Math.round(raw * 10) / 10)); // 0.1刻み
+    }
+    return null;
+  };
+
   if (question === 'q1') {
     const problem = calculateProblem();
-    // role: AIが評価した値を使用、なければ問題把握から推定
-    const role = aiScores?.role ?? (problem !== null ? Math.max(1, Math.min(5, Math.round(problem * 10) / 10)) : null);
+    // 設問1では role は計算できない（leadership/collaboration/development がないため）
     return {
       problem,
       solution: null,
-      role,
+      role: null,
       leadership: null,
       collaboration: null,
       development: null,
@@ -1000,10 +1003,12 @@ function calculateMainScoresFromDetail(
     const solution = calculateSolution();
     const collaboration = calculateCollaboration();
 
-    // role, leadership, development: AIが評価した値を使用、なければ推定
+    // leadership, development: AIが評価した値を使用、なければ推定
     const leadership = aiScores?.leadership ?? estimateLeadership(solution);
-    const role = aiScores?.role ?? estimateRole(collaboration, leadership);
     const development = aiScores?.development ?? estimateDevelopment(detailScores.solutionMaintenanceHr);
+
+    // role は常に (leadership + collaboration + development) / 3 で計算
+    const role = calculateRole(leadership, collaboration, development);
 
     return {
       problem: null,

@@ -213,26 +213,42 @@ export function calculateMainScoresFromDetails(detailScores: {
 }
 
 /**
- * 主要スコアから役割理解を推定（参考値）
+ * 主要スコアから役割理解を計算
  *
- * 注意: この計算は一致率が低い（約43.6%）ため、参考値として使用
- * 式: (連携 + 主導) ÷ 2
+ * 式: (主導 + 連携 + 育成) ÷ 3
+ * 役割理解は主導・連携・育成の平均として定義される
  *
- * @param collaboration - 連携スコア
- * @param leadership - 主導スコア
- * @returns 役割理解スコア（推定値）
+ * @param leadership - 主導スコア (1-4)
+ * @param collaboration - 連携スコア (1-4)
+ * @param development - 育成スコア (1-4)
+ * @returns 役割理解スコア (1.0-4.0, 小数点1桁)
  */
-export function estimateRoleScore(
+export function calculateRoleScore(
+  leadership: number | null | undefined,
   collaboration: number | null | undefined,
-  leadership: number | null | undefined
+  development: number | null | undefined
 ): number | null {
-  if (collaboration == null || leadership == null) {
+  if (leadership == null || collaboration == null || development == null) {
     return null;
   }
 
-  const raw = (collaboration + leadership) / 2;
-  // 役割理解は0.1刻み、上限5
+  const raw = (leadership + collaboration + development) / 3;
+  // 役割理解は0.1刻み
   return Math.round(raw * 10) / 10;
+}
+
+/**
+ * @deprecated Use calculateRoleScore instead
+ * 後方互換性のためのエイリアス
+ */
+export function estimateRoleScore(
+  collaboration: number | null | undefined,
+  leadership: number | null | undefined,
+  development?: number | null | undefined
+): number | null {
+  // 旧APIとの互換性: developmentが提供されない場合は2.5をデフォルトとする
+  const dev = development ?? 2.5;
+  return calculateRoleScore(leadership, collaboration, dev);
 }
 
 /**

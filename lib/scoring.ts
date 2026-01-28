@@ -153,8 +153,8 @@ function calculateMainScoresFromDetailScores(detailScores: {
     detailScores.collabMember
   );
 
-  // role, leadership, developmentはAI予測値を使用、なければ推定
-  let role = aiScores?.role ?? null;
+  // leadership, developmentはAI予測値を使用、なければ推定
+  // roleはAI予測を使用せず、常に (leadership + collaboration + development) / 3 で計算
   let leadership = aiScores?.leadership ?? null;
   let development = aiScores?.development ?? null;
 
@@ -165,9 +165,12 @@ function calculateMainScoresFromDetailScores(detailScores: {
   if (development == null && detailScores.solutionMaintenanceHr != null) {
     development = estimateDevelopmentScore(detailScores.solutionMaintenanceHr);
   }
-  // roleは(collaboration + leadership) / 2 で推定
-  if (role == null && collaboration != null && leadership != null) {
-    const rawRole = (collaboration + leadership) / 2;
+
+  // roleは (leadership + collaboration + development) / 3 で計算
+  // 役割理解は主導・連携・育成の平均として定義される
+  let role: number | null = null;
+  if (leadership != null && collaboration != null && development != null) {
+    const rawRole = (leadership + collaboration + development) / 3;
     role = Math.round(rawRole * 10) / 10; // 0.1刻み
   }
 

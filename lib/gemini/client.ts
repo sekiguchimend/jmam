@@ -55,6 +55,7 @@ export async function generatePredictionFromSimilar(
 
     if (targetScores.role >= 3.5) {
       guidance.push(`【役割理解で${targetScores.role}点を達成するには】★重要★
+※役割理解 = (主導 + 連携 + 育成) ÷ 3 で計算されます。高い役割理解スコアを得るには、主導・連携・育成のすべてで高いスコアが必要です。
 - 必ず「私は〜する」「私がリーダーとして〜」という主体的な一人称表現を使う
 - 組織における自分の立場と責任を明確に示す
 - 上司への報告・相談、部下への指示・支援、関係部門との調整など、各方向への役割を具体的に記述する
@@ -102,7 +103,7 @@ ${situationText || '（シチュエーション情報なし）'}
 ## 目標スコア
 - 問題把握: ${targetScores.problem}（満点5.0）
 - 対策立案: ${targetScores.solution}（満点5.0）
-- 役割理解: ${targetScores.role}（満点5.0）★特に重要
+- 役割理解: ${targetScores.role}（※主導・連携・育成の平均として自動計算）
 - 主導: ${targetScores.leadership}（満点4.0）
 - 連携: ${targetScores.collaboration}（満点4.0）
 - 育成: ${targetScores.development}（満点4.0）

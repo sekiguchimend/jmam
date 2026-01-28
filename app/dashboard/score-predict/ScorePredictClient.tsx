@@ -279,6 +279,15 @@ function PredictionResultView({
 
 // スコアツリービューコンポーネント
 function ScoreTreeView({ scores }: { scores: Partial<ScoreItems> }) {
+  // 役割理解は主導・連携・育成の平均として自動計算
+  const calculatedRole = useMemo(() => {
+    if (scores.leadership != null && scores.collaboration != null && scores.development != null) {
+      const avg = (scores.leadership + scores.collaboration + scores.development) / 3;
+      return Math.round(avg * 10) / 10;
+    }
+    return null;
+  }, [scores.leadership, scores.collaboration, scores.development]);
+
   return (
     <div className="p-4 rounded-lg" style={{ background: "#fafafa", maxWidth: "600px" }}>
       <div style={{ marginLeft: "8px", fontFamily: "inherit" }}>
@@ -316,9 +325,9 @@ function ScoreTreeView({ scores }: { scores: Partial<ScoreItems> }) {
           />
         )}
 
-        {/* 役割理解 */}
-        {scores.role != null && (
-          <ScoreTreeNode label="役割理解" value={scores.role} isLast={false} />
+        {/* 役割理解（自動計算） */}
+        {calculatedRole != null && (
+          <ScoreTreeNode label="役割理解" value={calculatedRole} isLast={false} isCalculated />
         )}
 
         {/* 主導 */}
@@ -355,11 +364,13 @@ function ScoreTreeNode({
   value,
   isLast,
   children = [],
+  isCalculated = false,
 }: {
   label: string;
   value: number;
   isLast: boolean;
   children?: { label: string; value: number }[];
+  isCalculated?: boolean;
 }) {
   return (
     <div className="relative" style={{ paddingLeft: "62px" }}>
@@ -374,6 +385,11 @@ function ScoreTreeNode({
       <div className="flex items-center" style={{ height: "64px" }}>
         <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>
           {label}
+          {isCalculated && (
+            <span className="text-[12px] font-bold ml-2" style={{ color: "var(--text-muted)" }}>
+              (自動計算)
+            </span>
+          )}
         </span>
         <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>
           {value.toFixed(1)}

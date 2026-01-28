@@ -49,13 +49,6 @@ const scoreStructure: ScoreItemConfig[] = [
     ],
   },
   {
-    key: "role",
-    label: "役割理解",
-    description: "職場運営に取り組むリーダーの役割を理解する",
-    step: 0.1,
-    max: 5,
-  },
-  {
     key: "leadership",
     label: "主導",
     description: "主体的に問題解決に取り組む",
@@ -256,6 +249,12 @@ export function PredictClient({ cases }: PredictClientProps) {
     [cases, selectedCaseId]
   );
 
+  // 役割理解は主導・連携・育成の平均として自動計算
+  const calculatedRole = useMemo(() => {
+    const avg = (scores.leadership + scores.collaboration + scores.development) / 3;
+    return Math.round(avg * 10) / 10; // 小数点1桁に丸め
+  }, [scores.leadership, scores.collaboration, scores.development]);
+
   const handleScoreChange = (key: keyof Scores, value: number) => {
     setScores((prev) => ({ ...prev, [key]: value }));
   };
@@ -268,7 +267,9 @@ export function PredictClient({ cases }: PredictClientProps) {
 
     setError(null);
     startTransition(async () => {
-      const response = await predictAnswer(selectedCaseId, scores);
+      // 役割理解を自動計算してスコアに追加
+      const scoresWithRole = { ...scores, role: calculatedRole };
+      const response = await predictAnswer(selectedCaseId, scoresWithRole);
       if (response.success) {
         setResult(response.data);
       } else {
@@ -375,6 +376,34 @@ export function PredictClient({ cases }: PredictClientProps) {
         <p className="text-[10px] mt-4 text-center" style={{ color: "var(--text-muted)" }}>
           各スコアの上限値・刻み幅は項目ごとに異なります。詳細項目は親項目の左の矢印をクリックして展開できます。
         </p>
+
+        {/* 役割理解（自動計算表示） */}
+        <div
+          className="mt-4 p-4 rounded-lg"
+          style={{ background: "var(--background)", border: "1px solid var(--primary)" }}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold" style={{ color: "#323232" }}>
+                役割理解（自動計算）
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                ＝（主導 + 連携 + 育成）÷ 3
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className="text-lg font-black px-3 py-1 rounded"
+                style={{ background: "var(--primary)", color: "#fff" }}
+              >
+                {calculatedRole.toFixed(1)}
+              </span>
+              <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>
+                /5
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 実行ボタン */}
