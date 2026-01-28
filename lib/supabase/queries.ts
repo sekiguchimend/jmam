@@ -140,10 +140,10 @@ export async function findSimilarResponsesByEuclidean(
 ): Promise<{ response: Response; distance: number }[]> {
   const supabase = await createSupabaseServerClient();
 
-  // ケースで絞って必要なカラムだけ取得
+  // ケースで絞って必要なカラムだけ取得（answer_q2〜q8は設問2の回答）
   const { data, error } = await supabase
     .from('responses')
-    .select('id, response_id, case_id, answer_q1, answer_q2, score_problem, score_solution, score_role, score_leadership, score_collaboration, score_development')
+    .select('id, response_id, case_id, answer_q1, answer_q2, answer_q3, answer_q4, answer_q5, answer_q6, answer_q7, answer_q8, score_problem, score_solution, score_role, score_leadership, score_collaboration, score_development')
     .eq('case_id', caseId)
     .not('answer_q1', 'is', null);
 

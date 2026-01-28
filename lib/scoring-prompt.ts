@@ -303,23 +303,44 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 \`\`\`json
 {
   "isValidAnswer": true または false,
+  "detailScores": {
+    "problemUnderstanding": 1〜4の整数または null（状況理解、設問1のみ）,
+    "problemEssence": 1〜4の整数または null（本質把握、設問1のみ）,
+    "problemMaintenanceBiz": 1〜4の整数または null（維持管理・業務、設問1のみ）,
+    "problemMaintenanceHr": 1〜4の整数または null（維持管理・人、設問1のみ）,
+    "problemReformBiz": 1〜4の整数または null（改革・業務、設問1のみ）,
+    "problemReformHr": 1〜4の整数または null（改革・人、設問1のみ）,
+    "solutionCoverage": 1〜4の整数または null（網羅性、設問2のみ）,
+    "solutionPlanning": 1〜4の整数または null（計画性、設問2のみ）,
+    "solutionMaintenanceBiz": 1〜4の整数または null（維持管理・業務、設問2のみ）,
+    "solutionMaintenanceHr": 1〜4の整数または null（維持管理・人、設問2のみ）,
+    "solutionReformBiz": 1〜4の整数または null（改革・業務、設問2のみ）,
+    "solutionReformHr": 1〜4の整数または null（改革・人、設問2のみ）,
+    "collabSupervisor": 1〜4の整数または null（上司との連携、設問2のみ）,
+    "collabExternal": 1〜4の整数または null（職場外との連携、設問2のみ）,
+    "collabMember": 1〜4の整数または null（メンバーとの連携、設問2のみ）
+  },
   "scores": {
-    "problem": 1.0〜5.0の数値または null（問題把握評点、設問1のみ）,
-    "solution": 1.0〜5.0の数値または null（対策立案評点、設問2のみ）,
-    "role": 1.0〜5.0の数値（役割理解評点、両設問で評価）,
-    "leadership": 1.0〜4.0の数値または null（主導評点、設問2のみ）,
-    "collaboration": 1.0〜4.0の数値または null（連携評点、設問2のみ）,
-    "development": 1.0〜4.0の数値または null（育成評点、設問2のみ）
+    "role": 1.0〜5.0の数値（役割理解評点、両設問で評価、0.1刻み）,
+    "leadership": 1.0〜4.0の数値または null（主導評点、設問2のみ、0.5刻み）,
+    "development": 1.0〜4.0の数値または null（育成評点、設問2のみ、0.5刻み）
   },
   "explanation": "<詳細な説明文>"
 }
 \`\`\`
 
+**重要：詳細スコアの評価基準**
+各詳細スコアは回答内容を直接評価して1〜4の整数で採点してください：
+- **1**: 該当する記述がない、または不適切
+- **2**: 基本的な言及はあるが不十分
+- **3**: 適切に言及されている
+- **4**: 詳細かつ具体的に言及されている
+
 **重要な注意点**:
-- 無効な回答（意味のない文字列など）の場合、isValidAnswer を false にし、すべてのスコアを 1.0 にしてください
-- 設問1（q1）の場合、problem と role を評価してください。solution, leadership, collaboration, development は null にしてください
-- 設問2（q2）の場合、solution, role, leadership, collaboration, development を評価してください。problem は null にしてください
-- エンベディング予測値は「参考」であり、回答内容が明らかに低品質な場合は予測値より低いスコアを付けてください
+- 無効な回答（意味のない文字列など）の場合、isValidAnswer を false にし、すべての詳細スコアを 1、scoresも最低値にしてください
+- 設問1（q1）の場合：detailScoresはproblemUnderstanding〜problemReformHrの6項目、scoresはroleのみを評価。他はnull
+- 設問2（q2）の場合：detailScoresはsolutionCoverage〜collabMemberの9項目、scoresはrole/leadership/developmentを評価。他はnull
+- **problem, solution, collaborationは詳細スコアから計算式で算出するため、出力不要です**
 
 ## 説明文のガイドライン
 
@@ -343,6 +364,33 @@ export type ScoringExample = {
   score: number;
   similarity: number;
   answerText: string;
+  // 個別スコア（AIの参考用）
+  scores?: {
+    problem?: number | null;
+    solution?: number | null;
+    role?: number | null;
+    leadership?: number | null;
+    collaboration?: number | null;
+    development?: number | null;
+  };
+  // 詳細スコア（AIの参考用）
+  detailScores?: {
+    problemUnderstanding?: number | null;
+    problemEssence?: number | null;
+    problemMaintenanceBiz?: number | null;
+    problemMaintenanceHr?: number | null;
+    problemReformBiz?: number | null;
+    problemReformHr?: number | null;
+    solutionCoverage?: number | null;
+    solutionPlanning?: number | null;
+    solutionMaintenanceBiz?: number | null;
+    solutionMaintenanceHr?: number | null;
+    solutionReformBiz?: number | null;
+    solutionReformHr?: number | null;
+    collabSupervisor?: number | null;
+    collabExternal?: number | null;
+    collabMember?: number | null;
+  };
   commentProblem?: string | null;
   commentSolution?: string | null;
   commentOverall?: string | null;
@@ -359,6 +407,31 @@ export type ScoringCaseContext = {
 };
 
 /**
+ * スコア分布情報（AIの判断基準用）
+ */
+export type ScoreDistribution = {
+  field: string;           // フィールド名
+  label: string;           // 表示名
+  distribution: { score: number; count: number }[]; // スコアごとの件数
+  mode: number | null;     // 最頻値
+  average: number | null;  // 平均値
+  total: number;           // 合計件数
+};
+
+/**
+ * スコア例（各スコア値の回答例）
+ */
+export type ScoreExample = {
+  field: string;           // フィールド名
+  label: string;           // 表示名
+  examples: {
+    score: number;         // スコア値
+    answerText: string;    // 回答テキスト（抜粋）
+    similarity: number;    // 類似度
+  }[];
+};
+
+/**
  * AI採点リクエストのパラメータ
  */
 export type AIScoringRequest = {
@@ -368,6 +441,16 @@ export type AIScoringRequest = {
   similarExamples: ScoringExample[]; // 類似回答例（評価スタイルの参考）
   similarCases?: ScoringCaseContext[]; // 類似ケース（新規ケース予測時）
   isNewCase?: boolean; // 新規ケースかどうか
+  // 類似回答のスコア分布（AIの判断基準）
+  scoreDistributions?: {
+    detailScores: ScoreDistribution[];  // 詳細スコア15項目の分布
+    mainScores: ScoreDistribution[];    // role/leadership/developmentの分布
+  };
+  // 各スコア値の回答例（AIの判断基準）
+  scoreExamples?: {
+    detailScores: ScoreExample[];       // 詳細スコア15項目の例
+    mainScores: ScoreExample[];         // role/leadership/developmentの例
+  };
   embeddingPredictedScores?: {
     problem: number | null;
     solution: number | null;
@@ -385,12 +468,34 @@ export type AIScoringRequest = {
 export type AIScoringResponse = {
   isValidAnswer: boolean;
   scores: {
+    // 主要スコア6項目（詳細スコアから計算）
     problem: number | null;
     solution: number | null;
     role: number | null;
     leadership: number | null;
     collaboration: number | null;
     development: number | null;
+  };
+  // 詳細スコア15項目（AIが直接評価）
+  detailScores: {
+    // 問題把握の詳細スコア（6項目、1-4の整数）
+    problemUnderstanding: number | null;  // 状況理解
+    problemEssence: number | null;        // 本質把握
+    problemMaintenanceBiz: number | null; // 維持管理・業務
+    problemMaintenanceHr: number | null;  // 維持管理・人
+    problemReformBiz: number | null;      // 改革・業務
+    problemReformHr: number | null;       // 改革・人
+    // 対策立案の詳細スコア（6項目、1-4の整数）
+    solutionCoverage: number | null;      // 網羅性
+    solutionPlanning: number | null;      // 計画性
+    solutionMaintenanceBiz: number | null; // 維持管理・業務
+    solutionMaintenanceHr: number | null;  // 維持管理・人
+    solutionReformBiz: number | null;      // 改革・業務
+    solutionReformHr: number | null;       // 改革・人
+    // 連携の詳細スコア（3項目、1-4の整数）
+    collabSupervisor: number | null;      // 上司との連携
+    collabExternal: number | null;        // 職場外との連携
+    collabMember: number | null;          // メンバーとの連携
   };
   explanation: string;
 };
@@ -421,18 +526,37 @@ function getQuestionFocus(question: 'q1' | 'q2'): string {
 /**
  * 類似例をフォーマット
  */
-function formatSimilarExamples(examples: ScoringExample[]): string {
+function formatSimilarExamples(examples: ScoringExample[], question: 'q1' | 'q2'): string {
   if (!examples.length) return '（類似例なし）';
 
   return examples.map((ex, i) => {
+    // 主要スコア
+    const mainScores = ex.scores ? (question === 'q1'
+      ? `問題把握: ${ex.scores.problem ?? '-'} / 役割理解: ${ex.scores.role ?? '-'}`
+      : `対策立案: ${ex.scores.solution ?? '-'} / 役割理解: ${ex.scores.role ?? '-'} / 主導: ${ex.scores.leadership ?? '-'} / 連携: ${ex.scores.collaboration ?? '-'} / 育成: ${ex.scores.development ?? '-'}`
+    ) : `総合: ${ex.score}点`;
+
+    // 詳細スコア
+    let detailScoresStr = '';
+    if (ex.detailScores) {
+      if (question === 'q1') {
+        const d = ex.detailScores;
+        detailScoresStr = `詳細スコア: 理解${d.problemUnderstanding ?? '-'}/本質${d.problemEssence ?? '-'}/維持業${d.problemMaintenanceBiz ?? '-'}/維持人${d.problemMaintenanceHr ?? '-'}/改革業${d.problemReformBiz ?? '-'}/改革人${d.problemReformHr ?? '-'}`;
+      } else {
+        const d = ex.detailScores;
+        detailScoresStr = `詳細スコア: 網羅${d.solutionCoverage ?? '-'}/計画${d.solutionPlanning ?? '-'}/維持業${d.solutionMaintenanceBiz ?? '-'}/維持人${d.solutionMaintenanceHr ?? '-'}/改革業${d.solutionReformBiz ?? '-'}/改革人${d.solutionReformHr ?? '-'}/上司${d.collabSupervisor ?? '-'}/外部${d.collabExternal ?? '-'}/メンバー${d.collabMember ?? '-'}`;
+      }
+    }
+
     const comments = [
       ex.commentProblem && `問題把握コメント: ${ex.commentProblem}`,
       ex.commentSolution && `対策立案コメント: ${ex.commentSolution}`,
       ex.commentOverall && `総合コメント: ${ex.commentOverall}`,
     ].filter(Boolean).join('\n');
 
-    return `【類似例${i + 1}】
-スコア: ${ex.score}点 / 類似度: ${(ex.similarity * 100).toFixed(0)}%
+    return `【類似例${i + 1}】類似度: ${(ex.similarity * 100).toFixed(0)}%
+${mainScores}
+${detailScoresStr}
 回答内容: ${ex.answerText.substring(0, 300)}${ex.answerText.length > 300 ? '...' : ''}
 ${comments || '（コメントなし）'}`;
   }).join('\n\n');
@@ -444,11 +568,109 @@ ${comments || '（コメントなし）'}`;
 function formatSimilarCases(cases?: ScoringCaseContext[]): string {
   if (!cases || !cases.length) return '';
 
-  const caseInfo = cases.map((c, i) => 
+  const caseInfo = cases.map((c, i) =>
     `【類似ケース${i + 1}】${c.caseName || c.caseId}（類似度: ${(c.similarity * 100).toFixed(0)}%）`
   ).join('\n');
 
   return `\n## 類似ケース情報\n入力されたシチュエーションは以下のケースに類似しています：\n${caseInfo}\n`;
+}
+
+/**
+ * スコア例をフォーマット（AIの判断基準用）
+ */
+function formatScoreExamples(examples?: AIScoringRequest['scoreExamples'], distributions?: AIScoringRequest['scoreDistributions']): string {
+  if (!examples) return '';
+
+  let result = '\n## 各スコアの回答例（判断基準）\n';
+  result += '以下は類似回答から抽出した各スコアの具体例です。今回の回答がどのスコアに近いか判断する参考にしてください。\n\n';
+
+  // 詳細スコアの例
+  if (examples.detailScores.length > 0) {
+    result += '### 詳細スコア（1〜4の整数で評価）\n\n';
+    for (const ex of examples.detailScores) {
+      if (ex.examples.length === 0) continue;
+
+      // 分布情報（推奨値）を取得
+      const dist = distributions?.detailScores.find(d => d.field === ex.field);
+      const modeStr = dist?.mode ? `（類似回答での最頻値: ${dist.mode}点）` : '';
+
+      result += `**${ex.label}**${modeStr}\n`;
+      for (const e of ex.examples) {
+        const excerpt = e.answerText.length > 150
+          ? e.answerText.substring(0, 150) + '...'
+          : e.answerText;
+        result += `- 【${e.score}点】「${excerpt}」\n`;
+      }
+      result += '\n';
+    }
+  }
+
+  // 主要スコア（role/leadership/development）の例
+  if (examples.mainScores.length > 0) {
+    result += '### 役割理解・主導・育成（AIが直接評価）\n\n';
+    for (const ex of examples.mainScores) {
+      if (ex.examples.length === 0) continue;
+
+      // 分布情報（平均値）を取得
+      const dist = distributions?.mainScores.find(d => d.field === ex.field);
+      const avgStr = dist?.average ? `（類似回答での平均: ${dist.average.toFixed(1)}点）` : '';
+
+      result += `**${ex.label}**${avgStr}\n`;
+      for (const e of ex.examples) {
+        const excerpt = e.answerText.length > 150
+          ? e.answerText.substring(0, 150) + '...'
+          : e.answerText;
+        result += `- 【${e.score}点】「${excerpt}」\n`;
+      }
+      result += '\n';
+    }
+  }
+
+  return result;
+}
+
+/**
+ * スコア分布をフォーマット（AIの判断基準用）
+ */
+function formatScoreDistributions(distributions?: AIScoringRequest['scoreDistributions'], question?: 'q1' | 'q2'): string {
+  if (!distributions) return '';
+
+  let result = '\n## 類似回答のスコア分布（判断基準）\n';
+  result += '以下は類似回答から集計したスコアの分布です。推奨スコアの参考にしてください。\n\n';
+
+  // 詳細スコアの分布
+  if (distributions.detailScores.length > 0) {
+    result += '### 詳細スコアの分布（1〜4の整数）\n';
+    for (const dist of distributions.detailScores) {
+      if (dist.total === 0) continue;
+      const distStr = dist.distribution
+        .map(d => `${d.score}点:${d.count}件`)
+        .join(', ');
+      const modeStr = dist.mode !== null ? `最頻値:${dist.mode}点` : '';
+      result += `- **${dist.label}**: ${distStr}（${modeStr}）\n`;
+    }
+    result += '\n';
+  }
+
+  // 主要スコア（role/leadership/development）の分布
+  if (distributions.mainScores.length > 0) {
+    result += '### 役割理解・主導・育成の分布\n';
+    for (const dist of distributions.mainScores) {
+      if (dist.total === 0) continue;
+      // 上位3つの分布のみ表示
+      const topDist = dist.distribution
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+      const distStr = topDist
+        .map(d => `${d.score}点:${d.count}件`)
+        .join(', ');
+      const avgStr = dist.average !== null ? `平均:${dist.average.toFixed(1)}点` : '';
+      result += `- **${dist.label}**: ${distStr}...（${avgStr}）\n`;
+    }
+    result += '\n';
+  }
+
+  return result;
 }
 
 /**
@@ -509,6 +731,12 @@ JSON形式で出力してください。`
 
 JSON形式で出力してください。`;
 
+  // スコア分布セクション
+  const scoreDistributionSection = formatScoreDistributions(request.scoreDistributions, request.question);
+
+  // スコア例セクション（各スコア値の回答例）
+  const scoreExamplesSection = formatScoreExamples(request.scoreExamples, request.scoreDistributions);
+
   const userPrompt = `## 評価対象
 
 ### ケース（状況説明）
@@ -521,10 +749,11 @@ ${getQuestionFocus(request.question)}
 ${request.answerText}
 
 ${embeddingSection}
-
+${scoreDistributionSection}
+${scoreExamplesSection}
 ## 参考: 類似回答例とその評価${isNewCase ? '（評価スタイルの参考のみ）' : ''}
 
-${formatSimilarExamples(request.similarExamples)}
+${formatSimilarExamples(request.similarExamples, request.question)}
 
 ${taskSection}`;
 
@@ -598,78 +827,232 @@ ${taskSection}`;
  */
 function normalizeAIResponse(parsed: any, request: AIScoringRequest): AIScoringResponse {
   const isValidAnswer = parsed.isValidAnswer !== false;
-  
-  // スコア項目ごとの刻みと上限の定義
-  const SCORE_CONFIG = {
-    problem: { step: 0.5, max: 5 },           // 問題把握：刻み0.5、上限5
-    solution: { step: 0.5, max: 5 },          // 対策立案：刻み0.5、上限5
-    role: { step: 0.1, max: 5 },              // 役割理解：刻み0.1、上限5
-    leadership: { step: 0.5, max: 4 },        // 主導：刻み0.5、上限4
-    collaboration: { step: 0.5, max: 4 },     // 連携：刻み0.5、上限4
-    development: { step: 0.5, max: 4 },       // 育成：刻み0.5、上限4
-  } as const;
 
-  // スコアを正規化（刻みと上限を適用）
-  const normalizeScore = (score: any, field: keyof typeof SCORE_CONFIG): number | null => {
+  // 詳細スコアを正規化（1〜4の整数に制限）
+  const normalizeDetailScore = (score: any): number | null => {
     if (score === null || score === undefined) return null;
     const num = Number(score);
     if (isNaN(num)) return null;
-    const config = SCORE_CONFIG[field];
-    const clamped = Math.min(config.max, Math.max(1, num));
-    return Math.round(clamped / config.step) * config.step;
+    // 1〜4の整数に制限
+    return Math.round(Math.min(4, Math.max(1, num)));
   };
 
-  const scores = parsed.scores || {};
+  // 主要スコアを正規化（刻みと上限を適用）
+  const normalizeMainScore = (score: any, step: number, max: number): number | null => {
+    if (score === null || score === undefined) return null;
+    const num = Number(score);
+    if (isNaN(num)) return null;
+    const clamped = Math.min(max, Math.max(1, num));
+    return Math.round(clamped / step) * step;
+  };
+
+  const detailScores = parsed.detailScores || {};
+  const aiScores = parsed.scores || {};
+
+  // 詳細スコアを取得
+  const normalizedDetailScores = {
+    problemUnderstanding: normalizeDetailScore(detailScores.problemUnderstanding),
+    problemEssence: normalizeDetailScore(detailScores.problemEssence),
+    problemMaintenanceBiz: normalizeDetailScore(detailScores.problemMaintenanceBiz),
+    problemMaintenanceHr: normalizeDetailScore(detailScores.problemMaintenanceHr),
+    problemReformBiz: normalizeDetailScore(detailScores.problemReformBiz),
+    problemReformHr: normalizeDetailScore(detailScores.problemReformHr),
+    solutionCoverage: normalizeDetailScore(detailScores.solutionCoverage),
+    solutionPlanning: normalizeDetailScore(detailScores.solutionPlanning),
+    solutionMaintenanceBiz: normalizeDetailScore(detailScores.solutionMaintenanceBiz),
+    solutionMaintenanceHr: normalizeDetailScore(detailScores.solutionMaintenanceHr),
+    solutionReformBiz: normalizeDetailScore(detailScores.solutionReformBiz),
+    solutionReformHr: normalizeDetailScore(detailScores.solutionReformHr),
+    collabSupervisor: normalizeDetailScore(detailScores.collabSupervisor),
+    collabExternal: normalizeDetailScore(detailScores.collabExternal),
+    collabMember: normalizeDetailScore(detailScores.collabMember),
+  };
+
+  // AIが評価したrole/leadership/developmentを正規化
+  const normalizedAIScores = {
+    role: normalizeMainScore(aiScores.role, 0.1, 5),          // 0.1刻み、上限5
+    leadership: normalizeMainScore(aiScores.leadership, 0.5, 4), // 0.5刻み、上限4
+    development: normalizeMainScore(aiScores.development, 0.5, 4), // 0.5刻み、上限4
+  };
+
+  // 詳細スコアから主要スコア（problem/solution/collaboration）を計算
+  // role/leadership/developmentはAIが直接評価した値を使用
+  const calculatedScores = calculateMainScoresFromDetail(normalizedDetailScores, request.question, normalizedAIScores);
 
   return {
     isValidAnswer,
-    scores: {
-      problem: normalizeScore(scores.problem, 'problem'),
-      solution: normalizeScore(scores.solution, 'solution'),
-      role: normalizeScore(scores.role, 'role'),
-      leadership: normalizeScore(scores.leadership, 'leadership'),
-      collaboration: normalizeScore(scores.collaboration, 'collaboration'),
-      development: normalizeScore(scores.development, 'development'),
-    },
+    scores: calculatedScores,
+    detailScores: normalizedDetailScores,
     explanation: parsed.explanation || generateFallbackExplanation(request, isValidAnswer),
   };
 }
 
 /**
- * フォールバック用のスコアリング（API未設定時やエラー時）
- * 既存ケース: エンベディング予測値をそのまま使用
- * 新規ケース: デフォルトスコア（2.5）を使用
+ * 詳細スコアから主要スコアを計算
+ * SCORE_CALCULATION_LOGIC.md に基づく計算式を使用
+ *
+ * - problem, solution, collaboration: 詳細スコアから計算式で算出
+ * - role, leadership, development: AIが直接評価（aiScoresから取得）
  */
-function generateFallbackScoring(request: AIScoringRequest): AIScoringResponse {
-  const isNewCase = request.isNewCase || !!request.similarCases?.length;
-  
-  if (isNewCase || !request.embeddingPredictedScores) {
-    // 新規ケースの場合はデフォルトスコア
-    const defaultScore = 2.5;
+function calculateMainScoresFromDetail(
+  detailScores: AIScoringResponse['detailScores'],
+  question: 'q1' | 'q2',
+  aiScores?: { role: number | null; leadership: number | null; development: number | null }
+): AIScoringResponse['scores'] {
+  // 連携スコアの計算（設問2のみ）
+  const calculateCollaboration = (): number | null => {
+    const supervisor = detailScores.collabSupervisor;
+    const external = detailScores.collabExternal;
+    const member = detailScores.collabMember;
+
+    if (supervisor === null || external === null || member === null) return null;
+
+    const sum = supervisor + external + member;
+    const raw = sum / 2 - 0.5;
+    // 範囲制限と0.5刻みに丸め
+    return Math.max(1, Math.min(4, Math.round(raw * 2) / 2));
+  };
+
+  // 問題把握スコアの計算（設問1のみ）
+  const calculateProblem = (): number | null => {
+    const understanding = detailScores.problemUnderstanding;
+    const essence = detailScores.problemEssence;
+    const maintBiz = detailScores.problemMaintenanceBiz;
+    const maintHr = detailScores.problemMaintenanceHr;
+    const reformBiz = detailScores.problemReformBiz;
+    const reformHr = detailScores.problemReformHr;
+
+    if (understanding === null || essence === null || maintBiz === null ||
+        maintHr === null || reformBiz === null || reformHr === null) return null;
+
+    const sum = understanding + essence + maintBiz + maintHr + reformBiz + reformHr;
+    const raw = (sum / 6 / 4) * 5;
+
+    // 条件判定: 理解>=3 かつ 本質<理解 → 切り捨て
+    if (understanding >= 3 && essence < understanding) {
+      return Math.max(1, Math.min(5, Math.floor(raw / 0.5) * 0.5));
+    }
+    // それ以外 → 四捨五入
+    return Math.max(1, Math.min(5, Math.round(raw / 0.5) * 0.5));
+  };
+
+  // 対策立案スコアの計算（設問2のみ）
+  const calculateSolution = (): number | null => {
+    const coverage = detailScores.solutionCoverage;
+    const planning = detailScores.solutionPlanning;
+    const maintBiz = detailScores.solutionMaintenanceBiz;
+    const maintHr = detailScores.solutionMaintenanceHr;
+    const reformBiz = detailScores.solutionReformBiz;
+    const reformHr = detailScores.solutionReformHr;
+
+    if (coverage === null || planning === null || maintBiz === null ||
+        maintHr === null || reformBiz === null || reformHr === null) return null;
+
+    const sum = coverage + planning + maintBiz + maintHr + reformBiz + reformHr;
+    const raw = (sum / 6 / 4) * 5;
+
+    // 条件判定: 網羅性>=3 かつ 計画性<=2 → 切り捨て
+    if (coverage >= 3 && planning <= 2) {
+      return Math.max(1, Math.min(5, Math.floor(raw / 0.5) * 0.5));
+    }
+    // それ以外 → 四捨五入
+    return Math.max(1, Math.min(5, Math.round(raw / 0.5) * 0.5));
+  };
+
+  // role, leadership, developmentはAIが直接評価（aiScoresから取得）
+  // AIスコアがない場合のフォールバック用推定関数
+  const estimateRole = (collaboration: number | null, leadership: number | null): number | null => {
+    if (collaboration !== null && leadership !== null) {
+      const raw = (collaboration + leadership) / 2;
+      return Math.max(1, Math.min(5, Math.round(raw * 10) / 10)); // 0.1刻み
+    }
+    return null;
+  };
+
+  const estimateLeadership = (solution: number | null): number | null => {
+    if (solution !== null) {
+      return Math.max(1, Math.min(4, Math.round(solution * 2) / 2));
+    }
+    return null;
+  };
+
+  const estimateDevelopment = (solutionMaintenanceHr: number | null): number | null => {
+    if (solutionMaintenanceHr !== null) {
+      const raw = solutionMaintenanceHr + 0.5;
+      return Math.max(1, Math.min(4, Math.round(raw * 2) / 2));
+    }
+    return null;
+  };
+
+  if (question === 'q1') {
+    const problem = calculateProblem();
+    // role: AIが評価した値を使用、なければ問題把握から推定
+    const role = aiScores?.role ?? (problem !== null ? Math.max(1, Math.min(5, Math.round(problem * 10) / 10)) : null);
     return {
-      isValidAnswer: true,
-      scores: {
-        problem: request.question === 'q1' ? defaultScore : null,
-        solution: request.question === 'q2' ? defaultScore : null,
-        role: defaultScore,
-        leadership: request.question === 'q2' ? defaultScore : null,
-        collaboration: request.question === 'q2' ? defaultScore : null,
-        development: request.question === 'q2' ? defaultScore : null,
-      },
-      explanation: generateFallbackExplanation(request, true),
+      problem,
+      solution: null,
+      role,
+      leadership: null,
+      collaboration: null,
+      development: null,
+    };
+  } else {
+    const solution = calculateSolution();
+    const collaboration = calculateCollaboration();
+
+    // role, leadership, development: AIが評価した値を使用、なければ推定
+    const leadership = aiScores?.leadership ?? estimateLeadership(solution);
+    const role = aiScores?.role ?? estimateRole(collaboration, leadership);
+    const development = aiScores?.development ?? estimateDevelopment(detailScores.solutionMaintenanceHr);
+
+    return {
+      problem: null,
+      solution,
+      role,
+      leadership,
+      collaboration,
+      development,
     };
   }
-  
+}
+
+/**
+ * フォールバック用のスコアリング（API未設定時やエラー時）
+ * デフォルトの詳細スコア（2）を使用して主要スコアを計算
+ */
+function generateFallbackScoring(request: AIScoringRequest): AIScoringResponse {
+  // デフォルトの詳細スコア（中央値の2）
+  const defaultDetailScore = 2;
+
+  // 設問に応じた詳細スコアを設定
+  const detailScores: AIScoringResponse['detailScores'] = {
+    // 問題把握の詳細スコア（設問1のみ）
+    problemUnderstanding: request.question === 'q1' ? defaultDetailScore : null,
+    problemEssence: request.question === 'q1' ? defaultDetailScore : null,
+    problemMaintenanceBiz: request.question === 'q1' ? defaultDetailScore : null,
+    problemMaintenanceHr: request.question === 'q1' ? defaultDetailScore : null,
+    problemReformBiz: request.question === 'q1' ? defaultDetailScore : null,
+    problemReformHr: request.question === 'q1' ? defaultDetailScore : null,
+    // 対策立案の詳細スコア（設問2のみ）
+    solutionCoverage: request.question === 'q2' ? defaultDetailScore : null,
+    solutionPlanning: request.question === 'q2' ? defaultDetailScore : null,
+    solutionMaintenanceBiz: request.question === 'q2' ? defaultDetailScore : null,
+    solutionMaintenanceHr: request.question === 'q2' ? defaultDetailScore : null,
+    solutionReformBiz: request.question === 'q2' ? defaultDetailScore : null,
+    solutionReformHr: request.question === 'q2' ? defaultDetailScore : null,
+    // 連携の詳細スコア（設問2のみ）
+    collabSupervisor: request.question === 'q2' ? defaultDetailScore : null,
+    collabExternal: request.question === 'q2' ? defaultDetailScore : null,
+    collabMember: request.question === 'q2' ? defaultDetailScore : null,
+  };
+
+  // 詳細スコアから主要スコアを計算
+  const scores = calculateMainScoresFromDetail(detailScores, request.question);
+
   return {
     isValidAnswer: true,
-    scores: {
-      problem: request.embeddingPredictedScores.problem,
-      solution: request.embeddingPredictedScores.solution,
-      role: request.embeddingPredictedScores.role,
-      leadership: request.embeddingPredictedScores.leadership,
-      collaboration: request.embeddingPredictedScores.collaboration,
-      development: request.embeddingPredictedScores.development,
-    },
+    scores,
+    detailScores,
     explanation: generateFallbackExplanation(request, true),
   };
 }
