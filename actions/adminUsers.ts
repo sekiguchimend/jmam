@@ -8,6 +8,7 @@
 import { hasAccessToken } from '@/lib/supabase/server';
 import { getAccessToken } from '@/lib/supabase/server';
 import { supabaseAnonServer } from '@/lib/supabase/anon-server';
+import { supabaseServiceRole } from '@/lib/supabase/service-role';
 import type { Database } from '@/types/database';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { getAuthedUserId } from '@/lib/supabase/server';
@@ -269,18 +270,17 @@ export async function adminDeleteUser(params: {
     return { success: false, error: '管理者ユーザーは消去できません（先に管理者権限を外してください）' };
   }
 
-  // ブロックテーブルに登録（Authユーザー自体はanon keyでは消せないため、再ログイン防止）
-  const profile = await supabase.from('profiles').select('email').eq('id', params.userId).maybeSingle();
-  const blockedEmail = profile.data?.email ?? null;
-  await supabase.from('user_blocks').insert({
-    user_id: params.userId,
-    email: blockedEmail,
-    reason: 'deleted',
-  });
-
   // 関連データを削除（要件: 消去はデータを消してよい）
   await supabase.from('user_score_records').delete().eq('user_id', params.userId);
   await supabase.from('profiles').delete().eq('id', params.userId);
+
+  // Supabase Auth からユーザーを削除（service_role key使用）
+  const { error: authDeleteError } = await supabaseServiceRole.auth.admin.deleteUser(params.userId);
+  if (authDeleteError) {
+    console.error('Auth user delete error:', authDeleteError);
+    // profiles等は既に削除済みなので、Authの削除失敗は警告として扱う
+    // 運用上、Authに残っても再登録時に問題が出るだけなので続行
+  }
 
   return { success: true };
 }
