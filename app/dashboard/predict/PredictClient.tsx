@@ -4,7 +4,8 @@ import { useState, useTransition, useCallback, useMemo } from "react";
 import { predictAnswer } from "@/actions/predict";
 import type { Case, Scores, PredictionResponse } from "@/types";
 import { defaultScores } from "@/types";
-import { AlertCircle, ChevronDown, ChevronRight, FolderOpen, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight, Download, FolderOpen, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
+import { exportAnswerPredictToPdf } from "@/lib/pdf-export";
 
 // スコア項目の型定義
 interface ScoreItemConfig {
@@ -219,6 +220,7 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [isPending, startTransition] = useTransition();
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(["q1", "q2"]));
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
 
   const toggleAccordion = useCallback((key: string) => {
     setOpenAccordions((prev) => {
@@ -277,6 +279,42 @@ export function PredictClient({ cases }: PredictClientProps) {
         setResult(null);
       }
     });
+  };
+
+  const handleExportPdf = async () => {
+    if (!result) return;
+
+    setIsExporting(true);
+    try {
+      const caseName = selectedCase?.case_name || selectedCaseId;
+      const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+
+      // スコアデータを整形
+      const scoreData = scoreStructure.map((item) => ({
+        label: item.label,
+        value: scores[item.key] ?? 0,
+        max: item.max,
+      }));
+
+      await exportAnswerPredictToPdf(
+        {
+          caseName,
+          situationText: selectedCase?.situation_text ?? undefined,
+          scores: scoreData,
+          roleScore: calculatedRole,
+          q1Answer: result.q1Answer,
+          q2Answer: result.q2Answer,
+          q1Reason: result.q1Reason,
+          q2Reason: result.q2Reason,
+        },
+        `回答予測_${caseName}_${timestamp}`
+      );
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      setError("PDFの出力に失敗しました");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -445,6 +483,22 @@ export function PredictClient({ cases }: PredictClientProps) {
       {/* 結果 - アコーディオン形式 */}
       {result && !isPending && (
         <div className="space-y-3">
+          {/* PDF出力リンク */}
+          <div className="flex justify-end px-2">
+            <button
+              onClick={handleExportPdf}
+              disabled={isExporting}
+              className="flex items-center gap-1.5 text-sm font-bold transition-opacity hover:opacity-70 disabled:opacity-50"
+              style={{ color: "var(--primary)" }}
+            >
+              {isExporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              PDF出力 →
+            </button>
+          </div>
           {/* 設問1 */}
           <div
             className="rounded-xl overflow-hidden"

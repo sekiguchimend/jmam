@@ -12,12 +12,15 @@ import {
 } from "@/components/ui";
 import {
   Calculator,
+  Download,
   FileText,
   FolderOpen,
   Lightbulb,
+  Loader2,
   Send,
   TrendingUp,
 } from "lucide-react";
+import { exportNewCasePredictToPdf } from "@/lib/pdf-export";
 
 interface Case {
   case_id: string;
@@ -40,6 +43,7 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
   const [result, setResult] = useState<CombinedPredictionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isExporting, setIsExporting] = useState(false);
 
   const selectedCase = useMemo(
     () => cases.find((c) => c.case_id === selectedCaseId),
@@ -148,6 +152,98 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
     () => cases.map((c) => ({ value: c.case_id, label: c.case_name || c.case_id })),
     [cases]
   );
+
+  // PDF出力
+  const handleExportPdf = async () => {
+    if (!result) return;
+
+    setIsExporting(true);
+    try {
+      const caseName = caseMode === "existing"
+        ? (selectedCase?.case_name || selectedCaseId)
+        : "新規ケース";
+      const situation = caseMode === "existing"
+        ? (selectedCase?.situation_text ?? "")
+        : situationText;
+      const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+
+      // スコアデータを整形
+      const scores = result.predictedScores;
+      const scoreData: { label: string; value: number; children?: { label: string; value: number }[] }[] = [];
+
+      if (scores.problem != null) {
+        scoreData.push({
+          label: "問題把握",
+          value: scores.problem,
+          children: [
+            scores.problemUnderstanding != null && { label: "状況理解", value: scores.problemUnderstanding },
+            scores.problemEssence != null && { label: "本質把握", value: scores.problemEssence },
+            scores.problemMaintenanceBiz != null && { label: "維持管理・業務", value: scores.problemMaintenanceBiz },
+            scores.problemMaintenanceHr != null && { label: "維持管理・人", value: scores.problemMaintenanceHr },
+            scores.problemReformBiz != null && { label: "改革・業務", value: scores.problemReformBiz },
+            scores.problemReformHr != null && { label: "改革・人", value: scores.problemReformHr },
+          ].filter(Boolean) as { label: string; value: number }[],
+        });
+      }
+
+      if (scores.solution != null) {
+        scoreData.push({
+          label: "対策立案",
+          value: scores.solution,
+          children: [
+            scores.solutionCoverage != null && { label: "網羅性", value: scores.solutionCoverage },
+            scores.solutionPlanning != null && { label: "計画性", value: scores.solutionPlanning },
+            scores.solutionMaintenanceBiz != null && { label: "維持管理・業務", value: scores.solutionMaintenanceBiz },
+            scores.solutionMaintenanceHr != null && { label: "維持管理・人", value: scores.solutionMaintenanceHr },
+            scores.solutionReformBiz != null && { label: "改革・業務", value: scores.solutionReformBiz },
+            scores.solutionReformHr != null && { label: "改革・人", value: scores.solutionReformHr },
+          ].filter(Boolean) as { label: string; value: number }[],
+        });
+      }
+
+      if (scores.role != null) {
+        scoreData.push({ label: "役割理解", value: scores.role });
+      }
+
+      if (scores.leadership != null) {
+        scoreData.push({ label: "主導", value: scores.leadership });
+      }
+
+      if (scores.collaboration != null) {
+        scoreData.push({
+          label: "連携",
+          value: scores.collaboration,
+          children: [
+            scores.collabSupervisor != null && { label: "上司", value: scores.collabSupervisor },
+            scores.collabExternal != null && { label: "職場外", value: scores.collabExternal },
+            scores.collabMember != null && { label: "メンバー", value: scores.collabMember },
+          ].filter(Boolean) as { label: string; value: number }[],
+        });
+      }
+
+      if (scores.development != null) {
+        scoreData.push({ label: "育成", value: scores.development });
+      }
+
+      await exportNewCasePredictToPdf(
+        {
+          caseName,
+          situationText: situation,
+          q1Answer,
+          q2Answer,
+          confidence: result.confidence,
+          scores: scoreData,
+          explanation: result.combinedExplanation,
+        },
+        `スコア予測_${caseName}_${timestamp}`
+      );
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      setError("PDFの出力に失敗しました");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -268,7 +364,24 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
 
       {/* 統合予測結果 */}
       {result && !isPending && (
-        <CombinedPredictionResultView result={result} />
+        <div>
+          <div className="flex justify-end px-5 mb-2">
+            <button
+              onClick={handleExportPdf}
+              disabled={isExporting}
+              className="flex items-center gap-1.5 text-sm font-bold transition-opacity hover:opacity-70 disabled:opacity-50"
+              style={{ color: "var(--primary)" }}
+            >
+              {isExporting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              PDF出力 →
+            </button>
+          </div>
+          <CombinedPredictionResultView result={result} />
+        </div>
       )}
 
       {/* 説明 */}
