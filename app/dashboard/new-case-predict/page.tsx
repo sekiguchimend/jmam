@@ -1,4 +1,5 @@
 // スコア予測ページ（Server Component）- 既存/新規ケース両対応
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import dynamic from "next/dynamic";
 import { hasAnyAccessToken, getUserWithRole } from "@/lib/supabase/server";
@@ -15,6 +16,33 @@ export const metadata = {
   title: "スコア予測",
 };
 
+// ケース一覧のスケルトン
+function CasesSkeleton() {
+  return (
+    <div
+      className="rounded-xl p-8"
+      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+    >
+      <div className="animate-pulse">
+        <div className="h-6 bg-gray-200 rounded w-1/4 mb-6" />
+        <div className="space-y-4">
+          <div className="h-12 bg-gray-200 rounded" />
+          <div className="h-12 bg-gray-200 rounded" />
+          <div className="h-12 bg-gray-200 rounded" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ケース一覧を取得して表示するコンポーネント
+async function CasesContent() {
+  const result = await fetchCasesForScorePrediction();
+  const cases = result.success ? result.cases ?? [] : [];
+
+  return <NewCasePredictClient cases={cases} />;
+}
+
 export default async function NewCasePredictPage() {
   if (!(await hasAnyAccessToken())) {
     redirect("/login");
@@ -24,10 +52,6 @@ export default async function NewCasePredictPage() {
   if (!userInfo) {
     redirect("/login");
   }
-
-  // 既存ケース一覧を取得
-  const result = await fetchCasesForScorePrediction();
-  const cases = result.success ? result.cases ?? [] : [];
 
   return (
     <DashboardLayout
@@ -46,7 +70,9 @@ export default async function NewCasePredictPage() {
           </p>
         </div>
 
-        <NewCasePredictClient cases={cases} />
+        <Suspense fallback={<CasesSkeleton />}>
+          <CasesContent />
+        </Suspense>
       </div>
     </DashboardLayout>
   );

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { getCases } from "@/lib/supabase";
 import { getUserWithRole } from "@/lib/supabase/server";
@@ -13,9 +14,33 @@ export const metadata = {
   title: "設問管理",
 };
 
+// スケルトンローダー
+function CasesSkeleton() {
+  return (
+    <div
+      className="rounded-xl p-8"
+      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+    >
+      <div className="animate-pulse">
+        <div className="h-6 bg-gray-200 rounded w-1/4 mb-6" />
+        <div className="space-y-4">
+          <div className="h-12 bg-gray-200 rounded" />
+          <div className="h-12 bg-gray-200 rounded" />
+          <div className="h-12 bg-gray-200 rounded" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ケース一覧を取得して表示するコンポーネント
+async function CasesContent() {
+  const cases = await getCases();
+  return <QuestionsClient cases={cases} />;
+}
+
 export default async function QuestionsPage() {
   const userInfo = await getUserWithRole();
-  const cases = await getCases();
 
   return (
     <DashboardLayout
@@ -33,7 +58,9 @@ export default async function QuestionsPage() {
           </p>
         </div>
 
-        <QuestionsClient cases={cases} />
+        <Suspense fallback={<CasesSkeleton />}>
+          <CasesContent />
+        </Suspense>
       </div>
     </DashboardLayout>
   );
