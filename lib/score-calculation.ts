@@ -238,6 +238,31 @@ export function calculateRoleScore(
 }
 
 /**
+ * 総合スコア (score_overall) を計算
+ *
+ * 式: (役割理解 + 対策立案 + 問題把握) ÷ 3
+ * 総合スコアは3つの主要スコアの平均として定義される
+ *
+ * @param role - 役割理解スコア (1-5)
+ * @param solution - 対策立案スコア (1-5)
+ * @param problem - 問題把握スコア (1-5)
+ * @returns 総合スコア (1.0-5.0, 小数点1桁)
+ */
+export function calculateOverallScore(
+  role: number | null | undefined,
+  solution: number | null | undefined,
+  problem: number | null | undefined
+): number | null {
+  if (role == null || solution == null || problem == null) {
+    return null;
+  }
+
+  const raw = (role + solution + problem) / 3;
+  // 総合スコアは0.1刻み
+  return Math.round(raw * 10) / 10;
+}
+
+/**
  * @deprecated Use calculateRoleScore instead
  * 後方互換性のためのエイリアス
  */

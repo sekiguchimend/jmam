@@ -225,6 +225,12 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
         scoreData.push({ label: "育成", value: scores.development });
       }
 
+      // 総合スコアを計算して追加（役割理解・対策立案・問題把握の平均）
+      if (scores.role != null && scores.solution != null && scores.problem != null) {
+        const overallScore = Math.round(((scores.role + scores.solution + scores.problem) / 3) * 10) / 10;
+        scoreData.push({ label: "総合スコア", value: overallScore });
+      }
+
       await exportNewCasePredictToPdf(
         {
           caseName,
@@ -494,8 +500,26 @@ function EmbeddingScoreItem({ label, value }: { label: string; value: number }) 
 
 // スコアツリービューコンポーネント
 function ScoreTreeView({ scores }: { scores: Partial<ScoreItems> }) {
+  // 総合スコアを計算（役割理解・対策立案・問題把握の平均）
+  const overallScore = (scores.role != null && scores.solution != null && scores.problem != null)
+    ? Math.round(((scores.role + scores.solution + scores.problem) / 3) * 10) / 10
+    : null;
+
   return (
     <div className="p-4 rounded-lg" style={{ background: "#fafafa", maxWidth: "600px" }}>
+      {/* 総合スコアを目立つ位置に表示 */}
+      {overallScore != null && (
+        <div
+          className="mb-4 p-3 rounded-lg flex items-center justify-center gap-4"
+          style={{ background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)", width: "50%" }}
+        >
+          <span className="font-black text-[18px] text-white">総合スコア</span>
+          <div className="flex items-center gap-2">
+            <span className="font-black text-[28px] text-white">{overallScore.toFixed(1)}</span>
+            <span className="text-[18px] text-white/70">/5</span>
+          </div>
+        </div>
+      )}
       <div style={{ marginLeft: "8px", fontFamily: "inherit" }}>
         {scores.problem != null && (
           <ScoreTreeNode
@@ -559,38 +583,75 @@ function ScoreTreeNode({
   isLast: boolean;
   children?: { label: string; value: number }[];
 }) {
+  const hasChildren = children.length > 0;
+
   return (
-    <div className="relative" style={{ paddingLeft: "62px" }}>
+    <div className="relative" style={{ paddingLeft: "50px" }}>
+      {/* 縦線（上から親項目の中央まで、そして次の兄弟or子へ） */}
       <div
         className="absolute w-0.5"
-        style={{ background: "#cbd5e1", left: 0, top: 0, bottom: isLast ? "32px" : 0 }}
+        style={{
+          background: "#cbd5e1",
+          left: 0,
+          top: 0,
+          height: isLast && !hasChildren ? "20px" : "100%",
+        }}
       />
+      {/* 横線（縦線から親項目へ） - 親項目の中央(20px)で接続 */}
       <div
         className="absolute h-0.5"
-        style={{ background: "#cbd5e1", left: "1px", top: "32px", width: "60px" }}
+        style={{ background: "#cbd5e1", left: "1px", top: "20px", width: "48px" }}
       />
-      <div className="flex items-center" style={{ height: "64px" }}>
-        <span className="font-black text-[20px]" style={{ color: "#6366f1" }}>{label}</span>
-        <span className="font-black text-[24px] ml-4" style={{ color: "#6366f1" }}>{value.toFixed(1)}</span>
+      {/* 親項目 */}
+      <div className="flex items-center" style={{ height: "40px" }}>
+        <span className="font-black text-[18px]" style={{ color: "#6366f1" }}>{label}</span>
+        <span className="font-black text-[22px] ml-3" style={{ color: "#6366f1" }}>{value.toFixed(1)}</span>
       </div>
 
-      {children.length > 0 && (
-        <div className="relative" style={{ paddingLeft: "62px" }}>
-          <div className="absolute w-0.5" style={{ background: "#cbd5e1", left: 0, top: 0, bottom: "32px" }} />
-          {children.map((child) => (
-            <div key={child.label} className="relative flex items-center" style={{ height: "64px" }}>
-              <div
-                className="absolute h-0.5"
-                style={{ background: "#cbd5e1", left: "-62px", top: "50%", width: "52px", zIndex: 0 }}
-              />
-              <span className="text-[16px] font-bold relative" style={{ color: "#64748b", zIndex: 1 }}>
-                {child.label}
-              </span>
-              <span className="text-[18px] font-bold ml-4 relative" style={{ color: "#323232", zIndex: 1 }}>
-                {child.value}
-              </span>
-            </div>
-          ))}
+      {/* 子項目をテーブル形式で表示（ツリー線で紐づけ） */}
+      {hasChildren && (
+        <div className="relative pb-2" style={{ marginLeft: "38px" }}>
+          {/* 縦線（「題」の右横あたりから下へ） */}
+          <div
+            className="absolute w-0.5"
+            style={{ background: "#cbd5e1", left: 0, top: "1px", height: "26px" }}
+          />
+          {/* 横線（縦線からテーブルへ） */}
+          <div
+            className="absolute h-0.5"
+            style={{ background: "#cbd5e1", left: "0px", top: "26px", width: "19px" }}
+          />
+          <table
+            className="rounded"
+            style={{ marginLeft: "20px", border: "1px solid #cbd5e1", borderSpacing: 0 }}
+          >
+            <thead>
+              <tr style={{ background: "#f1f5f9", borderBottom: "1px solid #cbd5e1" }}>
+                {children.map((child) => (
+                  <th
+                    key={child.label}
+                    className="px-2 py-1 text-[10px] font-bold text-center"
+                    style={{ color: "#64748b", borderRight: "1px solid #cbd5e1" }}
+                  >
+                    {child.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ background: "#fff" }}>
+                {children.map((child) => (
+                  <td
+                    key={child.label}
+                    className="px-2 py-1.5 text-[14px] font-bold text-center"
+                    style={{ color: "#323232", borderRight: "1px solid #cbd5e1" }}
+                  >
+                    {child.value}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
     </div>

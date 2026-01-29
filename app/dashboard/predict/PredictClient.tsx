@@ -257,6 +257,12 @@ export function PredictClient({ cases }: PredictClientProps) {
     return Math.round(avg * 10) / 10; // 小数点1桁に丸め
   }, [scores.leadership, scores.collaboration, scores.development]);
 
+  // 総合スコアは役割理解・対策立案・問題把握の平均として自動計算
+  const calculatedOverall = useMemo(() => {
+    const avg = (calculatedRole + scores.solution + scores.problem) / 3;
+    return Math.round(avg * 10) / 10; // 小数点1桁に丸め
+  }, [calculatedRole, scores.solution, scores.problem]);
+
   const handleScoreChange = (key: keyof Scores, value: number) => {
     setScores((prev) => ({ ...prev, [key]: value }));
   };
@@ -397,51 +403,106 @@ export function PredictClient({ cases }: PredictClientProps) {
           </button>
         </div>
 
-        <div className="space-y-2">
-          {scoreStructure.map((item) => (
-            <RecursiveScoreSection
-              key={item.key}
-              item={item}
-              scores={scores}
-              onChange={handleScoreChange}
-              expandedSections={expandedSections}
-              toggleSection={toggleSection}
-              depth={0}
-            />
-          ))}
+        {/* 階層構造でスコアを表示 */}
+        <div className="space-y-1">
+          {/* 総合スコア（最上位・自動計算） */}
+          <div
+            className="rounded-lg overflow-hidden"
+            style={{ background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)" }}
+          >
+            <div className="flex items-center gap-2 py-3 px-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-white">
+                  総合スコア
+                </p>
+                <p className="text-[10px] mt-0.5 text-white/70">
+                  ＝（役割理解 + 対策立案 + 問題把握）÷ 3
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span className="text-xl font-black px-3 py-1 rounded bg-white/20 text-white">
+                  {calculatedOverall.toFixed(1)}
+                </span>
+                <span className="text-[9px] text-white/70">/5</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 総合スコアの構成要素（インデント1段） */}
+          <div style={{ marginLeft: "20px" }} className="space-y-1">
+            {/* 問題把握 */}
+            {scoreStructure.filter(item => item.key === "problem").map((item) => (
+              <RecursiveScoreSection
+                key={item.key}
+                item={item}
+                scores={scores}
+                onChange={handleScoreChange}
+                expandedSections={expandedSections}
+                toggleSection={toggleSection}
+                depth={0}
+              />
+            ))}
+
+            {/* 対策立案 */}
+            {scoreStructure.filter(item => item.key === "solution").map((item) => (
+              <RecursiveScoreSection
+                key={item.key}
+                item={item}
+                scores={scores}
+                onChange={handleScoreChange}
+                expandedSections={expandedSections}
+                toggleSection={toggleSection}
+                depth={0}
+              />
+            ))}
+
+            {/* 役割理解（自動計算） */}
+            <div
+              className="rounded-lg overflow-hidden"
+              style={{ background: "var(--background)" }}
+            >
+              <div className="flex items-center gap-2 py-2.5 px-4">
+                <div className="w-5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold" style={{ color: "#323232" }}>
+                    役割理解
+                  </p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    ＝（主導 + 連携 + 育成）÷ 3
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span
+                    className="w-14 text-center py-1 rounded font-bold text-sm"
+                    style={{ background: "var(--primary)", color: "#fff" }}
+                  >
+                    {calculatedRole.toFixed(1)}
+                  </span>
+                  <span className="text-[9px] w-8 text-right" style={{ color: "var(--text-muted)" }}>/5</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 役割理解の構成要素（インデント2段） */}
+            <div style={{ marginLeft: "20px" }} className="space-y-1">
+              {scoreStructure.filter(item => ["leadership", "collaboration", "development"].includes(item.key)).map((item) => (
+                <RecursiveScoreSection
+                  key={item.key}
+                  item={item}
+                  scores={scores}
+                  onChange={handleScoreChange}
+                  expandedSections={expandedSections}
+                  toggleSection={toggleSection}
+                  depth={0}
+                />
+              ))}
+            </div>
+          </div>
         </div>
 
         <p className="text-[10px] mt-4 text-center" style={{ color: "var(--text-muted)" }}>
           各スコアの上限値・刻み幅は項目ごとに異なります。詳細項目は親項目の左の矢印をクリックして展開できます。
         </p>
-
-        {/* 役割理解（自動計算表示） */}
-        <div
-          className="mt-4 p-4 rounded-lg"
-          style={{ background: "var(--background)", border: "1px solid var(--primary)" }}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-bold" style={{ color: "#323232" }}>
-                役割理解（自動計算）
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-                ＝（主導 + 連携 + 育成）÷ 3
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span
-                className="text-lg font-black px-3 py-1 rounded"
-                style={{ background: "var(--primary)", color: "#fff" }}
-              >
-                {calculatedRole.toFixed(1)}
-              </span>
-              <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>
-                /5
-              </span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* 実行ボタン */}

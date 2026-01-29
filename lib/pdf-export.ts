@@ -141,8 +141,14 @@ export async function exportAnswerPredictToPdf(
   pdf.text("目標スコア", margin, y);
   y += 7;
 
+  // 問題把握と対策立案のスコアを取得して総合スコアを計算
+  const problemScore = data.scores.find(s => s.label === "問題把握")?.value ?? 0;
+  const solutionScore = data.scores.find(s => s.label === "対策立案")?.value ?? 0;
+  const overallScore = Math.round(((problemScore + solutionScore + data.roleScore) / 3) * 10) / 10;
+
   const scoreRows = data.scores.map((s) => [s.label, `${s.value}`, `/ ${s.max}`]);
   scoreRows.push(["役割理解（自動計算）", `${data.roleScore.toFixed(1)}`, "/ 5"]);
+  scoreRows.push(["総合スコア", `${overallScore.toFixed(1)}`, "/ 5"]);
 
   autoTable(pdf, {
     startY: y,
@@ -192,41 +198,6 @@ export async function exportAnswerPredictToPdf(
   });
 
   y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
-
-  // 理由（あれば）
-  if (data.q1Reason || data.q2Reason) {
-    // ページ確認
-    if (y > 250) {
-      pdf.addPage();
-      y = margin;
-    }
-
-    pdf.setFontSize(14);
-    pdf.setFont("MPlus", "bold");
-    pdf.text("予測の理由", margin, y);
-    y += 7;
-
-    const reasonRows: string[][] = [];
-    if (data.q1Reason) {
-      reasonRows.push(["設問1", data.q1Reason]);
-    }
-    if (data.q2Reason) {
-      reasonRows.push(["設問2", data.q2Reason]);
-    }
-
-    autoTable(pdf, {
-      startY: y,
-      head: [["設問", "理由"]],
-      body: reasonRows,
-      margin: { left: margin, right: margin },
-      styles: { fontSize: 9, cellPadding: 4, font: "MPlus", fontStyle: "bold" },
-      headStyles: { fillColor: [99, 102, 241], textColor: 255, font: "MPlus", fontStyle: "bold" },
-      columnStyles: {
-        0: { cellWidth: 25, halign: "center" },
-        1: { cellWidth: 155 },
-      },
-    });
-  }
 
   pdf.save(`${filename}.pdf`);
 }
