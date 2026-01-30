@@ -1,14 +1,12 @@
 import { Metadata } from "next";
-import HelpPageClient from "./HelpPageClient";
+import HelpContent from "./HelpContent";
 
 export const metadata: Metadata = {
   title: "使い方ガイド",
   description: "スコア予測システムの使い方ガイド",
 };
 
-// 完全なSSGを有効化
-export const dynamic = "force-static";
-
+// 認証・レイアウトはlayout.tsxで処理
 export default function HelpPage() {
-  return <HelpPageClient />;
+  return <HelpContent />;
 }

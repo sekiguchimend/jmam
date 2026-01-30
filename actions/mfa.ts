@@ -193,6 +193,7 @@ export async function verifyTotp(params: { factorId: string; code: string }): Pr
     maxAge: FINAL_COOKIE_MAX_AGE,
     path: '/',
   };
+
   cookieStore.set(USER_TOKEN_COOKIE, session.access_token, commonCookie);
   cookieStore.set(USER_REFRESH_TOKEN_COOKIE, session.refresh_token!, commonCookie);
   if (pending.isAdmin) {

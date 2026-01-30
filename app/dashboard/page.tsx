@@ -1,10 +1,9 @@
 // ダッシュボード（Server Component）
-// ミドルウェアで認証済みなので、ここでは認証チェック不要
+// 認証・レイアウトはlayout.tsxで処理
 import { Suspense } from "react";
 import { getUserWithRole } from "@/lib/supabase/server";
 import { fetchCases } from "@/actions/predict";
 import { fetchTotalCount, fetchDatasetStats } from "@/actions/upload";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { GradientButton } from "@/components/ui";
 import Link from "next/link";
 import { Briefcase, Database, CheckCircle, User, Lightbulb, Upload, Inbox, ChevronRight } from "lucide-react";
@@ -177,91 +176,85 @@ async function DatasetList({ isAdmin }: { isAdmin: boolean }) {
 }
 
 export default async function DashboardPage() {
-  // ミドルウェアでアクセストークンをチェック済み
+  // キャッシュされるのでlayout.tsxとの重複呼び出しは問題なし
   const userInfo = await getUserWithRole();
 
   return (
-    <DashboardLayout
-      isAdmin={userInfo.isAdmin}
-      userName={userInfo.name}
-      userEmail={userInfo.email}
-    >
-      <div className="max-w-7xl mx-auto animate-fade-in">
-        {/* ヘッダー */}
-        <div className="mb-6 lg:mb-8">
-          <h1 className="text-xl lg:text-2xl font-black mb-1" style={{ color: "#323232" }}>
-            ダッシュボード
-          </h1>
-          <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
-            おかえりなさい、{userInfo.name || "ユーザー"}さん
-          </p>
-        </div>
+    <div className="max-w-7xl mx-auto animate-fade-in">
+      {/* ヘッダー */}
+      <div className="mb-6 lg:mb-8">
+        <h1 className="text-xl lg:text-2xl font-black mb-1" style={{ color: "#323232" }}>
+          ダッシュボード
+        </h1>
+        <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
+          おかえりなさい、{userInfo.name || "ユーザー"}さん
+        </p>
+      </div>
 
-        {/* 統計カード */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 mb-6 lg:mb-8">
-          <Suspense fallback={
-            <>
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-            </>
-          }>
-            <StatsCards isAdmin={userInfo.isAdmin} />
-          </Suspense>
-        </div>
+      {/* 統計カード */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 mb-6 lg:mb-8">
+        <Suspense fallback={
+          <>
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </>
+        }>
+          <StatsCards isAdmin={userInfo.isAdmin} />
+        </Suspense>
+      </div>
 
-        {/* クイックアクション */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 lg:mb-8">
-          <Link href="/dashboard/predict" className="group">
+      {/* クイックアクション */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 lg:mb-8">
+        <Link href="/dashboard/predict" className="group">
+          <div
+            className="p-6 rounded-xl transition-all duration-200 hover:shadow-lg"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div className="flex items-start gap-4">
+              <Lightbulb className="w-6 h-6 flex-shrink-0" style={{ color: "var(--primary)" }} />
+              <div className="flex-1">
+                <h3 className="text-lg font-black mb-1 flex items-center gap-2" style={{ color: "#323232" }}>
+                  回答予測を開始
+                  <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </h3>
+                <p className="text-sm font-bold" style={{ color: "#323232" }}>
+                  スコアを設定してAIが最適な回答を予測します
+                </p>
+              </div>
+            </div>
+          </div>
+        </Link>
+
+        {userInfo.isAdmin && (
+          <Link href="/admin/upload" className="group">
             <div
               className="p-6 rounded-xl transition-all duration-200 hover:shadow-lg"
               style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
             >
               <div className="flex items-start gap-4">
-                <Lightbulb className="w-6 h-6 flex-shrink-0" style={{ color: "var(--primary)" }} />
+                <Upload className="w-6 h-6 flex-shrink-0" style={{ color: "var(--primary)" }} />
                 <div className="flex-1">
                   <h3 className="text-lg font-black mb-1 flex items-center gap-2" style={{ color: "#323232" }}>
-                    回答予測を開始
+                    データをアップロード
                     <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                   </h3>
                   <p className="text-sm font-bold" style={{ color: "#323232" }}>
-                    スコアを設定してAIが最適な回答を予測します
+                    CSVファイルから学習データを追加します
                   </p>
                 </div>
               </div>
             </div>
           </Link>
-
-          {userInfo.isAdmin && (
-            <Link href="/admin/upload" className="group">
-              <div
-                className="p-6 rounded-xl transition-all duration-200 hover:shadow-lg"
-                style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-              >
-                <div className="flex items-start gap-4">
-                  <Upload className="w-6 h-6 flex-shrink-0" style={{ color: "var(--primary)" }} />
-                  <div className="flex-1">
-                    <h3 className="text-lg font-black mb-1 flex items-center gap-2" style={{ color: "#323232" }}>
-                      データをアップロード
-                      <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                    </h3>
-                    <p className="text-sm font-bold" style={{ color: "#323232" }}>
-                      CSVファイルから学習データを追加します
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </Link>
-          )}
-        </div>
-
-        {/* データセット一覧 */}
-        <Suspense fallback={<DatasetTableSkeleton />}>
-          <DatasetList isAdmin={userInfo.isAdmin} />
-        </Suspense>
+        )}
       </div>
-    </DashboardLayout>
+
+      {/* データセット一覧 */}
+      <Suspense fallback={<DatasetTableSkeleton />}>
+        <DatasetList isAdmin={userInfo.isAdmin} />
+      </Suspense>
+    </div>
   );
 }
 

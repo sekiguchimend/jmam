@@ -1,8 +1,7 @@
 // 管理者：ユーザー管理（一覧）
+// 認証・レイアウトはlayout.tsxで処理
 import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
-import { getUserWithRole } from '@/lib/supabase/server';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { adminListUsers } from '@/actions/adminUsers';
 
 // dynamic importでクライアントコンポーネントを遅延ロード
@@ -52,14 +51,10 @@ async function UsersContent() {
 }
 
 export default async function AdminUsersPage() {
-  const userInfo = await getUserWithRole();
-
   return (
-    <DashboardLayout isAdmin={userInfo.isAdmin} userName={userInfo.name} userEmail={userInfo.email}>
-      <Suspense fallback={<UsersSkeleton />}>
-        <UsersContent />
-      </Suspense>
-    </DashboardLayout>
+    <Suspense fallback={<UsersSkeleton />}>
+      <UsersContent />
+    </Suspense>
   );
 }
 

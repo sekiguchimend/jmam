@@ -3,9 +3,47 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/actions/auth";
-import { useTransition } from "react";
+import { useTransition, memo, ReactNode } from "react";
 import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, FileQuestion, Sparkles, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
+
+// 個別のナビアイテム - 自分のアクティブ状態が変わった時だけ再レンダリング
+const NavItem = memo(function NavItem({
+  href,
+  icon,
+  name,
+  collapsed,
+  onClose,
+  exactMatch = false,
+}: {
+  href: string;
+  icon: ReactNode;
+  name: string;
+  collapsed?: boolean;
+  onClose?: () => void;
+  exactMatch?: boolean;
+}) {
+  const pathname = usePathname();
+  const isActive = exactMatch
+    ? pathname === href
+    : pathname === href || pathname.startsWith(href + "/");
+
+  return (
+    <Link
+      href={href}
+      onClick={onClose}
+      className={`flex items-center rounded-lg transition-all duration-200 ${collapsed ? "justify-center p-3" : "gap-3 px-3 py-2.5"}`}
+      style={{
+        background: isActive ? "var(--sidebar-active)" : "transparent",
+        color: isActive ? "#fff" : "var(--text-muted)",
+      }}
+      title={collapsed ? name : undefined}
+    >
+      {icon}
+      {!collapsed && <span className="font-bold whitespace-nowrap">{name}</span>}
+    </Link>
+  );
+});
 
 interface SidebarProps {
   isAdmin: boolean;
@@ -18,7 +56,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose, collapsed, onToggleCollapse }: SidebarProps) {
-  const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
 
   const handleLogout = () => {
@@ -142,27 +179,17 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose, collaps
               </p>
             )}
             <div className="space-y-2">
-              {navItems.map((item) => {
-                const isActive = item.href === "/dashboard"
-                  ? pathname === "/dashboard"
-                  : pathname === item.href || pathname.startsWith(item.href + "/");
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={handleNavClick}
-                    className={`flex items-center rounded-lg transition-all duration-200 ${collapsed ? "justify-center p-3" : "gap-3 px-3 py-2.5"}`}
-                    style={{
-                      background: isActive ? "var(--sidebar-active)" : "transparent",
-                      color: isActive ? "#fff" : "var(--text-muted)",
-                    }}
-                    title={collapsed ? item.name : undefined}
-                  >
-                    {item.icon}
-                    {!collapsed && <span className="font-bold whitespace-nowrap">{item.name}</span>}
-                  </Link>
-                );
-              })}
+              {navItems.map((item) => (
+                <NavItem
+                  key={item.href}
+                  href={item.href}
+                  icon={item.icon}
+                  name={item.name}
+                  collapsed={collapsed}
+                  onClose={handleNavClick}
+                  exactMatch={item.href === "/dashboard"}
+                />
+              ))}
             </div>
           </div>
 
@@ -174,25 +201,17 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose, collaps
                 </p>
               )}
               <div className="space-y-2">
-                {adminItems.map((item) => {
-                  const isActive = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href));
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={handleNavClick}
-                      className={`flex items-center rounded-lg transition-all duration-200 ${collapsed ? "justify-center p-3" : "gap-3 px-3 py-2.5"}`}
-                      style={{
-                        background: isActive ? "var(--sidebar-active)" : "transparent",
-                        color: isActive ? "#fff" : "var(--text-muted)",
-                      }}
-                      title={collapsed ? item.name : undefined}
-                    >
-                      {item.icon}
-                      {!collapsed && <span className="font-bold whitespace-nowrap">{item.name}</span>}
-                    </Link>
-                  );
-                })}
+                {adminItems.map((item) => (
+                  <NavItem
+                    key={item.href}
+                    href={item.href}
+                    icon={item.icon}
+                    name={item.name}
+                    collapsed={collapsed}
+                    onClose={handleNavClick}
+                    exactMatch={item.href === "/admin"}
+                  />
+                ))}
               </div>
             </div>
           )}

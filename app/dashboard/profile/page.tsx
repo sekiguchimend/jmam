@@ -1,6 +1,6 @@
 // プロフィールページ（Server Component）
+// 認証・レイアウトはlayout.tsxで処理
 import { getUserWithRole } from "@/lib/supabase/server";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { User, Mail, Shield, Calendar, Settings, Key } from "lucide-react";
 import { DisplayNameEditor } from "./DisplayNameEditor";
 
@@ -9,15 +9,11 @@ export const metadata = {
 };
 
 export default async function ProfilePage() {
+  // キャッシュされるのでlayout.tsxとの重複呼び出しは問題なし
   const userInfo = await getUserWithRole();
 
   return (
-    <DashboardLayout
-      isAdmin={userInfo.isAdmin}
-      userName={userInfo.name}
-      userEmail={userInfo.email}
-    >
-      <div className="max-w-4xl mx-auto animate-fade-in">
+    <div className="max-w-4xl mx-auto animate-fade-in">
         {/* ヘッダー */}
         <div className="mb-6 lg:mb-8">
           <h1 className="text-xl lg:text-2xl font-black mb-1" style={{ color: "#323232" }}>
@@ -95,8 +91,7 @@ export default async function ProfilePage() {
         <p className="text-center text-xs lg:text-sm font-bold mt-4 lg:mt-6" style={{ color: "var(--text-muted)" }}>
           ※ パスワード変更など一部機能は現在準備中です
         </p>
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }
 

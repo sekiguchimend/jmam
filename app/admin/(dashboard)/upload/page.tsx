@@ -1,8 +1,6 @@
 // CSVアップロードページ（Server Component）
-import { redirect } from "next/navigation";
+// 認証・レイアウトはlayout.tsxで処理
 import dynamic from "next/dynamic";
-import { hasAccessToken, getUserWithRole } from "@/lib/supabase/server";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import Link from "next/link";
 import { ChevronRight, Info, Check } from "lucide-react";
 
@@ -17,22 +15,8 @@ export const metadata = {
 };
 
 export default async function UploadPage() {
-  if (!(await hasAccessToken())) {
-    redirect("/login");
-  }
-
-  const userInfo = await getUserWithRole();
-  if (!userInfo || !userInfo.isAdmin) {
-    redirect("/dashboard");
-  }
-
   return (
-    <DashboardLayout
-      isAdmin={userInfo.isAdmin}
-      userName={userInfo.name}
-      userEmail={userInfo.email}
-    >
-      <div className="max-w-3xl mx-auto animate-fade-in">
+    <div className="max-w-3xl mx-auto animate-fade-in">
         {/* パンくず */}
         <div className="flex items-center gap-2 text-xs lg:text-sm mb-4 lg:mb-6 font-bold" style={{ color: "#323232" }}>
           <Link href="/admin" className="hover:underline">
@@ -88,7 +72,6 @@ export default async function UploadPage() {
             </li>
           </ul>
         </div>
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }

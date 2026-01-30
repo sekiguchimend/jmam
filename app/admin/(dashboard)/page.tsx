@@ -1,9 +1,7 @@
 // 管理者ダッシュボード（Server Component）
-// ミドルウェアで認証済みなので、ここでは認証チェック不要
+// 認証・レイアウトはlayout.tsxで処理
 import { Suspense } from "react";
-import { getUserWithRole } from "@/lib/supabase/server";
 import { fetchDatasetStats, fetchTotalCount } from "@/actions/upload";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { AdminDatasetList } from "./AdminDatasetList";
 import Link from "next/link";
 import { Briefcase, Database, CheckCircle, Plus } from "lucide-react";
@@ -164,49 +162,40 @@ async function DatasetListContent() {
 }
 
 export default async function AdminPage() {
-  // ミドルウェアで admin_access_token をチェック済み
-  const userInfo = await getUserWithRole();
-
   return (
-    <DashboardLayout
-      isAdmin={userInfo.isAdmin}
-      userName={userInfo.name}
-      userEmail={userInfo.email}
-    >
-      <div className="max-w-7xl mx-auto animate-fade-in">
-        {/* ヘッダー */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 lg:mb-8">
-          <div>
-            <h1 className="text-xl lg:text-2xl font-black mb-1" style={{ color: "#323232" }}>
-              学習データ
-            </h1>
-            <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
-              登録済みデータの確認・削除
-            </p>
-          </div>
-          <Link
-            href="/admin/upload"
-            className="inline-flex items-center justify-center gap-2 px-6 py-3 font-black transition-all hover:opacity-90 text-white text-sm"
-            style={{
-              background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
-              borderRadius: "5px"
-            }}
-          >
-            <Plus className="w-4 h-4" />
-            データ追加
-          </Link>
+    <div className="max-w-7xl mx-auto animate-fade-in">
+      {/* ヘッダー */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 lg:mb-8">
+        <div>
+          <h1 className="text-xl lg:text-2xl font-black mb-1" style={{ color: "#323232" }}>
+            学習データ
+          </h1>
+          <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
+            登録済みデータの確認・削除
+          </p>
         </div>
-
-        {/* 統計テーブル */}
-        <Suspense fallback={<StatsTableSkeleton />}>
-          <StatsTable />
-        </Suspense>
-
-        {/* データセット一覧 */}
-        <Suspense fallback={<DatasetListSkeleton />}>
-          <DatasetListContent />
-        </Suspense>
+        <Link
+          href="/admin/upload"
+          className="inline-flex items-center justify-center gap-2 px-6 py-3 font-black transition-all hover:opacity-90 text-white text-sm"
+          style={{
+            background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
+            borderRadius: "5px"
+          }}
+        >
+          <Plus className="w-4 h-4" />
+          データ追加
+        </Link>
       </div>
-    </DashboardLayout>
+
+      {/* 統計テーブル */}
+      <Suspense fallback={<StatsTableSkeleton />}>
+        <StatsTable />
+      </Suspense>
+
+      {/* データセット一覧 */}
+      <Suspense fallback={<DatasetListSkeleton />}>
+        <DatasetListContent />
+      </Suspense>
+    </div>
   );
 }
