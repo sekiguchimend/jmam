@@ -5,6 +5,7 @@ import { predictAnswer } from "@/actions/predict";
 import type { Case, Scores, PredictionResponse } from "@/types";
 import { defaultScores } from "@/types";
 import { AlertCircle, ChevronDown, ChevronRight, Download, FolderOpen, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
+import { ScoreSlider } from "@/components/ui/ScoreSlider";
 import { exportAnswerPredictToPdf } from "@/lib/pdf-export";
 
 // スコア項目の型定義
@@ -108,7 +109,7 @@ function RecursiveScoreSection({
   const paddingLeft = depth * 16;
   const fontSize = isRoot ? "text-sm" : isChild ? "text-xs" : "text-[11px]";
   const descFontSize = isRoot ? "text-[11px]" : "text-[10px]";
-  const bgColor = isRoot ? "var(--background)" : "var(--surface)";
+  const bgColor = isRoot ? "#f1f5f9" : "#f8fafc";
   const inputBorder = isRoot ? "var(--primary)" : "var(--border)";
 
   return (
@@ -118,97 +119,237 @@ function RecursiveScoreSection({
     >
       {/* 項目行 */}
       <div
-        className="flex items-center gap-2 py-2.5"
         style={{
           paddingLeft: isRoot ? 16 : paddingLeft,
           paddingRight: 16,
+          paddingTop: 10,
+          paddingBottom: 10,
           borderBottom: (hasChildren && isExpanded) || !isRoot ? "1px solid var(--border)" : "none",
           background: isRoot ? bgColor : "transparent",
         }}
       >
-        {/* 折りたたみボタン + ラベル部分（クリックで開閉） */}
-        {hasChildren ? (
-          <button
-            onClick={() => toggleSection(item.key)}
-            className="flex items-center gap-2 flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
-          >
-            <div
-              className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0"
-              style={{ background: isRoot ? "var(--surface)" : "var(--background)" }}
+        <div className="flex items-center gap-2">
+          {/* 折りたたみボタン + ラベル部分（クリックで開閉） */}
+          {hasChildren ? (
+            <button
+              onClick={() => toggleSection(item.key)}
+              className="flex items-center gap-2 flex-1 min-w-0 text-left hover:opacity-70 transition-opacity"
             >
-              {isExpanded ? (
-                <ChevronDown className="w-3.5 h-3.5" style={{ color: "#323232" }} />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5" style={{ color: "#323232" }} />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className={`font-bold ${fontSize}`} style={{ color: "#323232" }}>
-                {item.label}
-              </p>
-              <p className={`${descFontSize} mt-0.5 leading-relaxed`} style={{ color: "var(--text-muted)" }}>
-                {item.description}
-              </p>
-            </div>
-          </button>
-        ) : (
-          <>
-            <div className="w-5" />
-            <div className="flex-1 min-w-0">
-              <p className={`font-bold ${fontSize}`} style={{ color: "#323232" }}>
-                {item.label}
-              </p>
-              <p className={`${descFontSize} mt-0.5 leading-relaxed`} style={{ color: "var(--text-muted)" }}>
-                {item.description}
-              </p>
-            </div>
-          </>
-        )}
+              <div
+                className="w-5 h-5 flex items-center justify-center flex-shrink-0"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5" style={{ color: "#323232" }} />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" style={{ color: "#323232" }} />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`font-bold ${fontSize}`} style={{ color: "#323232" }}>
+                  {item.label}
+                </p>
+                <p className={`${descFontSize} mt-0.5 leading-relaxed`} style={{ color: "var(--text-muted)" }}>
+                  {item.description}
+                </p>
+              </div>
+            </button>
+          ) : (
+            <>
+              <div className="w-5" />
+              <div className="flex-1 min-w-0">
+                <p className={`font-bold ${fontSize}`} style={{ color: "#323232" }}>
+                  {item.label}
+                </p>
+                <p className={`${descFontSize} mt-0.5 leading-relaxed`} style={{ color: "var(--text-muted)" }}>
+                  {item.description}
+                </p>
+              </div>
+            </>
+          )}
 
-        {/* 数値入力 */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <input
-            type="number"
-            min="1"
-            max={item.max}
-            step={item.step}
-            value={scores[item.key] ?? 2}
-            onChange={(e) => {
-              const val = parseFloat(e.target.value);
-              if (!isNaN(val) && val >= 1 && val <= item.max) {
-                onChange(item.key, val);
-              }
-            }}
-            className={`w-14 text-center py-1 rounded font-bold ${isGrandChild ? "text-xs" : "text-sm"}`}
-            style={{
-              border: `1px solid ${inputBorder}`,
-              background: "#fff",
-              color: "#323232",
-            }}
-          />
-          <span className="text-[9px] w-8 text-right" style={{ color: "var(--text-muted)" }}>
-            /{item.max}
-          </span>
+          {/* スライダー + 数値入力 */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-44 mr-2">
+              <ScoreSlider
+                value={scores[item.key] ?? 2}
+                min={1}
+                max={item.max}
+                step={item.step}
+                onChange={(val) => onChange(item.key, val)}
+              />
+            </div>
+            <input
+              type="number"
+              min="1"
+              max={item.max}
+              step={item.step}
+              value={scores[item.key] ?? 2}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val) && val >= 1 && val <= item.max) {
+                  onChange(item.key, val);
+                }
+              }}
+              className={`w-14 text-center py-1 rounded font-bold ${isGrandChild ? "text-xs" : "text-sm"}`}
+              style={{
+                border: `1px solid ${inputBorder}`,
+                background: "#fff",
+                color: "#323232",
+              }}
+            />
+            <span className="text-[9px] w-6 text-right" style={{ color: "var(--text-muted)" }}>
+              /{item.max}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* 子項目（再帰的に描画） */}
+      {/* 子項目（テーブル形式で表示） */}
       {hasChildren && isExpanded && (
-        <div style={{ background: "var(--surface)" }}>
-          {item.children!.map((child) => (
-            <RecursiveScoreSection
-              key={child.key}
-              item={child}
-              scores={scores}
-              onChange={onChange}
-              expandedSections={expandedSections}
-              toggleSection={toggleSection}
-              depth={depth + 1}
-            />
-          ))}
+        <div style={{ background: bgColor, marginLeft: 20, marginRight: 8, marginBottom: 8 }}>
+          <table className="w-full" style={{ borderCollapse: "collapse" }}>
+            <tbody>
+              {item.children!.map((child, idx) => (
+                <tr
+                  key={child.key}
+                  style={{
+                    borderTop: idx === 0 ? "1px solid #ddd" : "none",
+                    borderBottom: "1px solid #ddd",
+                  }}
+                >
+                  <td className="py-2 px-3" style={{ width: "40%" }}>
+                    <p className="text-xs font-bold" style={{ color: "#323232" }}>{child.label}</p>
+                    <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{child.description}</p>
+                  </td>
+                  <td className="py-2 px-2">
+                    <div className="w-40">
+                      <ScoreSlider
+                        value={scores[child.key] ?? 2}
+                        min={1}
+                        max={child.max}
+                        step={child.step}
+                        onChange={(val) => onChange(child.key, val)}
+                      />
+                    </div>
+                  </td>
+                  <td className="py-2 px-2 text-center" style={{ width: "80px" }}>
+                    <div className="flex items-center justify-center gap-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max={child.max}
+                        step={child.step}
+                        value={scores[child.key] ?? 2}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val) && val >= 1 && val <= child.max) {
+                            onChange(child.key, val);
+                          }
+                        }}
+                        className="w-12 text-center py-1 rounded font-bold text-xs"
+                        style={{ border: "1px solid var(--border)", background: "#fff", color: "#323232" }}
+                      />
+                      <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>/{child.max}</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
+  );
+}
+
+// テーブル行コンポーネント
+function ScoreTableRow({
+  item,
+  scores,
+  onChange,
+  expandedSections,
+  toggleSection,
+  depth = 0,
+}: {
+  item: ScoreItemConfig;
+  scores: Scores;
+  onChange: (key: keyof Scores, value: number) => void;
+  expandedSections: Set<string>;
+  toggleSection: (key: string) => void;
+  depth?: number;
+}) {
+  const hasChildren = item.children && item.children.length > 0;
+  const isExpanded = expandedSections.has(item.key);
+  const paddingLeft = depth * 16 + 12;
+  const bgColor = depth === 1 ? "#f5f5f5" : depth >= 2 ? "#fafafa" : "#fff";
+
+  return (
+    <>
+      <tr style={{ background: bgColor, borderTop: "1px solid #e5e5e5" }}>
+        <td className="py-2.5 px-3" style={{ paddingLeft }}>
+          <div className="flex items-center gap-2">
+            {hasChildren && (
+              <button
+                onClick={() => toggleSection(item.key)}
+                className="hover:opacity-70 transition-opacity"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-4 h-4" style={{ color: "#323232" }} />
+                ) : (
+                  <ChevronRight className="w-4 h-4" style={{ color: "#323232" }} />
+                )}
+              </button>
+            )}
+            <div>
+              <p className="text-sm font-bold" style={{ color: "#323232" }}>{item.label}</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{item.description}</p>
+            </div>
+          </div>
+        </td>
+        <td className="py-2.5 px-3">
+          <div className="w-44">
+            <ScoreSlider
+              value={scores[item.key] ?? 2}
+              min={1}
+              max={item.max}
+              step={item.step}
+              onChange={(val) => onChange(item.key, val)}
+            />
+          </div>
+        </td>
+        <td className="py-2.5 px-3 text-center">
+          <div className="flex items-center justify-center gap-1">
+            <input
+              type="number"
+              min="1"
+              max={item.max}
+              step={item.step}
+              value={scores[item.key] ?? 2}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val) && val >= 1 && val <= item.max) {
+                  onChange(item.key, val);
+                }
+              }}
+              className="w-14 text-center py-1 rounded font-bold text-sm"
+              style={{ border: "1px solid var(--border)", background: "#fff", color: "#323232" }}
+            />
+            <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>/{item.max}</span>
+          </div>
+        </td>
+      </tr>
+      {hasChildren && isExpanded && item.children!.map((child) => (
+        <ScoreTableRow
+          key={child.key}
+          item={child}
+          scores={scores}
+          onChange={onChange}
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+          depth={depth + 1}
+        />
+      ))}
+    </>
   );
 }
 
@@ -370,7 +511,7 @@ export function PredictClient({ cases }: PredictClientProps) {
       {/* 目標スコア設定 - 縦並び階層構造 */}
       <div
         className="rounded-xl p-5"
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        style={{ background: "var(--surface)" }}
       >
         <div className="flex items-center justify-between mb-4">
           <label className="text-sm font-black" style={{ color: "#323232" }}>
@@ -459,7 +600,7 @@ export function PredictClient({ cases }: PredictClientProps) {
             {/* 役割理解（自動計算） */}
             <div
               className="rounded-lg overflow-hidden"
-              style={{ background: "var(--background)" }}
+              style={{ background: "#f1f5f9" }}
             >
               <div className="flex items-center gap-2 py-2.5 px-4">
                 <div className="w-5" />

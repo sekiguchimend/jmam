@@ -276,7 +276,7 @@ export const config = {
     '/mfa',
     '/login',
     '/predict',
-    // API
-    '/api/admin/:path*',
+    // API（/api/admin/uploadは大きなファイルを扱うため除外）
+    '/api/admin/((?!upload).)*',
   ],
 };

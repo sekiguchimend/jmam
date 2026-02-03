@@ -465,26 +465,36 @@ export async function updateCaseSituation(
   }
 }
 
-// 回答データをバッチupsert（FR-09: 1000件単位）
-export async function upsertResponses(responses: ResponseInsert[], accessToken?: string): Promise<void> {
+// 回答データをバッチinsert（各行を1レコードとして保存）
+export async function insertResponses(responses: ResponseInsert[], accessToken?: string): Promise<void> {
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
-  const { error } = await supabase.from('responses').upsert(responses satisfies ResponseInsert[], {
-    onConflict: 'case_id,response_id',
-  });
+  const { error } = await supabase.from('responses').insert(responses satisfies ResponseInsert[]);
 
   if (error) {
-    console.error('upsertResponses error:', error);
+    console.error('insertResponses error:', error);
     throw new Error(`回答データの登録に失敗しました: ${error.message ?? 'unknown error'}`);
   }
 }
 
-// ケースの回答を全削除（データセット削除用）
+// ケースの回答と関連データを全削除（データセット削除用）
 export async function deleteResponsesByCaseId(caseId: string, accessToken?: string): Promise<number> {
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
+
+  // 関連テーブルを先に削除（外部キー制約がないので手動で削除）
+  const { error: e1 } = await supabase.from('typical_examples').delete().eq('case_id', caseId);
+  if (e1) console.error('delete typical_examples error:', e1);
+
+  const { error: e2 } = await supabase.from('response_embeddings').delete().eq('case_id', caseId);
+  if (e2) console.error('delete response_embeddings error:', e2);
+
+  const { error: e3 } = await supabase.from('embedding_queue').delete().eq('case_id', caseId);
+  if (e3) console.error('delete embedding_queue error:', e3);
+
+  // 回答データを削除
   const { data, error } = await supabase
     .from('responses')
     .delete()
@@ -495,6 +505,8 @@ export async function deleteResponsesByCaseId(caseId: string, accessToken?: stri
     console.error('deleteResponsesByCaseId error:', error);
     throw new Error(`回答データの削除に失敗しました: ${error.message}`);
   }
+
+  console.log(`[DELETE] case_id=${caseId}: responses=${data?.length ?? 0}件削除`);
   return data?.length ?? 0;
 }
 
@@ -510,9 +522,7 @@ export async function enqueueEmbeddingJobs(
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
-  const { error } = await supabase.from('embedding_queue').upsert(jobs satisfies EmbeddingQueueInsert[], {
-    onConflict: 'case_id,response_id,question',
-  });
+  const { error } = await supabase.from('embedding_queue').insert(jobs satisfies EmbeddingQueueInsert[]);
   if (error) {
     console.error('enqueueEmbeddingJobs error:', error);
     throw new Error(`embedding_queue の登録に失敗しました: ${error.message ?? 'unknown error'}`);
@@ -557,20 +567,24 @@ export async function markEmbeddingJobs(
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
-  const { error } = await supabase.from('embedding_queue').upsert(
-    updates.map((u) => ({
-      case_id: u.case_id,
-      response_id: u.response_id,
-      question: u.question,
-      status: u.status,
-      attempts: u.attempts,
-      last_error: u.last_error,
-    })) satisfies EmbeddingQueueInsert[],
-    { onConflict: 'case_id,response_id,question' }
-  );
-  if (error) {
-    console.error('markEmbeddingJobs error:', error);
-    throw new Error(`embedding_queue の更新に失敗しました: ${error.message ?? 'unknown error'}`);
+
+  // 各ジョブを個別に更新
+  for (const u of updates) {
+    const { error } = await supabase
+      .from('embedding_queue')
+      .update({
+        status: u.status,
+        attempts: u.attempts,
+        last_error: u.last_error,
+      })
+      .eq('case_id', u.case_id)
+      .eq('response_id', u.response_id)
+      .eq('question', u.question);
+
+    if (error) {
+      console.error('markEmbeddingJobs error:', error);
+      throw new Error(`embedding_queue の更新に失敗しました: ${error.message ?? 'unknown error'}`);
+    }
   }
 }
 
@@ -621,7 +635,7 @@ export async function fetchResponsesForEmbeddingJobs(
   }[];
 }
 
-export async function upsertResponseEmbeddings(
+export async function insertResponseEmbeddings(
   rows: ResponseEmbeddingInsert[],
   accessToken?: string
 ): Promise<void> {
@@ -629,11 +643,9 @@ export async function upsertResponseEmbeddings(
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
-  const { error } = await supabase.from('response_embeddings').upsert(rows satisfies ResponseEmbeddingInsert[], {
-    onConflict: 'case_id,response_id,question',
-  });
+  const { error } = await supabase.from('response_embeddings').insert(rows satisfies ResponseEmbeddingInsert[]);
   if (error) {
-    console.error('upsertResponseEmbeddings error:', error);
+    console.error('insertResponseEmbeddings error:', error);
     throw new Error(`response_embeddings の登録に失敗しました: ${error.message ?? 'unknown error'}`);
   }
 }

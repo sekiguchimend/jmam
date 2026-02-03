@@ -6,7 +6,7 @@ export const maxDuration = 600; // 10分（Vercel）
 
 import { getAccessToken, isAdmin } from '@/lib/supabase/server';
 import { iterateCsvRecordsFromBytes, parseCSVLine, parseDate, parseScore } from '@/lib/utils';
-import { enqueueEmbeddingJobs, upsertCase, upsertResponses } from '@/lib/supabase';
+import { enqueueEmbeddingJobs, upsertCase, insertResponses } from '@/lib/supabase';
 import type { CsvRowData } from '@/types';
 import { toScoreBucket } from '@/lib/scoring';
 import { processEmbeddingQueueBatchWithToken, rebuildTypicalExamplesForBucketWithToken } from '@/lib/prepare/worker';
@@ -22,18 +22,6 @@ const AUTO_PREPARE_MAX_MS = 420_000; // 7分
 // 全角スペースと半角スペースを正規化するヘルパー（共通で使用）
 const normalizeSpaces = (str: string) => str.replace(/　/g, ' ').replace(/\s+/g, ' ').trim();
 
-function dedupeResponsesByKey(rows: CsvRowData[]): { deduped: CsvRowData[]; dropped: number } {
-  // upsertのonConflict(case_id,response_id)に対して、同一コマンド内で重複があると
-  // "ON CONFLICT DO UPDATE command cannot affect row a second time" になるため、ここで除外する。
-  // 方針: 同一キーが複数回出た場合は「最後に出た行」を採用（CSVの後勝ち）
-  const map = new Map<string, CsvRowData>();
-  for (const row of rows) {
-    const key = `${row.case_id}__${row.response_id}`;
-    map.set(key, row);
-  }
-  const deduped = Array.from(map.values());
-  return { deduped, dropped: rows.length - deduped.length };
-}
 
 function validateHeaders(headers: string[]): { valid: boolean; missing: string[] } {
   // ヘッダーを正規化して比較（全角/半角スペースどちらでも対応）
@@ -261,9 +249,19 @@ export async function POST(request: Request) {
         let processedCount = 0;
         const errors: string[] = [];
 
+        // デバッグ用カウンター
+        let debugTotalCsvRows = 0;
+        let debugSkippedEmpty = 0;
+        let debugSkippedError = 0;
+        let debugInsertedCount = 0;
+
         for await (const record of records) {
           recordNo += 1;
-          if (!record.trim()) continue;
+          debugTotalCsvRows += 1;
+          if (!record.trim()) {
+            debugSkippedEmpty += 1;
+            continue;
+          }
 
           if (!headers) {
             const candidate = parseCSVLine(record);
@@ -291,6 +289,7 @@ export async function POST(request: Request) {
 
           if (result.error) {
             errors.push(result.error);
+            debugSkippedError += 1;
             console.error('CSV row validation error:', { fileName, recordNo, error: result.error });
             if (errors.length >= 10) {
               send('error', {
@@ -319,24 +318,17 @@ export async function POST(request: Request) {
           batch.push(result.data);
 
           if (batch.length >= BATCH_SIZE) {
-            const { deduped, dropped } = dedupeResponsesByKey(batch);
-            if (dropped > 0) {
-              console.warn('duplicate response keys found in batch; keeping last occurrences', {
-                fileName,
-                dropped,
-              });
-            }
-
-            const dbRecords = deduped.map(({ case_name: _caseName, ...rest }) => {
+            const dbRecords = batch.map(({ case_name: _caseName, ...rest }) => {
               void _caseName;
               return rest;
             });
-            await upsertResponses(dbRecords, adminToken);
+            await insertResponses(dbRecords, adminToken);
+            debugInsertedCount += batch.length;
 
             // embeddingキュー投入（事前準備用）
             // q1 → answer_q1, q2 → answer_q2〜q8のいずれかがあれば
             await enqueueEmbeddingJobs(
-              deduped.flatMap((r) => {
+              batch.flatMap((r) => {
                 const jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[] = [];
                 if (r.answer_q1 && r.answer_q1.trim()) {
                   jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'q1' });
@@ -353,8 +345,7 @@ export async function POST(request: Request) {
             );
 
             // 典型例再計算用の「触れたスコア帯」を記録
-            // ラベルは q1/q2 に変更、スコアは score_problem/score_solution のまま
-            for (const r of deduped) {
+            for (const r of batch) {
               if (typeof r.score_problem === 'number') {
                 touchedBuckets.add(`${r.case_id}__q1__${toScoreBucket(r.score_problem)}`);
               }
@@ -381,22 +372,15 @@ export async function POST(request: Request) {
 
         // 残りをフラッシュ
         if (batch.length > 0) {
-          const { deduped, dropped } = dedupeResponsesByKey(batch);
-          if (dropped > 0) {
-            console.warn('duplicate response keys found in final batch; keeping last occurrences', {
-              fileName,
-              dropped,
-            });
-          }
-
-          const dbRecords = deduped.map(({ case_name: _caseName, ...rest }) => {
+          const dbRecords = batch.map(({ case_name: _caseName, ...rest }) => {
             void _caseName;
             return rest;
           });
-          await upsertResponses(dbRecords, adminToken);
+          await insertResponses(dbRecords, adminToken);
+          debugInsertedCount += batch.length;
           // q1 → answer_q1, q2 → answer_q2〜q8のいずれかがあれば
           await enqueueEmbeddingJobs(
-            deduped.flatMap((r) => {
+            batch.flatMap((r) => {
               const jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[] = [];
               if (r.answer_q1 && r.answer_q1.trim()) {
                 jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'q1' });
@@ -410,7 +394,7 @@ export async function POST(request: Request) {
             }),
             adminToken
           );
-          for (const r of deduped) {
+          for (const r of batch) {
             if (typeof r.score_problem === 'number') {
               touchedBuckets.add(`${r.case_id}__q1__${toScoreBucket(r.score_problem)}`);
             }
@@ -428,6 +412,20 @@ export async function POST(request: Request) {
 
         // アップロード完了
         send('completed', { fileName, processed: processedCount, status: 'completed' });
+
+        // デバッグログ: アップロード処理の詳細
+        console.log('========================================');
+        console.log('[DEBUG] CSV Upload Summary');
+        console.log('========================================');
+        console.log(`ファイル名: ${fileName}`);
+        console.log(`CSV総行数（ヘッダー含む）: ${debugTotalCsvRows}`);
+        console.log(`空行スキップ: ${debugSkippedEmpty}`);
+        console.log(`バリデーションエラー: ${debugSkippedError}`);
+        console.log(`DBへinsert実行: ${debugInsertedCount} 件`);
+        console.log(`処理済みカウント: ${processedCount} 件`);
+        console.log(`ケース数: ${caseSeen.size}`);
+        console.log(`ケースID一覧: ${Array.from(caseSeen).join(', ')}`);
+        console.log('========================================');
 
         // ここから「アップロード時にすべき」自動準備を実施（時間制限付き）
         // - まずEmbeddingを作る（キュー処理）

@@ -9,7 +9,7 @@ import {
   fetchPendingEmbeddingJobs,
   fetchResponsesForEmbeddingJobs,
   markEmbeddingJobs,
-  upsertResponseEmbeddings,
+  insertResponseEmbeddings,
   upsertTypicalExamples,
 } from '@/lib/supabase';
 import { embedText } from '@/lib/gemini';
@@ -181,7 +181,7 @@ export async function processEmbeddingQueueBatchWithToken(
   }
 
   if (toUpsert.length) {
-    await upsertResponseEmbeddings(toUpsert, adminToken);
+    await insertResponseEmbeddings(toUpsert, adminToken);
   }
 
   const succeeded = results.filter((r) => r.ok).length;
