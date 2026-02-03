@@ -6,44 +6,44 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 /**
  * 採点AIの事前プロンプト（システムプロンプト）
  * 
- * このプロンプトは、従業員のケーススタディ回答を評価する際に使用されます。
- * 過去の回答パターンと採点基準に基づいて、公平で一貫性のある評価を提供します。
+ * このプロンプトは、従業員のケーススタディ解答を評価する際に使用されます。
+ * 過去の解答パターンと採点基準に基づいて、公平で一貫性のある評価を提供します。
  * 
- * AIは「エンベディング予測値」を参考にしつつ、回答の妥当性を評価して最終スコアを決定します。
+ * AIは「エンベディング予測値」を参考にしつつ、解答の妥当性を評価して最終スコアを決定します。
  */
 export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマンス評価を専門とする採点アシスタントです。
-職場ケーススタディへの回答を評価し、確立された基準と過去の評価パターンに基づいて、
+職場ケーススタディへの解答を評価し、確立された基準と過去の評価パターンに基づいて、
 公平で一貫性のある洞察に満ちたスコアと説明を提供することが目標です。
 
 ## 評価の背景
 
-従業員は「ケース（状況説明）」を読み、それに対する回答を記述します。
-回答は以下の2つの設問に分かれています：
+従業員は「ケース（状況説明）」を読み、それに対する解答を記述します。
+解答は以下の2つの設問に分かれています：
 - **設問1（q1）**: 問題把握 - 現状の問題点を的確に捉えているか
 - **設問2（q2）**: 対策立案、主導、連携、育成 - 解決策と実行計画を示せているか
 
-## 重要：回答の妥当性チェック
+## 重要：解答の妥当性チェック
 
-**まず最初に、回答が「有効な回答」かどうかを判定してください。**
+**まず最初に、解答が「有効な解答」かどうかを判定してください。**
 
-### 無効な回答の例（スコア1.0を付与）
+### 無効な解答の例（スコア1.0を付与）
 - 意味のない文字の羅列（例：「あああああ」「asdfghjkl」「xxxx」）
 - 全く関係のない内容（例：天気の話、料理のレシピ、個人的な話題）
 - 空白のみ、または極端に短い（例：「はい」「わかりません」「特にない」）
 - コピペや定型文の繰り返し
 - 設問やケースと全く関係のない内容
 
-### 低品質な回答の例（スコア1.0〜1.5を付与）
+### 低品質な解答の例（スコア1.0〜1.5を付与）
 - 設問の内容を理解していない
 - 具体性が著しく欠如（「頑張ります」「改善します」のみ）
 - ケース状況と無関係な一般論のみ
 - 論理的な構成がない
 
-**無効または低品質な回答の場合、エンベディング予測値に関係なく低いスコアを付けてください。**
+**無効または低品質な解答の場合、エンベディング予測値に関係なく低いスコアを付けてください。**
 
 ## 評価基準
 
-以下の評価軸に基づいて回答を評価してください：
+以下の評価軸に基づいて解答を評価してください：
 
 ### 1. 問題把握評点（Problem Comprehension Score）
 
@@ -263,20 +263,20 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 
 ## スコアの目安
 
-**重要: 5点は「完璧」を意味します。実際のデータでは5点の回答は一つも存在しません。**
+**重要: 5点は「完璧」を意味します。実際のデータでは5点の解答は一つも存在しません。**
 
-- **5.0**: 【ほぼ存在しない】完璧な回答。すべての評価観点において欠点が一切なく、模範解答として使用できるレベル。過去のデータに5点は存在しないため、極めて例外的な場合のみ付与してください。
-- **4.5**: 【極めて稀】ほぼ完璧。1〜2点の軽微な改善点はあるが、全体として卓越した回答（問題把握・対策立案・役割理解のみ）
+- **5.0**: 【ほぼ存在しない】完璧な解答。すべての評価観点において欠点が一切なく、模範解答として使用できるレベル。過去のデータに5点は存在しないため、極めて例外的な場合のみ付与してください。
+- **4.5**: 【極めて稀】ほぼ完璧。1〜2点の軽微な改善点はあるが、全体として卓越した解答（問題把握・対策立案・役割理解のみ）
 - **4.0**: 【稀】非常に優秀。大部分の観点で優れており、明確な強みがある（実データでは全体の1%未満）
 - **3.5**: 優秀。多くの観点で良好だが、いくつか改善の余地がある
-- **2.5〜3.0**: 標準的。基本的な要素は押さえているが改善の余地あり（多くの回答がこの範囲）
+- **2.5〜3.0**: 標準的。基本的な要素は押さえているが改善の余地あり（多くの解答がこの範囲）
 - **1.5〜2.0**: 改善が必要。重要な観点が欠けている
-- **1.0**: 大幅な改善が必要、または無効な回答
+- **1.0**: 大幅な改善が必要、または無効な解答
 
 **スコア分布の目安（実データに基づく）**:
-- 2.0〜3.0の範囲: 約90%の回答
-- 3.5以上: 約7%の回答
-- 4.0以上: 約1%の回答
+- 2.0〜3.0の範囲: 約90%の解答
+- 3.5以上: 約7%の解答
+- 4.0以上: 約1%の解答
 - 4.5以上: ほぼ0%
 - 5.0: 0%（過去に存在しない）
 
@@ -290,12 +290,12 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 
 ## 評価の進め方
 
-1. **回答の妥当性を確認**: まず回答が有効かどうかを判定
+1. **解答の妥当性を確認**: まず解答が有効かどうかを判定
 2. **ケース状況を理解**: 提供されたケース（状況説明）を注意深く読む
-3. **回答を分析**: 設問に対する回答の内容を詳細に確認
-4. **類似例を参照**: 提供された類似回答とそのスコア・コメントを参考にする
+3. **解答を分析**: 設問に対する解答の内容を詳細に確認
+4. **類似例を参照**: 提供された類似解答とそのスコア・コメントを参考にする
 5. **評価軸に沿って判断**: 上記の評価基準に照らして強みと弱みを特定
-6. **エンベディング予測値を参考に**: 類似度ベースの予測値を参考にしつつ、回答内容を総合的に判断
+6. **エンベディング予測値を参考に**: 類似度ベースの予測値を参考にしつつ、解答内容を総合的に判断
 7. **最終スコアを決定**: 各観点のバランスを考慮して最終スコアを決定
 
 ## 出力形式
@@ -331,14 +331,14 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 \`\`\`
 
 **重要：詳細スコアの評価基準**
-各詳細スコアは回答内容を直接評価して1〜4の整数で採点してください：
+各詳細スコアは解答内容を直接評価して1〜4の整数で採点してください：
 - **1**: 該当する記述がない、または不適切
 - **2**: 基本的な言及はあるが不十分
 - **3**: 適切に言及されている
 - **4**: 詳細かつ具体的に言及されている
 
 **重要な注意点**:
-- 無効な回答（意味のない文字列など）の場合、isValidAnswer を false にし、すべての詳細スコアを 1、scoresも最低値にしてください
+- 無効な解答（意味のない文字列など）の場合、isValidAnswer を false にし、すべての詳細スコアを 1、scoresも最低値にしてください
 - 設問1（q1）の場合：detailScoresはproblemUnderstanding〜problemReformHrの6項目のみ評価。scoresは空オブジェクト。
 - 設問2（q2）の場合：detailScoresはsolutionCoverage〜collabMemberの9項目、scoresはleadership/developmentを評価。
 - **problem, solution, collaboration, roleは詳細スコアから計算式で算出するため、出力不要です**
@@ -349,17 +349,17 @@ export const SCORING_SYSTEM_PROMPT = `あなたは従業員のパフォーマン
 説明文は以下の要素を含めてください：
 
 1. **総評**: スコアの根拠となる全体的な評価
-2. **強み**: 回答の良い点（具体的に引用）
+2. **強み**: 解答の良い点（具体的に引用）
 3. **改善点**: 不足している観点や深堀りが必要な点
-4. **類似例との比較**: 参照した類似回答との類似点・相違点
+4. **類似例との比較**: 参照した類似解答との類似点・相違点
 5. **アドバイス**: 今後の改善に向けた具体的な提案
 
-無効な回答の場合は、なぜ無効と判断したかを説明し、有効な回答のためのアドバイスを提供してください。
+無効な解答の場合は、なぜ無効と判断したかを説明し、有効な解答のためのアドバイスを提供してください。
 
 説明文は建設的かつ専門的なトーンで、過去の評価コメントのスタイルに合わせてください。`;
 
 /**
- * 類似回答の情報
+ * 類似解答の情報
  */
 export type ScoringExample = {
   responseId: string;
@@ -421,14 +421,14 @@ export type ScoreDistribution = {
 };
 
 /**
- * スコア例（各スコア値の回答例）
+ * スコア例（各スコア値の解答例）
  */
 export type ScoreExample = {
   field: string;           // フィールド名
   label: string;           // 表示名
   examples: {
     score: number;         // スコア値
-    answerText: string;    // 回答テキスト（抜粋）
+    answerText: string;    // 解答テキスト（抜粋）
     similarity: number;    // 類似度
   }[];
 };
@@ -439,16 +439,16 @@ export type ScoreExample = {
 export type AIScoringRequest = {
   caseContext: string; // ケースの状況説明
   question: 'q1' | 'q2';
-  answerText: string; // 評価対象の回答
-  similarExamples: ScoringExample[]; // 類似回答例（評価スタイルの参考）
+  answerText: string; // 評価対象の解答
+  similarExamples: ScoringExample[]; // 類似解答例（評価スタイルの参考）
   similarCases?: ScoringCaseContext[]; // 類似ケース（新規ケース予測時）
   isNewCase?: boolean; // 新規ケースかどうか
-  // 類似回答のスコア分布（AIの判断基準）
+  // 類似解答のスコア分布（AIの判断基準）
   scoreDistributions?: {
     detailScores: ScoreDistribution[];  // 詳細スコア15項目の分布
     mainScores: ScoreDistribution[];    // role/leadership/developmentの分布
   };
-  // 各スコア値の回答例（AIの判断基準）
+  // 各スコア値の解答例（AIの判断基準）
   scoreExamples?: {
     detailScores: ScoreExample[];       // 詳細スコア15項目の例
     mainScores: ScoreExample[];         // role/leadership/developmentの例
@@ -507,7 +507,7 @@ export type AIScoringResponse = {
  */
 function getQuestionFocus(question: 'q1' | 'q2'): string {
   if (question === 'q1') {
-    return `この回答は「設問1（問題把握）」への回答です。
+    return `この解答は「設問1（問題把握）」への解答です。
 主に「問題把握評点」の観点から評価してください：
 - 何が問題かを的確に捉えているか
 - 問題の本質や根本原因を見抜けているか
@@ -515,7 +515,7 @@ function getQuestionFocus(question: 'q1' | 'q2'): string {
 
 **設問1では、detailScoresのproblemUnderstanding〜problemReformHrの6項目のみ評価してください。scoresは空オブジェクトにしてください。**`;
   }
-  return `この回答は「設問2（対策立案・主導・連携・育成）」への回答です。
+  return `この解答は「設問2（対策立案・主導・連携・育成）」への解答です。
 以下の観点から総合的に評価してください：
 - 対策立案: 具体的な実行計画があるか
 - 主導: リーダーとしての主体性が見られるか
@@ -559,7 +559,7 @@ function formatSimilarExamples(examples: ScoringExample[], question: 'q1' | 'q2'
     return `【類似例${i + 1}】類似度: ${(ex.similarity * 100).toFixed(0)}%
 ${mainScores}
 ${detailScoresStr}
-回答内容: ${ex.answerText.substring(0, 300)}${ex.answerText.length > 300 ? '...' : ''}
+解答内容: ${ex.answerText.substring(0, 300)}${ex.answerText.length > 300 ? '...' : ''}
 ${comments || '（コメントなし）'}`;
   }).join('\n\n');
 }
@@ -583,8 +583,8 @@ function formatSimilarCases(cases?: ScoringCaseContext[]): string {
 function formatScoreExamples(examples?: AIScoringRequest['scoreExamples'], distributions?: AIScoringRequest['scoreDistributions']): string {
   if (!examples) return '';
 
-  let result = '\n## 各スコアの回答例（判断基準）\n';
-  result += '以下は類似回答から抽出した各スコアの具体例です。今回の回答がどのスコアに近いか判断する参考にしてください。\n\n';
+  let result = '\n## 各スコアの解答例（判断基準）\n';
+  result += '以下は類似解答から抽出した各スコアの具体例です。今回の解答がどのスコアに近いか判断する参考にしてください。\n\n';
 
   // 詳細スコアの例
   if (examples.detailScores.length > 0) {
@@ -594,7 +594,7 @@ function formatScoreExamples(examples?: AIScoringRequest['scoreExamples'], distr
 
       // 分布情報（推奨値）を取得
       const dist = distributions?.detailScores.find(d => d.field === ex.field);
-      const modeStr = dist?.mode ? `（類似回答での最頻値: ${dist.mode}点）` : '';
+      const modeStr = dist?.mode ? `（類似解答での最頻値: ${dist.mode}点）` : '';
 
       result += `**${ex.label}**${modeStr}\n`;
       for (const e of ex.examples) {
@@ -615,7 +615,7 @@ function formatScoreExamples(examples?: AIScoringRequest['scoreExamples'], distr
 
       // 分布情報（平均値）を取得
       const dist = distributions?.mainScores.find(d => d.field === ex.field);
-      const avgStr = dist?.average ? `（類似回答での平均: ${dist.average.toFixed(1)}点）` : '';
+      const avgStr = dist?.average ? `（類似解答での平均: ${dist.average.toFixed(1)}点）` : '';
 
       result += `**${ex.label}**${avgStr}\n`;
       for (const e of ex.examples) {
@@ -637,8 +637,8 @@ function formatScoreExamples(examples?: AIScoringRequest['scoreExamples'], distr
 function formatScoreDistributions(distributions?: AIScoringRequest['scoreDistributions'], question?: 'q1' | 'q2'): string {
   if (!distributions) return '';
 
-  let result = '\n## 類似回答のスコア分布（判断基準）\n';
-  result += '以下は類似回答から集計したスコアの分布です。推奨スコアの参考にしてください。\n\n';
+  let result = '\n## 類似解答のスコア分布（判断基準）\n';
+  result += '以下は類似解答から集計したスコアの分布です。推奨スコアの参考にしてください。\n\n';
 
   // 詳細スコアの分布
   if (distributions.detailScores.length > 0) {
@@ -705,29 +705,29 @@ export async function generateAIScoring(
   const embeddingSection = isNewCase
     ? `### 新規ケースについて
 **これは新規ケースです。** エンベディングベースの予測値はありません。
-回答内容を評価基準に基づいて直接評価してください。
-類似回答例は「過去の評価スタイルの参考」として使用してください（スコアの参考にはしないでください）。`
+解答内容を評価基準に基づいて直接評価してください。
+類似解答例は「過去の評価スタイルの参考」として使用してください（スコアの参考にはしないでください）。`
     : `### エンベディングベースの予測スコア（参考値）
 ${formatEmbeddingScores(request.embeddingPredictedScores!, request.question)}
 - 信頼度: ${((request.confidence || 0) * 100).toFixed(0)}%
 
-**注意**: 上記の予測スコアはベクトル類似度に基づく参考値です。回答内容が明らかに低品質（意味のない文字列、関係のない内容など）の場合は、予測値に関係なく低いスコアを付けてください。`;
+**注意**: 上記の予測スコアはベクトル類似度に基づく参考値です。解答内容が明らかに低品質（意味のない文字列、関係のない内容など）の場合は、予測値に関係なく低いスコアを付けてください。`;
 
   const taskSection = isNewCase
     ? `## タスク
 
-1. まず、回答が「有効な回答」かどうかを判定してください
-2. 有効な場合：**評価基準に基づいて回答内容を直接評価**し、スコアを決定してください
+1. まず、解答が「有効な解答」かどうかを判定してください
+2. 有効な場合：**評価基準に基づいて解答内容を直接評価**し、スコアを決定してください
 3. 無効な場合：isValidAnswer を false にし、すべてのスコアを 1.0 に
 4. 説明文を生成してください
 
-**重要**: 新規ケースのため、類似回答例のスコアは参考にしないでください。評価基準に基づいて独自に判断してください。
+**重要**: 新規ケースのため、類似解答例のスコアは参考にしないでください。評価基準に基づいて独自に判断してください。
 
 JSON形式で出力してください。`
     : `## タスク
 
-1. まず、回答が「有効な回答」かどうかを判定してください
-2. 有効な場合：エンベディング予測値を参考にしつつ、回答内容を評価してスコアを決定
+1. まず、解答が「有効な解答」かどうかを判定してください
+2. 有効な場合：エンベディング予測値を参考にしつつ、解答内容を評価してスコアを決定
 3. 無効な場合：isValidAnswer を false にし、すべてのスコアを 1.0 に
 4. 説明文を生成してください
 
@@ -736,7 +736,7 @@ JSON形式で出力してください。`;
   // スコア分布セクション
   const scoreDistributionSection = formatScoreDistributions(request.scoreDistributions, request.question);
 
-  // スコア例セクション（各スコア値の回答例）
+  // スコア例セクション（各スコア値の解答例）
   const scoreExamplesSection = formatScoreExamples(request.scoreExamples, request.scoreDistributions);
 
   const userPrompt = `## 評価対象
@@ -747,13 +747,13 @@ ${formatSimilarCases(request.similarCases)}
 ### 設問タイプと評価観点
 ${getQuestionFocus(request.question)}
 
-### 評価対象の回答
+### 評価対象の解答
 ${request.answerText}
 
 ${embeddingSection}
 ${scoreDistributionSection}
 ${scoreExamplesSection}
-## 参考: 類似回答例とその評価${isNewCase ? '（評価スタイルの参考のみ）' : ''}
+## 参考: 類似解答例とその評価${isNewCase ? '（評価スタイルの参考のみ）' : ''}
 
 ${formatSimilarExamples(request.similarExamples, request.question)}
 
@@ -1067,7 +1067,7 @@ function generateFallbackScoring(request: AIScoringRequest): AIScoringResponse {
  */
 function generateFallbackExplanation(request: AIScoringRequest, isValid: boolean): string {
   if (!isValid) {
-    return '【警告】この回答は有効な回答として認識されませんでした。ケースの状況を踏まえた具体的な回答を記述してください。';
+    return '【警告】この解答は有効な解答として認識されませんでした。ケースの状況を踏まえた具体的な解答を記述してください。';
   }
 
   const isNewCase = request.isNewCase || !!request.similarCases?.length;
@@ -1077,7 +1077,7 @@ function generateFallbackExplanation(request: AIScoringRequest, isValid: boolean
   if (isNewCase || !request.embeddingPredictedScores) {
     let explanation = `【${questionType}の評価 - 新規ケース】\n`;
     explanation += `これは新規ケースのため、AI評価が利用できませんでした。\n`;
-    explanation += `評価基準に基づいて回答内容を確認してください。\n\n`;
+    explanation += `評価基準に基づいて解答内容を確認してください。\n\n`;
     explanation += request.question === 'q1'
       ? '【問題把握のポイント】\n問題の本質を的確に捉え、多角的な視点から分析できているかを確認してください。'
       : '【対策立案のポイント】\n具体的な対策と実行計画が示されているかを確認してください。';
@@ -1093,7 +1093,7 @@ function generateFallbackExplanation(request: AIScoringRequest, isValid: boolean
   const scoreLevel = predictedScore >= 3.5 ? '高評価' : predictedScore >= 2.5 ? '中程度' : '低評価';
 
   let explanation = `【${questionType}の評価】\n`;
-  explanation += `この回答は過去の${scoreLevel}回答（平均${avgScore.toFixed(1)}点）と類似しており、`;
+  explanation += `この解答は過去の${scoreLevel}解答（平均${avgScore.toFixed(1)}点）と類似しており、`;
   explanation += `予測スコアは${predictedScore}点です。\n\n`;
 
   if (predictedScore >= 3.5) {
@@ -1117,7 +1117,7 @@ function generateFallbackExplanation(request: AIScoringRequest, isValid: boolean
 
   const conf = confidence ?? 0;
   if (conf >= 0.7) {
-    explanation += '信頼度が高い予測です。類似する過去の回答が多く見つかりました。';
+    explanation += '信頼度が高い予測です。類似する過去の解答が多く見つかりました。';
   } else if (conf >= 0.5) {
     explanation += '中程度の信頼度です。';
   } else {
@@ -1148,7 +1148,7 @@ export type EarlyQualityCheckResult = {
 
 /**
  * 早期品質チェック（API呼び出し前の簡易判定）
- * 明らかに無効な回答を高速で検出
+ * 明らかに無効な解答を高速で検出
  */
 export function performEarlyQualityCheck(answerText: string): EarlyQualityCheckResult | null {
   const text = answerText.trim();
@@ -1157,7 +1157,7 @@ export function performEarlyQualityCheck(answerText: string): EarlyQualityCheckR
   if (text.length < 10) {
     return {
       isInvalid: true,
-      reason: '回答が短すぎます（10文字未満）',
+      reason: '解答が短すぎます（10文字未満）',
     };
   }
 
@@ -1176,7 +1176,7 @@ export function performEarlyQualityCheck(answerText: string): EarlyQualityCheckR
   if (text.length > 30 && japaneseRatio < 0.1) {
     return {
       isInvalid: true,
-      reason: '日本語として有効な回答ではありません',
+      reason: '日本語として有効な解答ではありません',
     };
   }
 

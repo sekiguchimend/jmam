@@ -83,7 +83,7 @@ const HYBRID_CONFIG = {
 const PROTOTYPE_CONFIG = {
   usePrototypes: true,              // プロトタイプベースの予測を使用するか
   prototypeWeight: 0.6,             // プロトタイプ予測の重み（0.6 = 60%）
-  individualWeight: 0.4,            // 個別類似回答の重み（0.4 = 40%）
+  individualWeight: 0.4,            // 個別類似解答の重み（0.4 = 40%）
   minPrototypeSimilarity: 0.4,      // プロトタイプとの最低類似度閾値
   temperatureScaling: 2.0,          // Softmax温度パラメータ（低いほど最高スコアを強調）
 };
@@ -91,7 +91,7 @@ const PROTOTYPE_CONFIG = {
 // AI統合評価の設定
 const AI_SCORING_CONFIG = {
   enabled: true,                    // AI統合評価を有効にするか
-  invalidAnswerScore: 1.0,          // 無効な回答の場合の固定スコア
+  invalidAnswerScore: 1.0,          // 無効な解答の場合の固定スコア
 };
 
 /**
@@ -203,7 +203,7 @@ function softmax(values: number[], temperature: number = 1.0): number[] {
 }
 
 /**
- * 類似回答データからスコア分布を計算（AIの判断基準用）
+ * 類似解答データからスコア分布を計算（AIの判断基準用）
  */
 function calculateScoreDistributions(
   data: any[],
@@ -308,8 +308,8 @@ function calculateScoreDistributions(
 }
 
 /**
- * 類似回答データから各スコア値の回答例を抽出（AIの判断基準用）
- * 各スコア値（1〜4）について、最も類似度の高い回答テキストを取得
+ * 類似解答データから各スコア値の解答例を抽出（AIの判断基準用）
+ * 各スコア値（1〜4）について、最も類似度の高い解答テキストを取得
  */
 function calculateScoreExamples(
   data: any[],
@@ -346,16 +346,16 @@ function calculateScoreExamples(
         { field: 'score_development', label: '育成', answerField: 'answer_text' },
       ];
 
-  // 詳細スコアの回答例を抽出
+  // 詳細スコアの解答例を抽出
   const detailScores: ScoreExample[] = detailFields.map(({ field, label, answerField }) => {
     const examples: { score: number; answerText: string; similarity: number }[] = [];
 
-    // 各スコア値（1〜4）について最も類似度の高い回答を取得
+    // 各スコア値（1〜4）について最も類似度の高い解答を取得
     for (let score = 1; score <= 4; score++) {
       const matchingData = data.filter(r => r[field] === score && r[answerField]);
 
       if (matchingData.length > 0) {
-        // 類似度が最も高い回答を選択
+        // 類似度が最も高い解答を選択
         const bestMatch = matchingData.reduce((best, current) =>
           current.similarity > best.similarity ? current : best
         );
@@ -371,7 +371,7 @@ function calculateScoreExamples(
     return { field, label, examples };
   });
 
-  // 主要スコア（role/leadership/development）の回答例を抽出
+  // 主要スコア（role/leadership/development）の解答例を抽出
   const mainScores: ScoreExample[] = mainFields.map(({ field, label, answerField }) => {
     const examples: { score: number; answerText: string; similarity: number }[] = [];
 
@@ -387,7 +387,7 @@ function calculateScoreExamples(
       }
     }
 
-    // 各スコア値グループから最も類似度の高い回答を取得（代表的な値のみ）
+    // 各スコア値グループから最も類似度の高い解答を取得（代表的な値のみ）
     // 全スコアを出すと多すぎるので、低・中・高の代表値のみ抽出
     const representativeScores = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0];
     for (const targetScore of representativeScores) {
@@ -410,7 +410,7 @@ function calculateScoreExamples(
   return { detailScores, mainScores };
 }
 
-// 個別スコア項目の型定義（回答スコアのScores型と一致）
+// 個別スコア項目の型定義（解答スコアのScores型と一致）
 export type ScoreItems = {
   // 主要スコア（6項目）
   problem: number | null;      // 問題把握
@@ -439,7 +439,7 @@ export type ScoreItems = {
   collabMember?: number | null;             // メンバー
 };
 
-// 類似回答の型定義
+// 類似解答の型定義
 export type SimilarResponse = {
   responseId: string;
   scores: ScoreItems;
@@ -458,10 +458,10 @@ export type ScorePrediction = {
   confidence: number;
   similarExamples: SimilarResponse[];
   explanation: string;
-  isValidAnswer?: boolean;      // 有効な回答かどうか
+  isValidAnswer?: boolean;      // 有効な解答かどうか
   earlyCheckResult?: EarlyQualityCheckResult;  // 早期チェック結果（無効な場合のみ）
 };
-// 回答テキストからスコアを予測（ハイブリッド手法対応）
+// 解答テキストからスコアを予測（ハイブリッド手法対応）
 export async function predictScoreFromAnswer(params: {
   token: string;
   caseId: string;
@@ -483,14 +483,14 @@ export async function predictScoreFromAnswer(params: {
     useHybridMethod = true,
   } = params;
 
-  // 1. 回答テキストをembedding化
+  // 1. 解答テキストをembedding化
   const embeddingResult = await embedText(answerText);
   const embedding = embeddingResult.values;
 
   // 2. Supabaseクライアントを作成
   const supabase = createAuthedAnonServerClient(token);
 
-  // 3. 類似回答を検索（全スコア付き、多めに取得）
+  // 3. 類似解答を検索（全スコア付き、多めに取得）
   const { data, error } = await supabase.rpc('find_similar_responses_for_scoring', {
     p_embedding: JSON.stringify(embedding),
     p_case_id: caseId,
@@ -500,18 +500,18 @@ export async function predictScoreFromAnswer(params: {
 
   if (error) {
     console.error('find_similar_responses_for_scoring error:', error);
-    throw new Error('類似回答の検索に失敗しました');
+    throw new Error('類似解答の検索に失敗しました');
   }
 
   if (!data || data.length === 0) {
-    throw new Error('類似回答が見つかりませんでした。このケースにはまだ回答データがありません。');
+    throw new Error('類似解答が見つかりませんでした。このケースにはまだ解答データがありません。');
   }
 
   // フィルタリング: 類似度が低すぎるものを除外
   const filteredData = data.filter((r: any) => r.similarity >= HYBRID_CONFIG.minSimilarity);
 
   if (filteredData.length === 0) {
-    throw new Error('類似度が十分に高い回答が見つかりませんでした。');
+    throw new Error('類似度が十分に高い解答が見つかりませんでした。');
   }
 
   let predictedScores: ScoreItems;
@@ -520,7 +520,7 @@ export async function predictScoreFromAnswer(params: {
     // 4a. 詳細スコアをルックアップ + ハイブリッド手法で予測し、主要スコアは計算式で算出
 
     // 詳細スコア用の予測関数
-    // ルックアップ（類似度加重最頻値）をメインに、プロトタイプと個別回答を補助的に使用
+    // ルックアップ（類似度加重最頻値）をメインに、プロトタイプと個別解答を補助的に使用
     const predictDetailScoreHybrid = (field: string): number | null => {
       const validData: any[] = filteredData.filter((r: any) => r[field] != null);
       if (validData.length === 0) return null;
@@ -551,7 +551,7 @@ export async function predictScoreFromAnswer(params: {
         }
       }
 
-      // 3. 最高類似度の回答のスコアを取得
+      // 3. 最高類似度の解答のスコアを取得
       let topSimilarityScore: number | null = null;
       let topSimilarity = 0;
       for (const r of validData) {
@@ -585,7 +585,7 @@ export async function predictScoreFromAnswer(params: {
       let finalScore: number | null = null;
 
       if (topSimilarity >= 0.8 && topSimilarityScore !== null) {
-        // 類似度80%以上の回答があれば、そのスコアを採用
+        // 類似度80%以上の解答があれば、そのスコアを採用
         finalScore = topSimilarityScore;
       } else if (lookupScore !== null && topSimilarity >= 0.6) {
         // 類似度60%以上でルックアップ結果があれば、ルックアップを採用
@@ -672,7 +672,7 @@ export async function predictScoreFromAnswer(params: {
         }
       }
 
-      // 最高類似度の回答のスコア
+      // 最高類似度の解答のスコア
       let topSimilarityScore: number | null = null;
       let topSimilarity = 0;
       for (const r of validData) {
@@ -756,7 +756,7 @@ export async function predictScoreFromAnswer(params: {
     isValidAnswer = false;
     earlyCheckResult = earlyCheck;
 
-    // すべてのスコアを無効回答用のスコアに設定（詳細スコアも最低値1）
+    // すべてのスコアを無効解答用のスコアに設定（詳細スコアも最低値1）
     predictedScores = {
       problem: question === 'q1' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       solution: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
@@ -764,7 +764,7 @@ export async function predictScoreFromAnswer(params: {
       leadership: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       collaboration: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       development: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
-      // 詳細スコア（無効な回答は最低値1）
+      // 詳細スコア（無効な解答は最低値1）
       problemUnderstanding: question === 'q1' ? 1 : null,
       problemEssence: question === 'q1' ? 1 : null,
       problemMaintenanceBiz: question === 'q1' ? 1 : null,
@@ -795,7 +795,7 @@ export async function predictScoreFromAnswer(params: {
       development: r.score_development != null ? Math.round(r.score_development * 10) / 10 : null,
     },
     similarity: Math.round(r.similarity * 100) / 100,
-    excerpt: r.answer_text ? r.answer_text.substring(0, 100) + '...' : '(回答なし)',
+    excerpt: r.answer_text ? r.answer_text.substring(0, 100) + '...' : '(解答なし)',
     commentProblem: r.comment_problem,
     commentSolution: r.comment_solution,
     commentOverall: r.comment_overall,
@@ -808,12 +808,12 @@ export async function predictScoreFromAnswer(params: {
   
   // 低類似度の警告メッセージ
   const lowSimilarityWarning = isLowSimilarity
-    ? `【注意】最も類似度の高い回答でも${(maxSimilarity * 100).toFixed(0)}%であり、参考程度としてください。より正確な評価には、このケースの回答データを増やすことをお勧めします。\n\n`
+    ? `【注意】最も類似度の高い解答でも${(maxSimilarity * 100).toFixed(0)}%であり、参考程度としてください。より正確な評価には、このケースの解答データを増やすことをお勧めします。\n\n`
     : '';
 
   // 早期チェック警告メッセージ
   const earlyCheckWarning = earlyCheckResult
-    ? `【警告】この回答は有効な回答として認識されませんでした。理由: ${earlyCheckResult.reason}\n\n`
+    ? `【警告】この解答は有効な解答として認識されませんでした。理由: ${earlyCheckResult.reason}\n\n`
     : '';
   
   if (useAIExplanation && AI_SCORING_CONFIG.enabled && !earlyCheckResult) {
@@ -858,7 +858,7 @@ export async function predictScoreFromAnswer(params: {
     // スコア分布を計算（AIの判断基準用）
     const scoreDistributions = calculateScoreDistributions(filteredData, question);
 
-    // 各スコア値の回答例を抽出（AIの判断基準用）
+    // 各スコア値の解答例を抽出（AIの判断基準用）
     const scoreExamples = calculateScoreExamples(filteredData, question);
 
     const aiResult = await generateAIScoring({
@@ -867,7 +867,7 @@ export async function predictScoreFromAnswer(params: {
       answerText,
       similarExamples: scoringExamples,
       scoreDistributions,  // スコア分布（判断基準）
-      scoreExamples,       // 各スコア値の回答例（判断基準）
+      scoreExamples,       // 各スコア値の解答例（判断基準）
       embeddingPredictedScores: {
         problem: embeddingScores.problem,
         solution: embeddingScores.solution,
@@ -883,7 +883,7 @@ export async function predictScoreFromAnswer(params: {
     isValidAnswer = aiResult.isValidAnswer;
 
     if (aiResult.isValidAnswer) {
-      // 有効な回答の場合、AIが直接評価した詳細スコアを使用
+      // 有効な解答の場合、AIが直接評価した詳細スコアを使用
       // 主要スコアは詳細スコアから計算式で算出（AIの主要スコアは使用しない）
       const aiDetailScores = aiResult.detailScores;
 
@@ -936,7 +936,7 @@ export async function predictScoreFromAnswer(params: {
         leadership: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         collaboration: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         development: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
-        // 詳細スコア（無効な回答は最低値1）
+        // 詳細スコア（無効な解答は最低値1）
         problemUnderstanding: question === 'q1' ? 1 : null,
         problemEssence: question === 'q1' ? 1 : null,
         problemMaintenanceBiz: question === 'q1' ? 1 : null,
@@ -981,7 +981,7 @@ export async function predictScoreFromAnswer(params: {
       collabExternal: question === 'q2' ? 1 : null,
       collabMember: question === 'q2' ? 1 : null,
     };
-    explanation = earlyCheckWarning + `ケースの状況を踏まえた具体的な回答を記述してください。`;
+    explanation = earlyCheckWarning + `ケースの状況を踏まえた具体的な解答を記述してください。`;
   } else {
     // AIを使用しない場合も詳細スコアから主要スコアを計算
     const normalizedDetailScores = {
@@ -1037,7 +1037,7 @@ function generateExplanation(
   const representativeScore = scores.problem || scores.solution || 0;
   const scoreLevel = representativeScore >= 3.5 ? '高評価' : representativeScore >= 2.5 ? '中程度' : '低評価';
 
-  let explanation = `この回答は過去の${scoreLevel}回答に類似しています。`;
+  let explanation = `この解答は過去の${scoreLevel}解答に類似しています。`;
 
   if (confidence >= 0.8) {
     explanation += ' 信頼度が高い予測です。';
@@ -1070,7 +1070,7 @@ export type NewCaseScorePrediction = {
   similarCases: SimilarCase[];
   similarExamples: SimilarResponse[];
   explanation: string;
-  isValidAnswer?: boolean;      // 有効な回答かどうか
+  isValidAnswer?: boolean;      // 有効な解答かどうか
   earlyCheckResult?: EarlyQualityCheckResult;  // 早期チェック結果（無効な場合のみ）
 };
 
@@ -1152,14 +1152,14 @@ export async function predictScoreForNewCase(params: {
     similarity: Math.round(c.similarity * 100) / 100,
   }));
 
-  // 2. 回答テキストをembedding化
+  // 2. 解答テキストをembedding化
   const answerEmbeddingResult = await embedText(answerText);
   const answerEmbedding = answerEmbeddingResult.values;
 
   // 3. 類似ケースのIDを取得
   const caseIds = similarCases.map((c) => c.caseId);
 
-  // 4. 類似ケースから類似回答を検索（全スコア付き）
+  // 4. 類似ケースから類似解答を検索（全スコア付き）
   // 注: 型定義と実際の関数シグネチャに不整合がある場合があるためキャスト
   const { data: responsesData, error: responsesError } = await supabase.rpc('find_similar_responses_cross_cases', {
     p_embedding: JSON.stringify(answerEmbedding),
@@ -1169,11 +1169,11 @@ export async function predictScoreForNewCase(params: {
 
   if (responsesError) {
     console.error('find_similar_responses_cross_cases error:', responsesError);
-    throw new Error('類似回答の検索に失敗しました');
+    throw new Error('類似解答の検索に失敗しました');
   }
 
   if (!responsesData || responsesData.length === 0) {
-    throw new Error('類似回答が見つかりませんでした。類似ケースにはまだ回答データがありません。');
+    throw new Error('類似解答が見つかりませんでした。類似ケースにはまだ解答データがありません。');
   }
 
   // 5. 詳細スコアを予測し、主要スコアは計算式で算出
@@ -1208,7 +1208,7 @@ export async function predictScoreForNewCase(params: {
       }
     }
 
-    // 最高類似度の回答のスコアを取得
+    // 最高類似度の解答のスコアを取得
     let topSimilarityScore: number | null = null;
     let topSimilarity = 0;
     for (const r of validData) {
@@ -1320,7 +1320,7 @@ export async function predictScoreForNewCase(params: {
     isValidAnswer = false;
     earlyCheckResult = earlyCheck;
 
-    // すべてのスコアを無効回答用のスコアに設定（詳細スコアも最低値1）
+    // すべてのスコアを無効解答用のスコアに設定（詳細スコアも最低値1）
     predictedScores = {
       problem: question === 'q1' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       solution: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
@@ -1328,7 +1328,7 @@ export async function predictScoreForNewCase(params: {
       leadership: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       collaboration: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
       development: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
-      // 詳細スコア（無効な回答は最低値1）
+      // 詳細スコア（無効な解答は最低値1）
       problemUnderstanding: question === 'q1' ? 1 : null,
       problemEssence: question === 'q1' ? 1 : null,
       problemMaintenanceBiz: question === 'q1' ? 1 : null,
@@ -1359,7 +1359,7 @@ export async function predictScoreForNewCase(params: {
       development: r.score_development != null ? Math.round(r.score_development * 10) / 10 : null,
     },
     similarity: Math.round(r.similarity * 100) / 100,
-    excerpt: r.answer_text ? r.answer_text.substring(0, 100) + '...' : '(回答なし)',
+    excerpt: r.answer_text ? r.answer_text.substring(0, 100) + '...' : '(解答なし)',
     commentProblem: r.comment_problem,
     commentSolution: r.comment_solution,
     commentOverall: r.comment_overall,
@@ -1372,17 +1372,17 @@ export async function predictScoreForNewCase(params: {
   
   // 低類似度の警告メッセージ
   const lowSimilarityWarning = isLowSimilarity
-    ? `【注意】最も類似度の高い回答でも${(maxResponseSimilarity * 100).toFixed(0)}%であり、参考程度としてください。\n\n`
+    ? `【注意】最も類似度の高い解答でも${(maxResponseSimilarity * 100).toFixed(0)}%であり、参考程度としてください。\n\n`
     : '';
 
   // 早期チェック警告メッセージ
   const earlyCheckWarning = earlyCheckResult
-    ? `【警告】この回答は有効な回答として認識されませんでした。理由: ${earlyCheckResult.reason}\n\n`
+    ? `【警告】この解答は有効な解答として認識されませんでした。理由: ${earlyCheckResult.reason}\n\n`
     : '';
   
   if (useAIExplanation && AI_SCORING_CONFIG.enabled && !earlyCheckResult) {
     // AI統合評価を実行（早期チェックで弾かれていない場合のみ）
-    // 新規ケースのため、類似回答例は評価スタイルの参考としてのみ使用
+    // 新規ケースのため、類似解答例は評価スタイルの参考としてのみ使用
     const scoringExamples: ScoringExample[] = responsesData.slice(0, 5).map((r: any) => ({
       responseId: r.response_id,
       score: r.score_overall || r.score_problem || r.score_solution || 0,
@@ -1430,7 +1430,7 @@ export async function predictScoreForNewCase(params: {
     // スコア分布を計算（AIの判断基準用）
     const scoreDistributions = calculateScoreDistributions(responsesData, question);
 
-    // 各スコア値の回答例を抽出（AIの判断基準用）
+    // 各スコア値の解答例を抽出（AIの判断基準用）
     const scoreExamples = calculateScoreExamples(responsesData, question);
 
     // 新規ケース: エンベディング予測値なし、AIが直接評価
@@ -1441,7 +1441,7 @@ export async function predictScoreForNewCase(params: {
       similarExamples: scoringExamples,
       similarCases: scoringCases,
       scoreDistributions,  // スコア分布（判断基準）
-      scoreExamples,       // 各スコア値の回答例（判断基準）
+      scoreExamples,       // 各スコア値の解答例（判断基準）
       isNewCase: true,  // 新規ケースフラグ
       // embeddingPredictedScores は渡さない（新規ケースのため）
     });
@@ -1450,7 +1450,7 @@ export async function predictScoreForNewCase(params: {
     isValidAnswer = aiResult.isValidAnswer;
 
     if (aiResult.isValidAnswer) {
-      // 有効な回答の場合、AIが直接評価した詳細スコアを使用
+      // 有効な解答の場合、AIが直接評価した詳細スコアを使用
       // 主要スコアは詳細スコアから計算式で算出（AIの主要スコアは使用しない）
       const aiDetailScores = aiResult.detailScores;
 
@@ -1503,7 +1503,7 @@ export async function predictScoreForNewCase(params: {
         leadership: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         collaboration: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
         development: question === 'q2' ? AI_SCORING_CONFIG.invalidAnswerScore : null,
-        // 詳細スコア（無効な回答は最低値1）
+        // 詳細スコア（無効な解答は最低値1）
         problemUnderstanding: question === 'q1' ? 1 : null,
         problemEssence: question === 'q1' ? 1 : null,
         problemMaintenanceBiz: question === 'q1' ? 1 : null,
@@ -1548,7 +1548,7 @@ export async function predictScoreForNewCase(params: {
       collabExternal: question === 'q2' ? 1 : null,
       collabMember: question === 'q2' ? 1 : null,
     };
-    explanation = earlyCheckWarning + `ケースの状況を踏まえた具体的な回答を記述してください。`;
+    explanation = earlyCheckWarning + `ケースの状況を踏まえた具体的な解答を記述してください。`;
   } else {
     // AIを使用しない場合も詳細スコアから主要スコアを計算
     const normalizedDetailScores = {
@@ -1608,10 +1608,10 @@ function generateNewCaseExplanation(
   const topCase = similarCases[0];
 
   let explanation = `入力されたシチュエーションは「${topCase.caseName || topCase.caseId}」（類似度${(topCase.similarity * 100).toFixed(0)}%）に最も類似しています。`;
-  explanation += ` この回答は類似ケースの${scoreLevel}回答に近い内容です。`;
+  explanation += ` この解答は類似ケースの${scoreLevel}解答に近い内容です。`;
 
   if (confidence >= 0.7) {
-    explanation += ' ケースと回答の両方で高い類似度が得られたため、信頼性の高い予測です。';
+    explanation += ' ケースと解答の両方で高い類似度が得られたため、信頼性の高い予測です。';
   } else if (confidence >= 0.5) {
     explanation += ' 中程度の信頼度です。';
   } else {

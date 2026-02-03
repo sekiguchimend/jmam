@@ -251,7 +251,7 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
     .select('case_id,response_id,answer_q1,answer_q2,answer_q3,answer_q4,answer_q5,answer_q6,answer_q7,answer_q8,score_problem,score_solution')
     .or(or);
   if (error) {
-    throw new Error(`代表回答の取得に失敗しました: ${error.message}`);
+    throw new Error(`代表解答の取得に失敗しました: ${error.message}`);
   }
 
   const textMap = new Map<

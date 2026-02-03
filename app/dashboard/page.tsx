@@ -101,7 +101,7 @@ async function DatasetList({ isAdmin }: { isAdmin: boolean }) {
           データがありません
         </h3>
         <p className="text-sm lg:text-base mb-6 font-bold" style={{ color: "#323232" }}>
-          回答予測を行うには、まずデータをアップロードしてください
+          解答予測を行うには、まずデータをアップロードしてください
         </p>
         {isAdmin && (
           <Link href="/admin/upload">
@@ -216,11 +216,11 @@ export default async function DashboardPage() {
               <Lightbulb className="w-6 h-6 flex-shrink-0" style={{ color: "var(--primary)" }} />
               <div className="flex-1">
                 <h3 className="text-lg font-black mb-1 flex items-center gap-2" style={{ color: "#323232" }}>
-                  回答予測を開始
+                  解答予測を開始
                   <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                 </h3>
                 <p className="text-sm font-bold" style={{ color: "#323232" }}>
-                  スコアを設定してAIが最適な回答を予測します
+                  スコアを設定してAIが最適な解答を予測します
                 </p>
               </div>
             </div>

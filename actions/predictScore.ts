@@ -1,4 +1,4 @@
-// 回答からスコアを予測するServer Actions
+// 解答からスコアを予測するServer Actions
 
 'use server';
 
@@ -42,7 +42,7 @@ export async function fetchCasesForScorePrediction(): Promise<{
   }
 }
 
-// 回答からスコアを予測
+// 解答からスコアを予測
 export async function submitAnswerForScorePrediction(params: {
   caseId: string;
   question: 'q1' | 'q2';
@@ -61,11 +61,11 @@ export async function submitAnswerForScorePrediction(params: {
 
     // バリデーション
     if (!sanitizedCaseId || !sanitizedAnswer.trim()) {
-      return { success: false, error: 'ケースIDと回答テキストは必須です' };
+      return { success: false, error: 'ケースIDと解答テキストは必須です' };
     }
 
     if (sanitizedAnswer.trim().length < 10) {
-      return { success: false, error: '回答は10文字以上入力してください' };
+      return { success: false, error: '解答は10文字以上入力してください' };
     }
 
     // 認証チェック

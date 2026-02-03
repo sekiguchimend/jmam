@@ -7,7 +7,7 @@ export interface Case {
   situation_text: string | null;
 }
 
-// 回答データ
+// 解答データ
 export interface Response {
   id: string;
   case_id: string;
@@ -43,7 +43,7 @@ export interface Response {
   detail_collab_supervisor: number | null;
   detail_collab_external: number | null;
   detail_collab_member: number | null;
-  // 設問回答データ
+  // 設問解答データ
   answer_q1: string | null;
   answer_q2: string | null;
   answer_q3: string | null;

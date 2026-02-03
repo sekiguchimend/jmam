@@ -27,7 +27,7 @@ export default async function SetupPage() {
       <header style={{ background: "#323232" }} className="px-8 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <Link href="/" className="text-xl font-bold" style={{ color: "#fff" }}>
-            職場改善スコア回答予測システム
+            職場改善スコア解答予測システム
           </Link>
         </div>
       </header>

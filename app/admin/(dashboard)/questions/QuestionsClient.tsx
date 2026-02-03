@@ -242,7 +242,7 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
         <ul className="text-sm space-y-2" style={{ color: "var(--text-muted)" }}>
           <li>• <strong>ケース内容</strong>: 診断者が読むシチュエーション（状況説明文）</li>
           <li>• <strong>設問1（q1）</strong>: answer_q1 に対応する質問文（箇条書き形式）</li>
-          <li>• <strong>設問2（q2）</strong>: answer_q2〜q8 を結合した回答に対応する質問文（文章形式）</li>
+          <li>• <strong>設問2（q2）</strong>: answer_q2〜q8 を結合した解答に対応する質問文（文章形式）</li>
           <li>• 保存時にテキストのEmbeddingが自動生成されます</li>
           <li>• ケースのEmbeddingは未知のケースに対するスコア予測時に、類似ケースの検索に活用されます</li>
         </ul>

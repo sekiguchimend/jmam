@@ -52,10 +52,10 @@ export async function getCaseById(caseId: string): Promise<Case | null> {
 }
 
 // ============================================
-// 回答データクエリ
+// 解答データクエリ
 // ============================================
 
-// 類似スコアの回答を検索（RAG用）
+// 類似スコアの解答を検索（RAG用）
 // idx_responses_on_scores インデックスを活用
 export async function findSimilarResponses(
   caseId: string,
@@ -79,7 +79,7 @@ export async function findSimilarResponses(
 
   if (error) {
     console.error('findSimilarResponses error:', error);
-    throw new Error(`類似回答の検索に失敗しました: ${error.message}`);
+    throw new Error(`類似解答の検索に失敗しました: ${error.message}`);
   }
   return (data ?? []) as Response[];
 }
@@ -130,8 +130,8 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-// 6指標のユークリッド距離で類似回答を検索
-// ケース内の全回答からスコアが最も近い人を取得
+// 6指標のユークリッド距離で類似解答を検索
+// ケース内の全解答からスコアが最も近い人を取得
 // トップタイ（同距離）が複数ある場合はエンベディング重心で最も典型的なものを選ぶ
 export async function findSimilarResponsesByEuclidean(
   caseId: string,
@@ -140,7 +140,7 @@ export async function findSimilarResponsesByEuclidean(
 ): Promise<{ response: Response; distance: number }[]> {
   const supabase = await createSupabaseServerClient();
 
-  // ケースで絞って必要なカラムだけ取得（answer_q2〜q8は設問2の回答）
+  // ケースで絞って必要なカラムだけ取得（answer_q2〜q8は設問2の解答）
   const { data, error } = await supabase
     .from('responses')
     .select('id, response_id, case_id, answer_q1, answer_q2, answer_q3, answer_q4, answer_q5, answer_q6, answer_q7, answer_q8, score_problem, score_solution, score_role, score_leadership, score_collaboration, score_development')
@@ -149,7 +149,7 @@ export async function findSimilarResponsesByEuclidean(
 
   if (error) {
     console.error('findSimilarResponsesByEuclidean error:', error);
-    throw new Error(`類似回答の検索に失敗しました: ${error.message}`);
+    throw new Error(`類似解答の検索に失敗しました: ${error.message}`);
   }
 
   if (!data || data.length === 0) {
@@ -199,7 +199,7 @@ export async function findSimilarResponsesByEuclidean(
       }
     }
 
-    // エンベディングがある回答のみ抽出
+    // エンベディングがある解答のみ抽出
     const embeddings: { response: Response; distance: number; embedding: number[] }[] = [];
     for (const item of topTied) {
       const emb = embeddingMap.get(item.response.response_id);
@@ -289,12 +289,12 @@ export async function findSimilarResponsesWithFallback(
     .limit(maxResults);
 
   if (error) {
-    throw new Error(`回答の検索に失敗しました: ${error.message}`);
+    throw new Error(`解答の検索に失敗しました: ${error.message}`);
   }
   return (data ?? []) as Response[];
 }
 
-// RAG用：高スコア・低スコアの回答を含む包括的なデータ取得
+// RAG用：高スコア・低スコアの解答を含む包括的なデータ取得
 // AIがパターン分析するために、スコア帯ごとのサンプルを取得
 export async function findResponsesForRAG(
   caseId: string,
@@ -304,7 +304,7 @@ export async function findResponsesForRAG(
   const supabase = await createSupabaseServerClient();
   const results: Response[] = [];
 
-  // 1. 高スコア回答（問題把握・対策立案ともに3.0以上）
+  // 1. 高スコア解答（問題把握・対策立案ともに3.0以上）
   const { data: highScorers, error: highError } = await supabase
     .from('responses')
     .select('*')
@@ -319,7 +319,7 @@ export async function findResponsesForRAG(
     results.push(...(highScorers as Response[]));
   }
 
-  // 2. 中スコア回答（2.0-3.0）
+  // 2. 中スコア解答（2.0-3.0）
   const { data: midScorers, error: midError } = await supabase
     .from('responses')
     .select('*')
@@ -333,7 +333,7 @@ export async function findResponsesForRAG(
     results.push(...(midScorers as Response[]));
   }
 
-  // 3. 低スコア回答（2.0未満）- 避けるべきパターンとして
+  // 3. 低スコア解答（2.0未満）- 避けるべきパターンとして
   const { data: lowScorers, error: lowError } = await supabase
     .from('responses')
     .select('*')
@@ -359,7 +359,7 @@ export async function findResponsesForRAG(
 // データセット統計クエリ (FR-12)
 // ============================================
 
-// ケースごとの回答数を取得（DB側でGROUP BY集計して効率化）
+// ケースごとの解答数を取得（DB側でGROUP BY集計して効率化）
 export async function getDatasetStats(): Promise<DatasetStats[]> {
   const supabase = await createSupabaseServerClient();
 
@@ -405,7 +405,7 @@ export async function getDatasetStats(): Promise<DatasetStats[]> {
   return stats;
 }
 
-// 総回答数を取得
+// 総解答数を取得
 export async function getTotalResponseCount(): Promise<number> {
   const supabase = await createSupabaseServerClient();
   const { count, error } = await supabase
@@ -414,7 +414,7 @@ export async function getTotalResponseCount(): Promise<number> {
 
   if (error) {
     console.error('getTotalResponseCount error:', error);
-    throw new Error(`総回答数の取得に失敗しました: ${error.message}`);
+    throw new Error(`総解答数の取得に失敗しました: ${error.message}`);
   }
   return count ?? 0;
 }
@@ -465,7 +465,7 @@ export async function updateCaseSituation(
   }
 }
 
-// 回答データをバッチinsert（各行を1レコードとして保存）
+// 解答データをバッチinsert（各行を1レコードとして保存）
 export async function insertResponses(responses: ResponseInsert[], accessToken?: string): Promise<void> {
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
@@ -474,11 +474,11 @@ export async function insertResponses(responses: ResponseInsert[], accessToken?:
 
   if (error) {
     console.error('insertResponses error:', error);
-    throw new Error(`回答データの登録に失敗しました: ${error.message ?? 'unknown error'}`);
+    throw new Error(`解答データの登録に失敗しました: ${error.message ?? 'unknown error'}`);
   }
 }
 
-// ケースの回答と関連データを全削除（データセット削除用）
+// ケースの解答と関連データを全削除（データセット削除用）
 export async function deleteResponsesByCaseId(caseId: string, accessToken?: string): Promise<number> {
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
@@ -494,7 +494,7 @@ export async function deleteResponsesByCaseId(caseId: string, accessToken?: stri
   const { error: e3 } = await supabase.from('embedding_queue').delete().eq('case_id', caseId);
   if (e3) console.error('delete embedding_queue error:', e3);
 
-  // 回答データを削除
+  // 解答データを削除
   const { data, error } = await supabase
     .from('responses')
     .delete()
@@ -503,7 +503,7 @@ export async function deleteResponsesByCaseId(caseId: string, accessToken?: stri
 
   if (error) {
     console.error('deleteResponsesByCaseId error:', error);
-    throw new Error(`回答データの削除に失敗しました: ${error.message}`);
+    throw new Error(`解答データの削除に失敗しました: ${error.message}`);
   }
 
   console.log(`[DELETE] case_id=${caseId}: responses=${data?.length ?? 0}件削除`);
@@ -617,7 +617,7 @@ export async function fetchResponsesForEmbeddingJobs(
 
   if (error) {
     console.error('fetchResponsesForEmbeddingJobs error:', error);
-    throw new Error(`回答テキストの取得に失敗しました: ${error.message}`);
+    throw new Error(`解答テキストの取得に失敗しました: ${error.message}`);
   }
   return (data ?? []) as {
     case_id: string;

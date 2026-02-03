@@ -135,8 +135,8 @@ function OverviewSection() {
           システム概要
         </h2>
         <p className="text-base leading-relaxed" style={{ color: "#666" }}>
-          ケーススタディに対する回答を評価し、スコアを予測するAI支援システムです。
-          過去の回答データとAI分析を組み合わせて、より正確なスコア予測を提供します。
+          ケーススタディに対する解答を評価し、スコアを予測するAI支援システムです。
+          過去の解答データとAI分析を組み合わせて、より正確なスコア予測を提供します。
         </p>
       </div>
 
@@ -145,7 +145,7 @@ function OverviewSection() {
         <FeatureCard
           icon={<Calculator className="w-5 h-5" style={{ color: "var(--primary)" }} />}
           title="スコア予測"
-          description="既存のケースに対する回答のスコアを予測します。類似回答との比較とAI分析により、6つの主要スコアと15の詳細スコアを算出します。"
+          description="既存のケースに対する解答のスコアを予測します。類似解答との比較とAI分析により、6つの主要スコアと15の詳細スコアを算出します。"
         />
         <FeatureCard
           icon={<Search className="w-5 h-5" style={{ color: "var(--primary)" }} />}
@@ -155,7 +155,7 @@ function OverviewSection() {
         <FeatureCard
           icon={<TrendingUp className="w-5 h-5" style={{ color: "var(--primary)" }} />}
           title="スコア参照"
-          description="過去の回答とそのスコアを確認できます。学習や参考資料として活用できます。"
+          description="過去の解答とそのスコアを確認できます。学習や参考資料として活用できます。"
         />
       </div>
 
@@ -185,7 +185,7 @@ function ScorePredictSection() {
           スコア予測の使い方
         </h2>
         <p className="text-base leading-relaxed" style={{ color: "#666" }}>
-          既存のケースに対する回答を入力して、スコアを予測します。
+          既存のケースに対する解答を入力して、スコアを予測します。
         </p>
       </div>
 
@@ -197,18 +197,18 @@ function ScorePredictSection() {
             icon: <FileText className="w-5 h-5" />,
           },
           {
-            title: "設問1（問題把握）に回答",
+            title: "設問1（問題把握）に解答",
             description: "「どのような問題があるか」という設問に対して、状況分析と問題の本質を記述します。",
             icon: <MessageSquare className="w-5 h-5" />,
           },
           {
-            title: "設問2（対策立案）に回答",
+            title: "設問2（対策立案）に解答",
             description: "「どのように対応するか」という設問に対して、具体的な対策と実行計画を記述します。",
             icon: <MessageSquare className="w-5 h-5" />,
           },
           {
             title: "予測を実行",
-            description: "「スコアを予測」ボタンをクリックすると、AI分析と類似回答の比較が行われます。",
+            description: "「スコアを予測」ボタンをクリックすると、AI分析と類似解答の比較が行われます。",
             icon: <Calculator className="w-5 h-5" />,
           },
         ]}
@@ -242,16 +242,16 @@ function ScorePredictSection() {
           title="信頼度"
           items={[
             "予測の信頼性を示すパーセンテージです",
-            "類似回答の数や類似度によって変動します",
+            "類似解答の数や類似度によって変動します",
             "高い信頼度（70%以上）の予測はより正確です",
           ]}
         />
 
         <ResultCard
-          title="類似回答例"
+          title="類似解答例"
           items={[
-            "予測に使用された類似回答が表示されます",
-            "類似度とスコアを参考にして、自分の回答を改善できます",
+            "予測に使用された類似解答が表示されます",
+            "類似度とスコアを参考にして、自分の解答を改善できます",
             "コメントがある場合は評価者のフィードバックも確認できます",
           ]}
         />
@@ -262,8 +262,8 @@ function ScorePredictSection() {
           ポイント
         </h3>
         <ul className="text-sm space-y-1.5 leading-relaxed ml-4" style={{ color: "#666" }}>
-          <li className="list-disc">詳細で具体的な回答ほど、より正確なスコア予測が得られます</li>
-          <li className="list-disc">類似回答例を参考にして、評価されやすい回答の特徴を学びましょう</li>
+          <li className="list-disc">詳細で具体的な解答ほど、より正確なスコア予測が得られます</li>
+          <li className="list-disc">類似解答例を参考にして、評価されやすい解答の特徴を学びましょう</li>
           <li className="list-disc">設問1と設問2は別々に予測されますが、両方を入力することで総合的な評価が可能です</li>
         </ul>
       </div>
@@ -292,18 +292,18 @@ function NewCasePredictSection() {
             icon: <FileText className="w-5 h-5" />,
           },
           {
-            title: "設問1（問題把握）に回答",
+            title: "設問1（問題把握）に解答",
             description: "入力したシチュエーションに対して、どのような問題があるかを分析します。",
             icon: <MessageSquare className="w-5 h-5" />,
           },
           {
-            title: "設問2（対策立案）に回答",
+            title: "設問2（対策立案）に解答",
             description: "問題に対してどのように対応するかを記述します。",
             icon: <MessageSquare className="w-5 h-5" />,
           },
           {
             title: "予測を実行",
-            description: "システムが類似ケースを検索し、そのケースの回答データからスコアを予測します。",
+            description: "システムが類似ケースを検索し、そのケースの解答データからスコアを予測します。",
             icon: <Search className="w-5 h-5" />,
           },
         ]}
@@ -326,7 +326,7 @@ function NewCasePredictSection() {
         <ResultCard
           title="クロスケース予測"
           items={[
-            "複数のケースにまたがって類似回答を検索します",
+            "複数のケースにまたがって類似解答を検索します",
             "より広範なデータから予測を行うため、精度が向上します",
             "未知の状況でも、類似した要素を持つケースから学習します",
           ]}
@@ -336,8 +336,8 @@ function NewCasePredictSection() {
           title="予測結果の活用"
           items={[
             "類似ケースの名前と類似度が表示されます",
-            "参考となる回答例を確認できます",
-            "自分の回答が類似ケースと比較してどう評価されるか理解できます",
+            "参考となる解答例を確認できます",
+            "自分の解答が類似ケースと比較してどう評価されるか理解できます",
           ]}
         />
       </div>
@@ -365,7 +365,7 @@ function PredictSection() {
           スコア参照の使い方
         </h2>
         <p className="text-base leading-relaxed" style={{ color: "#666" }}>
-          過去の回答とそのスコアを確認できます。学習や参考資料として活用しましょう。
+          過去の解答とそのスコアを確認できます。学習や参考資料として活用しましょう。
         </p>
       </div>
 
@@ -382,8 +382,8 @@ function PredictSection() {
             icon: <MessageSquare className="w-5 h-5" />,
           },
           {
-            title: "回答とスコアを確認",
-            description: "過去の回答内容と、それに対する評価スコアが表示されます。",
+            title: "解答とスコアを確認",
+            description: "過去の解答内容と、それに対する評価スコアが表示されます。",
             icon: <TrendingUp className="w-5 h-5" />,
           },
         ]}
@@ -395,18 +395,18 @@ function PredictSection() {
         </h3>
 
         <ResultCard
-          title="高評価の回答を学ぶ"
+          title="高評価の解答を学ぶ"
           items={[
-            "スコアが高い回答の特徴を分析しましょう",
+            "スコアが高い解答の特徴を分析しましょう",
             "問題の捉え方、対策の立て方の参考にできます",
             "評価コメントがある場合は、評価ポイントを確認できます",
           ]}
         />
 
         <ResultCard
-          title="自分の回答と比較"
+          title="自分の解答と比較"
           items={[
-            "同じケースに対する他の回答と比較できます",
+            "同じケースに対する他の解答と比較できます",
             "不足している観点や改善点を見つけられます",
             "表現方法や構成の参考になります",
           ]}

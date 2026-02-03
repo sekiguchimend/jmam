@@ -1,4 +1,4 @@
-// 回答予測ページ（Server Component）
+// 解答予測ページ（Server Component）
 // 認証・レイアウトはlayout.tsxで処理
 import { Suspense } from "react";
 import dynamic from "next/dynamic";
@@ -11,7 +11,7 @@ const PredictClient = dynamic(() => import("./PredictClient").then(mod => mod.Pr
 });
 
 export const metadata = {
-  title: "回答予測",
+  title: "解答予測",
 };
 
 // ケース一覧のスケルトン
@@ -63,10 +63,10 @@ export default async function PredictPage() {
       {/* ヘッダー */}
       <div className="mb-6 lg:mb-8">
         <h1 className="text-xl lg:text-2xl font-black mb-1" style={{ color: "#323232" }}>
-          回答予測
+          解答予測
         </h1>
         <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
-          ケースを選択し、目標スコアを設定してAIが最適な回答を予測します
+          ケースを選択し、目標スコアを設定してAIが最適な解答を予測します
         </p>
       </div>
 

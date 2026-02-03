@@ -5,6 +5,8 @@
 import { getAnyAccessToken } from '@/lib/supabase/server';
 import { predictScoreForNewCase, predictScoreFromAnswer, type NewCaseScorePrediction, type ScoreItems } from '@/lib/scoring';
 import { stripControlChars, truncateString } from '@/lib/security';
+import { savePredictionHistoryExisting, savePredictionHistoryNew } from './predictionHistory';
+import { supabaseAnonServer } from '@/lib/supabase/anon-server';
 
 // 入力テキストの最大長
 const MAX_SITUATION_LENGTH = 10000;
@@ -21,7 +23,7 @@ export type CombinedPredictionResult = {
   isNewCase?: boolean;  // 新規ケースかどうか
 };
 
-// 未知ケースの回答からスコアを予測
+// 未知ケースの解答からスコアを予測
 export async function submitAnswerForNewCasePrediction(params: {
   situationText: string;
   question: 'q1' | 'q2';
@@ -48,11 +50,11 @@ export async function submitAnswerForNewCasePrediction(params: {
     }
 
     if (!sanitizedAnswer.trim()) {
-      return { success: false, error: '回答テキストを入力してください' };
+      return { success: false, error: '解答テキストを入力してください' };
     }
 
     if (sanitizedAnswer.trim().length < 10) {
-      return { success: false, error: '回答は10文字以上入力してください' };
+      return { success: false, error: '解答は10文字以上入力してください' };
     }
 
     // 認証チェック
@@ -81,7 +83,7 @@ export async function submitAnswerForNewCasePrediction(params: {
   }
 }
 
-// 既存ケースの回答からスコアを予測
+// 既存ケースの解答からスコアを予測
 export async function submitAnswerForExistingCasePrediction(params: {
   caseId: string;
   question: 'q1' | 'q2';
@@ -104,11 +106,11 @@ export async function submitAnswerForExistingCasePrediction(params: {
     }
 
     if (!sanitizedAnswer.trim()) {
-      return { success: false, error: '回答テキストを入力してください' };
+      return { success: false, error: '解答テキストを入力してください' };
     }
 
     if (sanitizedAnswer.trim().length < 10) {
-      return { success: false, error: '回答は10文字以上入力してください' };
+      return { success: false, error: '解答は10文字以上入力してください' };
     }
 
     // 認証チェック
@@ -169,19 +171,19 @@ export async function submitCombinedPrediction(params: {
     }
 
     if (!sanitizedQ1Answer.trim()) {
-      return { success: false, error: '設問1の回答を入力してください' };
+      return { success: false, error: '設問1の解答を入力してください' };
     }
 
     if (sanitizedQ1Answer.trim().length < 10) {
-      return { success: false, error: '設問1の回答は10文字以上入力してください' };
+      return { success: false, error: '設問1の解答は10文字以上入力してください' };
     }
 
     if (!sanitizedQ2Answer.trim()) {
-      return { success: false, error: '設問2の回答を入力してください' };
+      return { success: false, error: '設問2の解答を入力してください' };
     }
 
     if (sanitizedQ2Answer.trim().length < 10) {
-      return { success: false, error: '設問2の回答は10文字以上入力してください' };
+      return { success: false, error: '設問2の解答は10文字以上入力してください' };
     }
 
     // 認証チェック
@@ -189,6 +191,13 @@ export async function submitCombinedPrediction(params: {
     if (!token) {
       return { success: false, error: '認証が必要です' };
     }
+
+    // ケース名を取得
+    const { data: caseData } = await supabaseAnonServer
+      .from('cases')
+      .select('case_name')
+      .eq('case_id', sanitizedCaseId)
+      .single();
 
     // 設問1と設問2を並列で予測
     const [q1Result, q2Result] = await Promise.all([
@@ -257,6 +266,19 @@ export async function submitCombinedPrediction(params: {
     // 説明文を統合
     const combinedExplanation = `【問題把握（設問1）】\n${q1Result.explanation}\n\n【対策立案・主導・連携・育成（設問2）】\n${q2Result.explanation}`;
 
+    // 予測履歴を保存（失敗してもエラーにはしない）
+    savePredictionHistoryExisting({
+      caseId: sanitizedCaseId,
+      caseName: caseData?.case_name ?? null,
+      q1Answer: sanitizedQ1Answer.trim(),
+      q2Answer: sanitizedQ2Answer.trim(),
+      resultScores: predictedScores,
+      explanation: combinedExplanation,
+      confidence,
+    }).catch((err) => {
+      console.error('Failed to save prediction history:', err);
+    });
+
     return {
       success: true,
       result: {
@@ -306,19 +328,19 @@ export async function submitCombinedNewCasePrediction(params: {
     }
 
     if (!sanitizedQ1Answer.trim()) {
-      return { success: false, error: '設問1の回答を入力してください' };
+      return { success: false, error: '設問1の解答を入力してください' };
     }
 
     if (sanitizedQ1Answer.trim().length < 10) {
-      return { success: false, error: '設問1の回答は10文字以上入力してください' };
+      return { success: false, error: '設問1の解答は10文字以上入力してください' };
     }
 
     if (!sanitizedQ2Answer.trim()) {
-      return { success: false, error: '設問2の回答を入力してください' };
+      return { success: false, error: '設問2の解答を入力してください' };
     }
 
     if (sanitizedQ2Answer.trim().length < 10) {
-      return { success: false, error: '設問2の回答は10文字以上入力してください' };
+      return { success: false, error: '設問2の解答は10文字以上入力してください' };
     }
 
     // 認証チェック
@@ -393,6 +415,18 @@ export async function submitCombinedNewCasePrediction(params: {
 
     // 説明文を統合
     const combinedExplanation = `【問題把握（設問1）】\n${q1Result.explanation}\n\n【対策立案・主導・連携・育成（設問2）】\n${q2Result.explanation}`;
+
+    // 予測履歴を保存（失敗してもエラーにはしない）
+    savePredictionHistoryNew({
+      situationText: sanitizedSituation.trim(),
+      q1Answer: sanitizedQ1Answer.trim(),
+      q2Answer: sanitizedQ2Answer.trim(),
+      resultScores: predictedScores,
+      explanation: combinedExplanation,
+      confidence,
+    }).catch((err) => {
+      console.error('Failed to save prediction history:', err);
+    });
 
     return {
       success: true,

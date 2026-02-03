@@ -105,7 +105,7 @@ function parseRow(
       detail_collab_supervisor: parseScore(getVal('Ⅱ MC 連携 上司')) ?? undefined,
       detail_collab_external: parseScore(getVal('Ⅱ MC 連携 職場外')) ?? undefined,
       detail_collab_member: parseScore(getVal('Ⅱ MC 連携 メンバー')) ?? undefined,
-      // XSS対策: コメントと回答フィールドをサニタイズ
+      // XSS対策: コメントと解答フィールドをサニタイズ
       comment_overall: sanitizeComment(getVal('Ⅱ MC 総合コメント')) || undefined,
       comment_problem: commentProblem,
       comment_solution: commentSolution,

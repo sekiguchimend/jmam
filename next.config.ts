@@ -16,9 +16,6 @@ const nextConfig: NextConfig = {
   },
   // 本番ビルド時のソースマップを無効化（バンドルサイズ削減）
   productionBrowserSourceMaps: false,
-  // ミドルウェアのクライアントボディサイズ制限（デフォルト10MB→100MB）
-  // 大きなCSVファイルのアップロードに対応
-  middlewareClientMaxBodySize: "100mb",
 };
 
 export default nextConfig;

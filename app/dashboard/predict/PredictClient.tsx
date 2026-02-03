@@ -454,7 +454,7 @@ export function PredictClient({ cases }: PredictClientProps) {
           q1Reason: result.q1Reason,
           q2Reason: result.q2Reason,
         },
-        `回答予測_${caseName}_${timestamp}`
+        `解答予測_${caseName}_${timestamp}`
       );
     } catch (err) {
       console.error("PDF export failed:", err);

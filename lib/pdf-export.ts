@@ -46,7 +46,7 @@ async function loadJapaneseFont(pdf: jsPDF): Promise<void> {
   }
 }
 
-// 回答予測結果のエクスポート用データ型
+// 解答予測結果のエクスポート用データ型
 export interface AnswerPredictExportData {
   caseName: string;
   situationText?: string;
@@ -83,7 +83,7 @@ export interface ScorePredictExportData {
 }
 
 /**
- * 回答予測結果をテーブル形式でPDFにエクスポート
+ * 解答予測結果をテーブル形式でPDFにエクスポート
  */
 export async function exportAnswerPredictToPdf(
   data: AnswerPredictExportData,
@@ -104,7 +104,7 @@ export async function exportAnswerPredictToPdf(
   // タイトル
   pdf.setFontSize(18);
   pdf.setFont("MPlus", "bold");
-  pdf.text("回答予測結果", margin, y);
+  pdf.text("解答予測結果", margin, y);
   y += 12;
 
   // ケース名と日時
@@ -167,10 +167,10 @@ export async function exportAnswerPredictToPdf(
 
   y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 12;
 
-  // 設問1の回答
+  // 設問1の解答
   pdf.setFontSize(14);
   pdf.setFont("MPlus", "bold");
-  pdf.text("設問1 - 予測回答", margin, y);
+  pdf.text("設問1 - 予測解答", margin, y);
   y += 7;
 
   autoTable(pdf, {
@@ -183,10 +183,10 @@ export async function exportAnswerPredictToPdf(
 
   y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
 
-  // 設問2の回答
+  // 設問2の解答
   pdf.setFontSize(14);
   pdf.setFont("MPlus", "bold");
-  pdf.text("設問2 - 予測回答", margin, y);
+  pdf.text("設問2 - 予測解答", margin, y);
   y += 7;
 
   autoTable(pdf, {
@@ -257,10 +257,10 @@ export async function exportScorePredictToPdf(
     y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 12;
   }
 
-  // 回答テキスト
+  // 解答テキスト
   pdf.setFontSize(14);
   pdf.setFont("MPlus", "bold");
-  pdf.text("入力した回答", margin, y);
+  pdf.text("入力した解答", margin, y);
   y += 7;
 
   autoTable(pdf, {
@@ -335,7 +335,7 @@ export async function exportScorePredictToPdf(
 
     pdf.setFontSize(14);
     pdf.setFont("MPlus", "bold");
-    pdf.text("類似回答例", margin, y);
+    pdf.text("類似解答例", margin, y);
     y += 7;
 
     const exampleRows = data.similarExamples.map((ex) => [
@@ -432,10 +432,10 @@ export async function exportNewCasePredictToPdf(
     y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 12;
   }
 
-  // 設問1の回答
+  // 設問1の解答
   pdf.setFontSize(14);
   pdf.setFont("MPlus", "bold");
-  pdf.text("設問1の回答（問題把握）", margin, y);
+  pdf.text("設問1の解答（問題把握）", margin, y);
   y += 7;
 
   autoTable(pdf, {
@@ -448,10 +448,10 @@ export async function exportNewCasePredictToPdf(
 
   y = (pdf as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
 
-  // 設問2の回答
+  // 設問2の解答
   pdf.setFontSize(14);
   pdf.setFont("MPlus", "bold");
-  pdf.text("設問2の回答（対策立案）", margin, y);
+  pdf.text("設問2の解答（対策立案）", margin, y);
   y += 7;
 
   autoTable(pdf, {

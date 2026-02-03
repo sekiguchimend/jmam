@@ -97,7 +97,7 @@ export type Database = {
           detail_collab_supervisor: number | null;
           detail_collab_external: number | null;
           detail_collab_member: number | null;
-          // 設問回答データ
+          // 設問解答データ
           answer_q1: string | null;
           answer_q2: string | null;
           answer_q3: string | null;
@@ -525,6 +525,67 @@ export type Database = {
             columns: ['case_id'];
             referencedRelation: 'cases';
             referencedColumns: ['case_id'];
+          }
+        ];
+      };
+      prediction_history: {
+        Row: {
+          id: string;
+          user_id: string;
+          prediction_type: 'score_existing' | 'score_new' | 'answer';
+          case_id: string | null;
+          case_name: string | null;
+          situation_text: string | null;
+          input_q1_answer: string | null;
+          input_q2_answer: string | null;
+          input_scores: Record<string, unknown> | null;
+          result_scores: Record<string, unknown> | null;
+          result_explanation: string | null;
+          confidence: number | null;
+          result_predicted_q1: string | null;
+          result_predicted_q2: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          prediction_type: 'score_existing' | 'score_new' | 'answer';
+          case_id?: string | null;
+          case_name?: string | null;
+          situation_text?: string | null;
+          input_q1_answer?: string | null;
+          input_q2_answer?: string | null;
+          input_scores?: Record<string, unknown> | null;
+          result_scores?: Record<string, unknown> | null;
+          result_explanation?: string | null;
+          confidence?: number | null;
+          result_predicted_q1?: string | null;
+          result_predicted_q2?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          prediction_type?: 'score_existing' | 'score_new' | 'answer';
+          case_id?: string | null;
+          case_name?: string | null;
+          situation_text?: string | null;
+          input_q1_answer?: string | null;
+          input_q2_answer?: string | null;
+          input_scores?: Record<string, unknown> | null;
+          result_scores?: Record<string, unknown> | null;
+          result_explanation?: string | null;
+          confidence?: number | null;
+          result_predicted_q1?: string | null;
+          result_predicted_q2?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'prediction_history_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
           }
         ];
       };

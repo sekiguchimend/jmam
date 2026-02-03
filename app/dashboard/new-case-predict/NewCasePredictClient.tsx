@@ -90,22 +90,22 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
     }
 
     if (!q1Answer.trim()) {
-      setError("設問1の回答を入力してください");
+      setError("設問1の解答を入力してください");
       return;
     }
 
     if (q1Answer.trim().length < 10) {
-      setError("設問1の回答は10文字以上入力してください");
+      setError("設問1の解答は10文字以上入力してください");
       return;
     }
 
     if (!q2Answer.trim()) {
-      setError("設問2の回答を入力してください");
+      setError("設問2の解答を入力してください");
       return;
     }
 
     if (q2Answer.trim().length < 10) {
-      setError("設問2の回答は10文字以上入力してください");
+      setError("設問2の解答は10文字以上入力してください");
       return;
     }
 
@@ -333,33 +333,33 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
         </div>
       )}
 
-      {/* 設問1の回答入力 */}
+      {/* 設問1の解答入力 */}
       <div className="p-5" style={{ background: "transparent" }}>
         <FormTextarea
-          label="設問1の回答（問題把握）"
+          label="設問1の解答（問題把握）"
           value={q1Answer}
           onChange={(e) => {
             setQ1Answer(e.target.value);
             setError(null);
             setResult(null);
           }}
-          placeholder="設問1の回答を入力してください...&#10;（職場の問題点を挙げてください）"
+          placeholder="設問1の解答を入力してください...&#10;（職場の問題点を挙げてください）"
           rows={6}
           hint={`${q1Answer.length} / 10文字以上`}
         />
       </div>
 
-      {/* 設問2の回答入力 */}
+      {/* 設問2の解答入力 */}
       <div className="p-5" style={{ background: "transparent" }}>
         <FormTextarea
-          label="設問2の回答（対策立案・主導・連携・育成）"
+          label="設問2の解答（対策立案・主導・連携・育成）"
           value={q2Answer}
           onChange={(e) => {
             setQ2Answer(e.target.value);
             setError(null);
             setResult(null);
           }}
-          placeholder="設問2の回答を入力してください...&#10;（問題に対する対策と実行計画を示してください）"
+          placeholder="設問2の解答を入力してください...&#10;（問題に対する対策と実行計画を示してください）"
           rows={6}
           hint={`${q2Answer.length} / 10文字以上`}
         />
@@ -396,11 +396,11 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
           スコア予測について
         </h3>
         <ul className="text-sm space-y-2" style={{ color: "var(--text-muted)" }}>
-          <li>• 設問1と設問2の両方の回答を入力して「スコアを予測する」を押してください</li>
+          <li>• 設問1と設問2の両方の解答を入力して「スコアを予測する」を押してください</li>
           <li>• 設問1からは「問題把握」を、設問2からは「対策立案・主導・連携・育成」を評価します</li>
           <li>• 総合評点は5項目の平均で算出されます</li>
           {caseMode === "new" && (
-            <li>• 新規ケースの場合、類似の既存ケースから回答データを参照します</li>
+            <li>• 新規ケースの場合、類似の既存ケースから解答データを参照します</li>
           )}
         </ul>
       </div>

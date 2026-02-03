@@ -1,4 +1,4 @@
-// Gemini Embeddings（事前準備: 全回答をエンベディング化）
+// Gemini Embeddings（事前準備: 全解答をエンベディング化）
 
 const EMBED_MODEL = 'models/gemini-embedding-001';
 const EMBED_URL =

@@ -1,5 +1,5 @@
 // 予測機能のServer Actions
-// FR-03: 入力されたスコアに基づき類似回答者を検索しLLMが予測回答を生成
+// FR-03: 入力されたスコアに基づき類似解答者を検索しLLMが予測解答を生成
 // PE-01: 予測応答時間5秒以内
 
 'use server';
@@ -13,6 +13,7 @@ import { generatePredictionFromSimilar } from '@/lib/gemini';
 import type { Scores, PredictionResponse, Case, Response } from '@/types';
 import { hasAccessToken, hasUserAccessToken } from '@/lib/supabase/server';
 import { recordUserScores } from '@/actions/userScore';
+import { savePredictionHistoryAnswer } from '@/actions/predictionHistory';
 
 async function ensureAuthenticated(): Promise<boolean> {
   // 管理者 or 一般のいずれかのトークンがあればOK
@@ -42,7 +43,7 @@ export async function fetchCaseById(caseId: string): Promise<Case | null> {
   }
 }
 
-// スコアに基づいて回答を予測（6指標ユークリッド距離で類似回答者を検索）
+// スコアに基づいて解答を予測（6指標ユークリッド距離で類似解答者を検索）
 export async function predictAnswer(
   caseId: string,
   scores: Scores
@@ -59,15 +60,15 @@ export async function predictAnswer(
     }
     const situationText = targetCase.situation_text ?? '';
 
-    // 2. 6指標のユークリッド距離で類似回答者を検索
+    // 2. 6指標のユークリッド距離で類似解答者を検索
     const similarResults = await findSimilarResponsesByEuclidean(caseId, scores, 5);
     if (similarResults.length === 0) {
-      return { success: false, error: '参考となる回答データが見つかりません' };
+      return { success: false, error: '参考となる解答データが見つかりません' };
     }
 
     const similarResponses = similarResults.map((r) => r.response);
 
-    // 3. LLMで予測回答を生成（類似回答者の回答をfew-shotとして使用）
+    // 3. LLMで予測解答を生成（類似解答者の解答をfew-shotとして使用）
     const prediction = await generatePredictionFromSimilar(
       situationText,
       similarResponses,
@@ -76,6 +77,17 @@ export async function predictAnswer(
 
     // 4. スコア履歴を保存（失敗しても予測は成功扱い）
     await recordUserScores({ caseId, scores });
+
+    // 5. 回答予測履歴を保存（失敗してもエラーにはしない）
+    savePredictionHistoryAnswer({
+      caseId,
+      caseName: targetCase.case_name ?? null,
+      inputScores: scores,
+      resultQ1: prediction.q1Answer,
+      resultQ2: prediction.q2Answer,
+    }).catch((err) => {
+      console.error('Failed to save answer prediction history:', err);
+    });
 
     return {
       success: true,

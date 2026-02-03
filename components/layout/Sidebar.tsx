@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/actions/auth";
 import { useTransition, memo, ReactNode } from "react";
-import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, FileQuestion, Sparkles, BookOpen, ChevronLeft, ChevronRight } from "lucide-react";
+import { LayoutGrid, Lightbulb, Database, Upload, LogOut, Loader2, X, Users, FileQuestion, Sparkles, BookOpen, ChevronLeft, ChevronRight, History } from "lucide-react";
 import Image from "next/image";
 
 // 個別のナビアイテム - 自分のアクティブ状態が変わった時だけ再レンダリング
@@ -76,7 +76,7 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose, collaps
       icon: <LayoutGrid className="w-5 h-5" />,
     },
     {
-      name: "回答予測",
+      name: "解答予測",
       href: "/dashboard/predict",
       icon: <Lightbulb className="w-5 h-5" />,
     },
@@ -107,6 +107,11 @@ export function Sidebar({ isAdmin, userName, userEmail, isOpen, onClose, collaps
       name: "ユーザー管理",
       href: "/admin/users",
       icon: <Users className="w-5 h-5" />,
+    },
+    {
+      name: "予測履歴",
+      href: "/admin/history",
+      icon: <History className="w-5 h-5" />,
     },
     {
       name: "データ追加",

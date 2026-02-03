@@ -50,7 +50,7 @@ export default async function NewCasePredictPage() {
           スコア予測
         </h1>
         <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
-          既存ケースまたは新規ケースを選択して、回答のスコアを予測します
+          既存ケースまたは新規ケースを選択して、解答のスコアを予測します
         </p>
       </div>
 
