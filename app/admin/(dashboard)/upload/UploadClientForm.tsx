@@ -9,12 +9,15 @@ import { ProgressBar } from "@/components/ui";
 import { CloudUpload, Loader2, Check, X } from "lucide-react";
 import { iterateCsvRecordsFromBytes, parseCSVLine } from "@/lib/utils";
 
-type UploadState = "idle" | "uploading" | "completed" | "error";
+type UploadState = "idle" | "uploading" | "preparing" | "completed" | "error";
 
 type SseEvent =
   | { event: "start"; data: { fileName: string } }
   | { event: "progress"; data: { fileName: string; processed: number; status: string } }
   | { event: "completed"; data: { fileName: string; processed: number; status: string } }
+  | { event: "prepare_start"; data: { status: string } }
+  | { event: "prepare_progress"; data: { phase: string; processed?: number; succeeded?: number; failed?: number; done?: number; total?: number } }
+  | { event: "prepare_done"; data: { status: string; embeddings: { processed: number; succeeded: number; failed: number }; typicals: { done: number; scheduled: number }; timeMs: number } }
   | { event: "error"; data: { fileName?: string; error: string; errors?: string[] } };
 
 const REQUIRED_HEADERS = ["受注番号", "Ⅱ　MC　題材コード"] as const;
@@ -169,6 +172,14 @@ export function UploadClientForm() {
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // エンベディング生成の進捗
+  const [embeddingProcessed, setEmbeddingProcessed] = useState(0);
+  const [embeddingSucceeded, setEmbeddingSucceeded] = useState(0);
+  const [embeddingFailed, setEmbeddingFailed] = useState(0);
+  const [preparePhase, setPreparePhase] = useState<"embeddings" | "typicals">("embeddings");
+  const [typicalsDone, setTypicalsDone] = useState(0);
+  const [typicalsTotal, setTypicalsTotal] = useState(0);
+
   useEffect(() => {
     if (uploadState !== "uploading") {
       setElapsedMs(0);
@@ -239,6 +250,36 @@ export function UploadClientForm() {
           }
           if (ev.event === "completed") {
             setProcessedCount(ev.data.processed ?? 0);
+            // CSVアップロード完了後、エンベディング生成が始まるのを待つ
+            return;
+          }
+          if (ev.event === "prepare_start") {
+            setUploadState("preparing");
+            setEmbeddingProcessed(0);
+            setEmbeddingSucceeded(0);
+            setEmbeddingFailed(0);
+            setPreparePhase("embeddings");
+            return;
+          }
+          if (ev.event === "prepare_progress") {
+            if (ev.data.phase === "embeddings") {
+              setPreparePhase("embeddings");
+              setEmbeddingProcessed(ev.data.processed ?? 0);
+              setEmbeddingSucceeded(ev.data.succeeded ?? 0);
+              setEmbeddingFailed(ev.data.failed ?? 0);
+            } else if (ev.data.phase === "typicals") {
+              setPreparePhase("typicals");
+              setTypicalsDone(ev.data.done ?? 0);
+              setTypicalsTotal(ev.data.total ?? 0);
+            }
+            return;
+          }
+          if (ev.event === "prepare_done") {
+            setEmbeddingProcessed(ev.data.embeddings.processed);
+            setEmbeddingSucceeded(ev.data.embeddings.succeeded);
+            setEmbeddingFailed(ev.data.embeddings.failed);
+            setTypicalsDone(ev.data.typicals.done);
+            setTypicalsTotal(ev.data.typicals.scheduled);
             setUploadState("completed");
             return;
           }
@@ -262,6 +303,12 @@ export function UploadClientForm() {
     setTotalCount(0);
     setErrors([]);
     setErrorMessage(null);
+    setEmbeddingProcessed(0);
+    setEmbeddingSucceeded(0);
+    setEmbeddingFailed(0);
+    setPreparePhase("embeddings");
+    setTypicalsDone(0);
+    setTypicalsTotal(0);
     // input の value をリセットして同じファイルを再選択可能にする
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -373,6 +420,59 @@ export function UploadClientForm() {
         </div>
       )}
 
+      {/* エンベディング生成中 */}
+      {uploadState === "preparing" && (
+        <div
+          className="rounded-2xl p-4 lg:p-8"
+          style={{ background: "#f0f9ff", border: "1px solid #bae6fd" }}
+        >
+          <div className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6">
+            <Loader2 className="w-5 lg:w-6 h-5 lg:h-6 animate-spin flex-shrink-0" style={{ color: "#0284c7" }} />
+            <div>
+              <p className="text-sm lg:text-base font-black" style={{ color: "#0284c7" }}>
+                {preparePhase === "embeddings" ? "エンベディング生成中" : "典型例生成中"}<LoadingDots />
+              </p>
+              <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
+                データ登録完了（{processedCount.toLocaleString()}件）
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-3 lg:mb-4">
+            {preparePhase === "embeddings" ? (
+              <ProgressBar
+                current={embeddingProcessed}
+                total={Math.max(processedCount * 2, embeddingProcessed + 1)}
+                animated
+              />
+            ) : (
+              <ProgressBar
+                current={typicalsDone}
+                total={Math.max(typicalsTotal, 1)}
+                animated
+              />
+            )}
+          </div>
+
+          <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
+            {preparePhase === "embeddings" ? (
+              <>
+                エンベディング: {embeddingSucceeded.toLocaleString()} 件成功
+                {embeddingFailed > 0 && <span style={{ color: "#dc2626" }}> / {embeddingFailed} 件失敗</span>}
+                ・経過 {formatElapsed(elapsedMs)}
+              </>
+            ) : (
+              <>
+                典型例: {typicalsDone} / {typicalsTotal} 件・経過 {formatElapsed(elapsedMs)}
+              </>
+            )}
+          </p>
+          <p className="text-xs mt-2 font-bold" style={{ color: "var(--text-muted)" }}>
+            ※ この処理には数分かかることがあります。ページを閉じないでください。
+          </p>
+        </div>
+      )}
+
       {/* 完了 */}
       {uploadState === "completed" && (
         <div
@@ -383,9 +483,15 @@ export function UploadClientForm() {
           <h3 className="text-lg lg:text-xl font-black mb-2" style={{ color: "#323232" }}>
             アップロード完了
           </h3>
-          <p className="text-sm lg:text-base mb-4 lg:mb-6 font-bold" style={{ color: "#323232" }}>
-            {processedCount.toLocaleString()}件のデータが正常に登録されました
-          </p>
+          <div className="text-sm lg:text-base mb-4 lg:mb-6 font-bold space-y-1" style={{ color: "#323232" }}>
+            <p>{processedCount.toLocaleString()}件のデータを登録しました</p>
+            {embeddingSucceeded > 0 && (
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                エンベディング: {embeddingSucceeded.toLocaleString()}件生成
+                {embeddingFailed > 0 && <span style={{ color: "#dc2626" }}> / {embeddingFailed}件失敗</span>}
+              </p>
+            )}
+          </div>
           <div className="flex gap-3 justify-center">
             <button
               onClick={resetUpload}

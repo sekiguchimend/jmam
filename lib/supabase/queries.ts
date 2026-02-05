@@ -494,6 +494,21 @@ export async function deleteResponsesByCaseId(caseId: string, accessToken?: stri
   const { error: e3 } = await supabase.from('embedding_queue').delete().eq('case_id', caseId);
   if (e3) console.error('delete embedding_queue error:', e3);
 
+  const { error: e4 } = await supabase.from('questions').delete().eq('case_id', caseId);
+  if (e4) console.error('delete questions error:', e4);
+
+  const { error: e5 } = await supabase.from('score_distribution').delete().eq('case_id', caseId);
+  if (e5) console.error('delete score_distribution error:', e5);
+
+  const { error: e6 } = await supabase.from('score_prototypes').delete().eq('case_id', caseId);
+  if (e6) console.error('delete score_prototypes error:', e6);
+
+  const { error: e7 } = await supabase.from('prediction_history').delete().eq('case_id', caseId);
+  if (e7) console.error('delete prediction_history error:', e7);
+
+  const { error: e8 } = await supabase.from('user_score_records').delete().eq('case_id', caseId);
+  if (e8) console.error('delete user_score_records error:', e8);
+
   // 解答データを削除
   const { data, error } = await supabase
     .from('responses')
@@ -506,7 +521,11 @@ export async function deleteResponsesByCaseId(caseId: string, accessToken?: stri
     throw new Error(`解答データの削除に失敗しました: ${error.message}`);
   }
 
-  console.log(`[DELETE] case_id=${caseId}: responses=${data?.length ?? 0}件削除`);
+  // ケースマスタも削除
+  const { error: e9 } = await supabase.from('cases').delete().eq('case_id', caseId);
+  if (e9) console.error('delete cases error:', e9);
+
+  console.log(`[DELETE] case_id=${caseId}: responses=${data?.length ?? 0}件削除, cases=1件削除`);
   return data?.length ?? 0;
 }
 
@@ -568,71 +587,98 @@ export async function markEmbeddingJobs(
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
 
-  // 各ジョブを個別に更新
-  for (const u of updates) {
-    const { error } = await supabase
-      .from('embedding_queue')
-      .update({
-        status: u.status,
-        attempts: u.attempts,
-        last_error: u.last_error,
-      })
-      .eq('case_id', u.case_id)
-      .eq('response_id', u.response_id)
-      .eq('question', u.question);
+  // バッチ更新（1回のRPC呼び出しで全件更新）
+  const { error } = await supabase.rpc('batch_update_embedding_queue', {
+    updates: updates,
+  });
 
-    if (error) {
-      console.error('markEmbeddingJobs error:', error);
-      throw new Error(`embedding_queue の更新に失敗しました: ${error.message ?? 'unknown error'}`);
-    }
+  if (error) {
+    console.error('markEmbeddingJobs error:', error);
+    throw new Error(`embedding_queue の更新に失敗しました: ${error.message ?? 'unknown error'}`);
   }
+}
+
+type ResponseForEmbedding = {
+  case_id: string;
+  response_id: string;
+  answer_q1: string | null;
+  answer_q2: string | null;
+  answer_q3: string | null;
+  answer_q4: string | null;
+  answer_q5: string | null;
+  answer_q6: string | null;
+  answer_q7: string | null;
+  answer_q8: string | null;
+  score_problem: number | null;
+  score_solution: number | null;
+};
+
+// HeadersOverflowError を検出するヘルパー
+function isHeadersOverflowError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const msg = error.message + (error.cause ? String(error.cause) : '');
+    return msg.includes('HeadersOverflow') || msg.includes('UND_ERR_HEADERS_OVERFLOW');
+  }
+  return false;
 }
 
 export async function fetchResponsesForEmbeddingJobs(
   jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[]
-): Promise<
-  {
-    case_id: string;
-    response_id: string;
-    answer_q1: string | null;
-    answer_q2: string | null;
-    answer_q3: string | null;
-    answer_q4: string | null;
-    answer_q5: string | null;
-    answer_q6: string | null;
-    answer_q7: string | null;
-    answer_q8: string | null;
-    score_problem: number | null;
-    score_solution: number | null;
-  }[]
-> {
+): Promise<ResponseForEmbedding[]> {
   if (jobs.length === 0) return [];
-  const supabase = await createSupabaseServerClient();
-  // (case_id,response_id) の複合キーなので OR を組み立てる
-  const or = jobs.map((j) => `and(case_id.eq.${j.case_id},response_id.eq.${j.response_id})`).join(',');
-  const { data, error } = await supabase
-    .from('responses')
-    .select('case_id,response_id,answer_q1,answer_q2,answer_q3,answer_q4,answer_q5,answer_q6,answer_q7,answer_q8,score_problem,score_solution')
-    .or(or);
 
-  if (error) {
-    console.error('fetchResponsesForEmbeddingJobs error:', error);
-    throw new Error(`解答テキストの取得に失敗しました: ${error.message}`);
+  // 重複除去（同じ case_id, response_id の組み合わせ）
+  const uniqueJobs = Array.from(
+    new Map(jobs.map((j) => [`${j.case_id}|${j.response_id}`, j])).values()
+  );
+
+  const supabase = await createSupabaseServerClient();
+  const allResults: ResponseForEmbedding[] = [];
+
+  // 初期バッチサイズ（HeadersOverflowError 発生時に自動縮小）
+  let batchSize = 50;
+  const MIN_BATCH_SIZE = 5;
+
+  let cursor = 0;
+  while (cursor < uniqueJobs.length) {
+    const batch = uniqueJobs.slice(cursor, cursor + batchSize);
+    const or = batch.map((j) => `and(case_id.eq.${j.case_id},response_id.eq.${j.response_id})`).join(',');
+
+    try {
+      const { data, error } = await supabase
+        .from('responses')
+        .select('case_id,response_id,answer_q1,answer_q2,answer_q3,answer_q4,answer_q5,answer_q6,answer_q7,answer_q8,score_problem,score_solution')
+        .or(or);
+
+      if (error) {
+        // Supabase エラーの場合も HeadersOverflow かチェック
+        if (isHeadersOverflowError(error)) {
+          if (batchSize > MIN_BATCH_SIZE) {
+            batchSize = Math.max(MIN_BATCH_SIZE, Math.floor(batchSize / 2));
+            console.log(`HeadersOverflow detected, reducing batch size to ${batchSize}`);
+            continue; // 同じ cursor から再試行
+          }
+        }
+        console.error('fetchResponsesForEmbeddingJobs error:', error);
+        throw new Error(`解答テキストの取得に失敗しました: ${error.message}`);
+      }
+
+      allResults.push(...((data ?? []) as ResponseForEmbedding[]));
+      cursor += batch.length;
+    } catch (e) {
+      // fetch レベルの HeadersOverflowError をキャッチ
+      if (isHeadersOverflowError(e)) {
+        if (batchSize > MIN_BATCH_SIZE) {
+          batchSize = Math.max(MIN_BATCH_SIZE, Math.floor(batchSize / 2));
+          console.log(`HeadersOverflow detected, reducing batch size to ${batchSize}`);
+          continue; // 同じ cursor から再試行
+        }
+      }
+      throw e;
+    }
   }
-  return (data ?? []) as {
-    case_id: string;
-    response_id: string;
-    answer_q1: string | null;
-    answer_q2: string | null;
-    answer_q3: string | null;
-    answer_q4: string | null;
-    answer_q5: string | null;
-    answer_q6: string | null;
-    answer_q7: string | null;
-    answer_q8: string | null;
-    score_problem: number | null;
-    score_solution: number | null;
-  }[];
+
+  return allResults;
 }
 
 export async function insertResponseEmbeddings(
@@ -643,7 +689,20 @@ export async function insertResponseEmbeddings(
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
-  const { error } = await supabase.from('response_embeddings').insert(rows satisfies ResponseEmbeddingInsert[]);
+
+  // バッチ内の重複を除去（同じ case_id, response_id, question の組み合わせは最後のものを使用）
+  const uniqueMap = new Map<string, ResponseEmbeddingInsert>();
+  for (const row of rows) {
+    const key = `${row.case_id}|${row.response_id}|${row.question}`;
+    uniqueMap.set(key, row);
+  }
+  const uniqueRows = Array.from(uniqueMap.values());
+
+  // UPSERT: 同じ (case_id, response_id, question) の組み合わせがあれば更新
+  const { error } = await supabase.from('response_embeddings').upsert(
+    uniqueRows satisfies ResponseEmbeddingInsert[],
+    { onConflict: 'case_id,response_id,question' }
+  );
   if (error) {
     console.error('insertResponseEmbeddings error:', error);
     throw new Error(`response_embeddings の登録に失敗しました: ${error.message ?? 'unknown error'}`);

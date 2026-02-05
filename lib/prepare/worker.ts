@@ -74,7 +74,7 @@ function buildOrFilter(pairs: { case_id: string; response_id: string }[]) {
 
 export async function processEmbeddingQueueBatchWithToken(
   adminToken: string,
-  limit: number = 50
+  limit: number = 30
 ): Promise<{ processed: number; succeeded: number; failed: number }> {
   const jobs = await fetchPendingEmbeddingJobs(limit, adminToken);
   if (jobs.length === 0) return { processed: 0, succeeded: 0, failed: 0 };

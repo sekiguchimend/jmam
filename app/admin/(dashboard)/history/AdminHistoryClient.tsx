@@ -114,7 +114,7 @@ export function AdminHistoryClient({ initialRecords, initialTotal }: AdminHistor
             className="px-4 py-2 text-xs font-black transition-all disabled:opacity-50"
             style={{
               background: filter === key ? "var(--primary)" : "transparent",
-              color: filter === key ? "#fff" : "var(--text-muted)",
+              color: filter === key ? "#fff" : "#555",
               borderRadius: "8px",
             }}
           >
