@@ -1,9 +1,10 @@
 // プロフィールページ（Server Component）
 // 認証・レイアウトはlayout.tsxで処理
 import { getUserWithRole } from "@/lib/supabase/server";
-import { User, Mail, Shield, Calendar, Settings } from "lucide-react";
+import { User, Mail, Shield, Calendar } from "lucide-react";
 import { DisplayNameEditor } from "./DisplayNameEditor";
 import { PasswordChangeCard } from "./PasswordChangeCard";
+import { EmailChangeCard } from "./EmailChangeCard";
 
 export const metadata = {
   title: "プロフィール",
@@ -75,12 +76,7 @@ export default async function ProfilePage() {
 
         {/* アクションカード */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 lg:gap-4">
-          <ActionCard
-            icon={<Settings className="w-5 lg:w-6 h-5 lg:h-6" />}
-            title="アカウント設定"
-            description="表示名やプロフィール情報を変更"
-            disabled
-          />
+          <EmailChangeCard currentEmail={userInfo.email || ""} />
           <PasswordChangeCard />
         </div>
     </div>
@@ -115,33 +111,3 @@ function InfoRow({
   );
 }
 
-function ActionCard({
-  icon,
-  title,
-  description,
-  disabled,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  disabled?: boolean;
-}) {
-  return (
-    <div
-      className={`p-4 lg:p-5 rounded-xl transition-all ${disabled ? "opacity-50 cursor-not-allowed" : "hover:shadow-lg cursor-pointer"}`}
-      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-    >
-      <div className="flex items-start gap-3 lg:gap-4">
-        <div className="flex-shrink-0" style={{ color: "var(--primary)" }}>{icon}</div>
-        <div>
-          <h3 className="text-sm lg:text-base font-black" style={{ color: "#323232" }}>
-            {title}
-          </h3>
-          <p className="text-xs lg:text-sm font-bold" style={{ color: "var(--text-muted)" }}>
-            {description}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
