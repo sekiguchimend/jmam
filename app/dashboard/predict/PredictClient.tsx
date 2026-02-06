@@ -1,12 +1,23 @@
 "use client";
 
-import { useState, useTransition, useCallback, useMemo } from "react";
+import { useState, useTransition, useCallback, useMemo, memo } from "react";
 import { predictAnswer } from "@/actions/predict";
 import type { Case, Scores, PredictionResponse } from "@/types";
 import { defaultScores } from "@/types";
 import { AlertCircle, ChevronDown, ChevronRight, Download, FolderOpen, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
 import { ScoreSlider } from "@/components/ui/ScoreSlider";
 import { exportAnswerPredictToPdf } from "@/lib/pdf-export";
+
+// Set操作を共通化するヘルパー関数
+const toggleSetItem = (prev: Set<string>, key: string): Set<string> => {
+  const next = new Set(prev);
+  if (next.has(key)) {
+    next.delete(key);
+  } else {
+    next.add(key);
+  }
+  return next;
+};
 
 // スコア項目の型定義
 interface ScoreItemConfig {
@@ -82,8 +93,8 @@ interface PredictClientProps {
   cases: Case[];
 }
 
-// 再帰的に折りたたみ可能なスコアセクション
-function RecursiveScoreSection({
+// 再帰的に折りたたみ可能なスコアセクション（memo化でパフォーマンス改善）
+const RecursiveScoreSection = memo(function RecursiveScoreSection({
   item,
   scores,
   onChange,
@@ -260,10 +271,10 @@ function RecursiveScoreSection({
       )}
     </div>
   );
-}
+});
 
-// テーブル行コンポーネント
-function ScoreTableRow({
+// テーブル行コンポーネント（memo化でパフォーマンス改善）
+const ScoreTableRow = memo(function ScoreTableRow({
   item,
   scores,
   onChange,
@@ -351,7 +362,7 @@ function ScoreTableRow({
       ))}
     </>
   );
-}
+});
 
 export function PredictClient({ cases }: PredictClientProps) {
   const [selectedCaseId, setSelectedCaseId] = useState("");
@@ -364,27 +375,11 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [isExporting, setIsExporting] = useState(false);
 
   const toggleAccordion = useCallback((key: string) => {
-    setOpenAccordions((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
+    setOpenAccordions((prev) => toggleSetItem(prev, key));
   }, []);
 
   const toggleSection = useCallback((key: string) => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
+    setExpandedSections((prev) => toggleSetItem(prev, key));
   }, []);
 
   const selectedCase = useMemo(
@@ -404,9 +399,9 @@ export function PredictClient({ cases }: PredictClientProps) {
     return Math.round(avg * 10) / 10; // 小数点1桁に丸め
   }, [calculatedRole, scores.solution, scores.problem]);
 
-  const handleScoreChange = (key: keyof Scores, value: number) => {
+  const handleScoreChange = useCallback((key: keyof Scores, value: number) => {
     setScores((prev) => ({ ...prev, [key]: value }));
-  };
+  }, []);
 
   const handlePredict = () => {
     if (!selectedCaseId) {

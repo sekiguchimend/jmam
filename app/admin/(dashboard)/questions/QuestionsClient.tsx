@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useMemo, useCallback, useRef } from "react";
 import { fetchQuestions, saveQuestion, saveCaseSituation } from "@/actions/questions";
 import type { Case } from "@/types";
 import {
@@ -32,6 +32,9 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
   const [isPending, startTransition] = useTransition();
   const [isLoading, setIsLoading] = useState(false);
 
+  // キャッシュ用のRef（同じケースを再選択した場合に再フェッチを防ぐ）
+  const questionsCache = useRef<Map<string, { situationText: string; q1Text: string; q2Text: string }>>(new Map());
+
   // ケース選択時に既存の設問とケース内容を取得
   useEffect(() => {
     if (!selectedCaseId) {
@@ -41,20 +44,40 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
       return;
     }
 
+    // キャッシュにある場合はそれを使用
+    const cached = questionsCache.current.get(selectedCaseId);
+    if (cached) {
+      setSituationText(cached.situationText);
+      setQ1Text(cached.q1Text);
+      setQ2Text(cached.q2Text);
+      return;
+    }
+
     setIsLoading(true);
-    setError(null);
-    setSuccess(null);
+    if (error) setError(null);
+    if (success) setSuccess(null);
 
     fetchQuestions(selectedCaseId).then((result) => {
       setIsLoading(false);
       if (result.success) {
         // ケース内容を設定（DBから最新を取得）
-        setSituationText(result.situationText || "");
+        const newSituationText = result.situationText || "";
         // 設問を設定
         const q1 = result.questions?.find((q) => q.question_key === "q1");
         const q2 = result.questions?.find((q) => q.question_key === "q2");
-        setQ1Text(q1?.question_text || "");
-        setQ2Text(q2?.question_text || "");
+        const newQ1Text = q1?.question_text || "";
+        const newQ2Text = q2?.question_text || "";
+
+        setSituationText(newSituationText);
+        setQ1Text(newQ1Text);
+        setQ2Text(newQ2Text);
+
+        // キャッシュに保存
+        questionsCache.current.set(selectedCaseId, {
+          situationText: newSituationText,
+          q1Text: newQ1Text,
+          q2Text: newQ2Text,
+        });
       } else {
         setSituationText("");
         setQ1Text("");
@@ -64,7 +87,7 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
         }
       }
     });
-  }, [selectedCaseId]);
+  }, [selectedCaseId, error, success]);
 
   // 一括保存
   const handleSaveAll = async () => {
@@ -133,15 +156,34 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
 
       if (results.length > 0) {
         setSuccess(`${results.join("、")}を保存しました`);
+        // キャッシュを更新
+        questionsCache.current.set(selectedCaseId, {
+          situationText: situationText.trim(),
+          q1Text: q1Text.trim(),
+          q2Text: q2Text.trim(),
+        });
         setTimeout(() => setSuccess(null), 3000);
       }
     });
   };
 
-  const caseOptions = cases.map((c) => ({
-    value: c.case_id,
-    label: c.case_name || c.case_id,
-  }));
+  // caseOptionsをメモ化
+  const caseOptions = useMemo(() =>
+    cases.map((c) => ({
+      value: c.case_id,
+      label: c.case_name || c.case_id,
+    })),
+    [cases]
+  );
+
+  // ケース選択ハンドラをメモ化
+  const handleCaseSelect = useCallback((caseId: string) => {
+    // キャッシュをクリア（編集後の再読込のため）
+    if (selectedCaseId && selectedCaseId !== caseId) {
+      questionsCache.current.delete(selectedCaseId);
+    }
+    setSelectedCaseId(caseId);
+  }, [selectedCaseId]);
 
   return (
     <div className="space-y-3">
@@ -157,7 +199,7 @@ export function QuestionsClient({ cases }: QuestionsClientProps) {
               icon={<FolderOpen className="w-5 h-5 flex-shrink-0" style={{ color: "#323232" }} />}
               options={caseOptions}
               value={selectedCaseId}
-              onChange={(e) => setSelectedCaseId(e.target.value)}
+              onChange={(e) => handleCaseSelect(e.target.value)}
               className="w-full"
             />
           </div>

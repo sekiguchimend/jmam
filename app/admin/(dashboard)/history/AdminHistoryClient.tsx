@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useTransition } from "react";
+import { useState, useCallback, useTransition, useRef, memo, useMemo } from "react";
 import {
   adminFetchPredictionHistory,
   type PredictionHistoryRecord,
@@ -44,6 +44,12 @@ const typeColors: Record<PredictionType, { bg: string; text: string }> = {
   answer: { bg: "#dcfce7", text: "#15803d" },
 };
 
+// フィルター結果のキャッシュ型
+interface FilterCache {
+  records: PredictionHistoryRecord[];
+  total: number;
+}
+
 export function AdminHistoryClient({ initialRecords, initialTotal }: AdminHistoryClientProps) {
   const [records, setRecords] = useState<PredictionHistoryRecord[]>(initialRecords);
   const [total, setTotal] = useState(initialTotal);
@@ -51,9 +57,26 @@ export function AdminHistoryClient({ initialRecords, initialTotal }: AdminHistor
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // フィルター結果をキャッシュ（初期値として"all"のデータをキャッシュ）
+  const filterCache = useRef<Map<FilterType, FilterCache>>(
+    new Map([["all", { records: initialRecords, total: initialTotal }]])
+  );
+
   const handleFilterChange = useCallback(
     (newFilter: FilterType) => {
+      // 同じフィルターなら何もしない
+      if (newFilter === filter) return;
+
       setFilter(newFilter);
+
+      // キャッシュにある場合はそれを使用
+      const cached = filterCache.current.get(newFilter);
+      if (cached) {
+        setRecords(cached.records);
+        setTotal(cached.total);
+        return;
+      }
+
       startTransition(async () => {
         const type =
           newFilter === "all"
@@ -68,28 +91,21 @@ export function AdminHistoryClient({ initialRecords, initialTotal }: AdminHistor
         });
 
         if (result.success) {
-          setRecords(result.records ?? []);
-          setTotal(result.total ?? 0);
+          const newRecords = result.records ?? [];
+          const newTotal = result.total ?? 0;
+          setRecords(newRecords);
+          setTotal(newTotal);
+          // キャッシュに保存
+          filterCache.current.set(newFilter, { records: newRecords, total: newTotal });
         }
       });
     },
-    []
+    [filter]
   );
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
   }, []);
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleString("ja-JP", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
 
   return (
     <div className="space-y-4">
@@ -165,7 +181,6 @@ export function AdminHistoryClient({ initialRecords, initialTotal }: AdminHistor
               record={record}
               isExpanded={expandedId === record.id}
               onToggle={() => toggleExpand(record.id)}
-              formatDate={formatDate}
             />
           ))}
         </div>
@@ -174,17 +189,27 @@ export function AdminHistoryClient({ initialRecords, initialTotal }: AdminHistor
   );
 }
 
-// 履歴アイテムコンポーネント
-function HistoryItem({
+// formatDateをメモ化（コンポーネント外に移動）
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString);
+  return date.toLocaleString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+// 履歴アイテムコンポーネント（memo化でパフォーマンス改善）
+const HistoryItem = memo(function HistoryItem({
   record,
   isExpanded,
   onToggle,
-  formatDate,
 }: {
   record: PredictionHistoryRecord;
   isExpanded: boolean;
   onToggle: () => void;
-  formatDate: (date: string) => string;
 }) {
   const typeColor = typeColors[record.prediction_type];
 
@@ -434,10 +459,10 @@ function HistoryItem({
       </div>
     </div>
   );
-}
+});
 
-// スコアバッジコンポーネント
-function ScoreBadge({ label, value }: { label: string; value: number }) {
+// スコアバッジコンポーネント（memo化でパフォーマンス改善）
+const ScoreBadge = memo(function ScoreBadge({ label, value }: { label: string; value: number }) {
   return (
     <div
       className="text-center p-2 rounded-lg"
@@ -451,7 +476,7 @@ function ScoreBadge({ label, value }: { label: string; value: number }) {
       </p>
     </div>
   );
-}
+});
 
 // スコアラベル
 const scoreLabels: Record<string, string> = {

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { DashboardNavClient } from "@/components/layout/DashboardNavClient";
 import HelpContent from "./HelpContent";
+import { getUserInfo } from "@/actions/profile";
 
 interface UserInfo {
   isAdmin: boolean;
@@ -10,24 +11,30 @@ interface UserInfo {
   email: string;
 }
 
+// クッキーからサイドバー状態を取得するヘルパー関数
+const getSidebarCollapsedFromCookie = (): boolean => {
+  if (typeof document === "undefined") return false;
+  return document.cookie
+    .split("; ")
+    .find((row) => row.startsWith("sidebar-collapsed="))
+    ?.split("=")[1] === "true";
+};
+
 export default function HelpPageClient() {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // 初回レンダリング時にクッキーから取得（useMemoで1回のみ計算）
+  const initialSidebarCollapsed = useMemo(() => getSidebarCollapsedFromCookie(), []);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSidebarCollapsed);
 
   useEffect(() => {
-    // クッキーからサイドバー状態を取得
-    const collapsed = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("sidebar-collapsed="))
-      ?.split("=")[1] === "true";
-    setSidebarCollapsed(collapsed);
+    // ユーザー情報を取得（静的importを使用）
+    let isMounted = true;
 
-    // ユーザー情報を取得
     async function fetchUserInfo() {
       try {
-        const { getUserInfo } = await import("@/actions/profile");
         const info = await getUserInfo();
-        if (info) {
+        if (isMounted && info) {
           setUserInfo({
             isAdmin: info.isAdmin,
             name: info.name,
@@ -36,14 +43,20 @@ export default function HelpPageClient() {
         }
       } catch {
         // エラー時はデフォルト値を使用
-        setUserInfo({
-          isAdmin: false,
-          name: null,
-          email: "",
-        });
+        if (isMounted) {
+          setUserInfo({
+            isAdmin: false,
+            name: null,
+            email: "",
+          });
+        }
       }
     }
     fetchUserInfo();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   return (

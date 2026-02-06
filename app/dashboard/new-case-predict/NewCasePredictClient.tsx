@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback, useMemo } from "react";
+import { useState, useTransition, useCallback, useMemo, memo } from "react";
 import { submitCombinedPrediction, submitCombinedNewCasePrediction, type CombinedPredictionResult } from "@/actions/predictScoreNewCase";
 import type { ScoreItems } from "@/lib/scoring";
 import {
@@ -323,8 +323,8 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
             value={situationText}
             onChange={(e) => {
               setSituationText(e.target.value);
-              setError(null);
-              setResult(null);
+              if (error) setError(null);
+              if (result) setResult(null);
             }}
             placeholder="新しいケースのシチュエーション（状況説明）を入力してください...&#10;例：あなたは〇〇部門の課長です。部下に△△という問題が発生しています..."
             rows={8}
@@ -340,8 +340,8 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
           value={q1Answer}
           onChange={(e) => {
             setQ1Answer(e.target.value);
-            setError(null);
-            setResult(null);
+            if (error) setError(null);
+            if (result) setResult(null);
           }}
           placeholder="設問1の解答を入力してください...&#10;（職場の問題点を挙げてください）"
           rows={6}
@@ -356,8 +356,8 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
           value={q2Answer}
           onChange={(e) => {
             setQ2Answer(e.target.value);
-            setError(null);
-            setResult(null);
+            if (error) setError(null);
+            if (result) setResult(null);
           }}
           placeholder="設問2の解答を入力してください...&#10;（問題に対する対策と実行計画を示してください）"
           rows={6}
@@ -408,8 +408,8 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
   );
 }
 
-// 統合予測結果表示コンポーネント
-function CombinedPredictionResultView({ result }: { result: CombinedPredictionResult }) {
+// 統合予測結果表示コンポーネント（memo化でパフォーマンス改善）
+const CombinedPredictionResultView = memo(function CombinedPredictionResultView({ result }: { result: CombinedPredictionResult }) {
   return (
     <div className="space-y-4 px-5">
       <h3 className="text-base font-black" style={{ color: "#323232" }}>
@@ -484,10 +484,10 @@ function CombinedPredictionResultView({ result }: { result: CombinedPredictionRe
       </div>
     </div>
   );
-}
+});
 
-// エンベディングスコアアイテム
-function EmbeddingScoreItem({ label, value }: { label: string; value: number }) {
+// エンベディングスコアアイテム（memo化でパフォーマンス改善）
+const EmbeddingScoreItem = memo(function EmbeddingScoreItem({ label, value }: { label: string; value: number }) {
   return (
     <div className="text-center">
       <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{label}</p>
@@ -496,10 +496,10 @@ function EmbeddingScoreItem({ label, value }: { label: string; value: number }) 
       </p>
     </div>
   );
-}
+});
 
-// スコアツリービューコンポーネント
-function ScoreTreeView({ scores }: { scores: Partial<ScoreItems> }) {
+// スコアツリービューコンポーネント（memo化でパフォーマンス改善）
+const ScoreTreeView = memo(function ScoreTreeView({ scores }: { scores: Partial<ScoreItems> }) {
   // 総合スコアを計算（役割理解・対策立案・問題把握の平均）
   const overallScore = (scores.role != null && scores.solution != null && scores.problem != null)
     ? Math.round(((scores.role + scores.solution + scores.problem) / 3) * 10) / 10
@@ -569,10 +569,10 @@ function ScoreTreeView({ scores }: { scores: Partial<ScoreItems> }) {
       </div>
     </div>
   );
-}
+});
 
-// スコアツリーノードコンポーネント
-function ScoreTreeNode({
+// スコアツリーノードコンポーネント（memo化でパフォーマンス改善）
+const ScoreTreeNode = memo(function ScoreTreeNode({
   label,
   value,
   isLast,
@@ -656,4 +656,4 @@ function ScoreTreeNode({
       )}
     </div>
   );
-}
+});

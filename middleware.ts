@@ -112,6 +112,24 @@ function clearAllCookies(res: NextResponse): void {
 }
 
 // ========================================
+// トークンリフレッシュ処理の共通化
+// ========================================
+
+async function tryRefreshAndContinue(
+  refreshToken: string,
+  isAdmin: boolean,
+  isDev: boolean
+): Promise<NextResponse | null> {
+  const result = await refreshTokens(refreshToken);
+  if (result.success && result.accessToken && result.refreshToken) {
+    const res = NextResponse.next();
+    setTokenCookies(res, result.accessToken, result.refreshToken, isAdmin);
+    return addSecurityHeaders(res, isDev);
+  }
+  return null;
+}
+
+// ========================================
 // リダイレクト
 // ========================================
 
@@ -155,12 +173,8 @@ export async function middleware(req: NextRequest) {
     if (!adminStatus.valid) {
       // 期限切れならリフレッシュ試行
       if (adminStatus.expired && adminRefresh && !isPrefetch) {
-        const result = await refreshTokens(adminRefresh);
-        if (result.success && result.accessToken && result.refreshToken) {
-          const res = NextResponse.next();
-          setTokenCookies(res, result.accessToken, result.refreshToken, true);
-          return res;
-        }
+        const refreshed = await tryRefreshAndContinue(adminRefresh, true, isDev);
+        if (refreshed) return refreshed;
       }
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -215,12 +229,8 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith('/admin')) {
     if (adminStatus.valid) return addSecurityHeaders(NextResponse.next(), isDev);
     if (adminStatus.expired && adminRefresh && !isPrefetch) {
-      const result = await refreshTokens(adminRefresh);
-      if (result.success && result.accessToken && result.refreshToken) {
-        const res = NextResponse.next();
-        setTokenCookies(res, result.accessToken, result.refreshToken, true);
-        return addSecurityHeaders(res, isDev);
-      }
+      const refreshed = await tryRefreshAndContinue(adminRefresh, true, isDev);
+      if (refreshed) return refreshed;
     }
     return redirectToLogin(req, pathname, isDev);
   }
@@ -233,22 +243,14 @@ export async function middleware(req: NextRequest) {
 
     // 管理者リフレッシュ
     if (adminStatus.expired && adminRefresh && !isPrefetch) {
-      const result = await refreshTokens(adminRefresh);
-      if (result.success && result.accessToken && result.refreshToken) {
-        const res = NextResponse.next();
-        setTokenCookies(res, result.accessToken, result.refreshToken, true);
-        return addSecurityHeaders(res, isDev);
-      }
+      const refreshed = await tryRefreshAndContinue(adminRefresh, true, isDev);
+      if (refreshed) return refreshed;
     }
 
     // ユーザーリフレッシュ
     if (userStatus.expired && userRefresh && !isPrefetch) {
-      const result = await refreshTokens(userRefresh);
-      if (result.success && result.accessToken && result.refreshToken) {
-        const res = NextResponse.next();
-        setTokenCookies(res, result.accessToken, result.refreshToken, false);
-        return addSecurityHeaders(res, isDev);
-      }
+      const refreshed = await tryRefreshAndContinue(userRefresh, false, isDev);
+      if (refreshed) return refreshed;
     }
 
     return redirectToLogin(req, pathname, isDev);
