@@ -655,7 +655,8 @@ export async function markEmbeddingJobs(
   const supabase = createAuthedAnonServerClient(token);
 
   // バッチ更新（1回のRPC呼び出しで全件更新）
-  const { error } = await supabase.rpc('batch_update_embedding_queue', {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.rpc as any)('batch_update_embedding_queue', {
     updates: updates,
   });
 
