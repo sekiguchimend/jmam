@@ -156,8 +156,75 @@ export async function findSimilarResponsesByEuclidean(
     return [];
   }
 
+  // response_idごとにグループ化してスコアを平均化
+  // 同じ解答に対する複数評価者のスコアを集約
+  const groupedByResponseId = new Map<string, {
+    responses: Response[];
+    avgScores: {
+      score_problem: number;
+      score_solution: number;
+      score_role: number;
+      score_leadership: number;
+      score_collaboration: number;
+      score_development: number;
+    };
+  }>();
+
+  for (const row of data as Response[]) {
+    const rid = row.response_id;
+    if (!groupedByResponseId.has(rid)) {
+      groupedByResponseId.set(rid, {
+        responses: [],
+        avgScores: {
+          score_problem: 0,
+          score_solution: 0,
+          score_role: 0,
+          score_leadership: 0,
+          score_collaboration: 0,
+          score_development: 0,
+        },
+      });
+    }
+    groupedByResponseId.get(rid)!.responses.push(row);
+  }
+
+  // 各グループの平均スコアを計算し、代表レスポンスを作成
+  const aggregatedResponses: Response[] = [];
+  for (const [rid, group] of groupedByResponseId) {
+    const count = group.responses.length;
+    const sumScores = {
+      score_problem: 0,
+      score_solution: 0,
+      score_role: 0,
+      score_leadership: 0,
+      score_collaboration: 0,
+      score_development: 0,
+    };
+
+    for (const r of group.responses) {
+      sumScores.score_problem += r.score_problem ?? 0;
+      sumScores.score_solution += r.score_solution ?? 0;
+      sumScores.score_role += r.score_role ?? 0;
+      sumScores.score_leadership += r.score_leadership ?? 0;
+      sumScores.score_collaboration += r.score_collaboration ?? 0;
+      sumScores.score_development += r.score_development ?? 0;
+    }
+
+    // 代表レスポンス（最初のものをベースに、スコアは平均値）
+    const representative: Response = {
+      ...group.responses[0],
+      score_problem: sumScores.score_problem / count,
+      score_solution: sumScores.score_solution / count,
+      score_role: sumScores.score_role / count,
+      score_leadership: sumScores.score_leadership / count,
+      score_collaboration: sumScores.score_collaboration / count,
+      score_development: sumScores.score_development / count,
+    };
+    aggregatedResponses.push(representative);
+  }
+
   // 全件に対してユークリッド距離を計算してソート
-  const withDistance = (data as Response[]).map((r) => ({
+  const withDistance = aggregatedResponses.map((r) => ({
     response: r,
     distance: euclideanDistance(scores, r),
   }));

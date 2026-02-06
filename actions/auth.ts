@@ -311,3 +311,155 @@ export async function validateToken(): Promise<boolean> {
   return true;
 }
 
+// パスワード変更（メール送信なし、MFA対応）
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  totpCode?: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  // バリデーション
+  if (!currentPassword) {
+    return { success: false, error: '現在のパスワードを入力してください' };
+  }
+  if (!newPassword) {
+    return { success: false, error: '新しいパスワードを入力してください' };
+  }
+  if (newPassword.length < 8) {
+    return { success: false, error: '新しいパスワードは8文字以上で入力してください' };
+  }
+  if (currentPassword === newPassword) {
+    return { success: false, error: '新しいパスワードは現在のパスワードと異なるものを入力してください' };
+  }
+
+  // 開発環境チェック
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host');
+  const skipMfa = isDevMfaBypass(host);
+
+  // 本番環境ではTOTPコード必須
+  if (!skipMfa && (!totpCode || totpCode.trim().length !== 6)) {
+    return { success: false, error: '認証コード（6桁）を入力してください' };
+  }
+
+  // 現在のトークンからユーザー情報を取得
+  const cookieStore = await cookies();
+  const token = cookieStore.get(USER_TOKEN_COOKIE)?.value ?? cookieStore.get(ADMIN_TOKEN_COOKIE)?.value;
+
+  if (!token) {
+    return { success: false, error: 'ログインセッションが見つかりません。再度ログインしてください。' };
+  }
+
+  const supabase = await createSupabaseServerClient();
+
+  // トークンからユーザー情報を取得
+  const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+  if (userError || !user || !user.email) {
+    return { success: false, error: 'ユーザー情報の取得に失敗しました。再度ログインしてください。' };
+  }
+
+  // 現在のパスワードで再認証（本人確認）
+  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  });
+
+  if (signInError || !signInData.session) {
+    return { success: false, error: '現在のパスワードが正しくありません' };
+  }
+
+  // セッションを設定
+  await supabase.auth.setSession({
+    access_token: signInData.session.access_token,
+    refresh_token: signInData.session.refresh_token,
+  });
+
+  // 開発環境ではAdmin APIを使ってMFAをバイパス
+  if (skipMfa) {
+    // service_roleキーを使ってAdmin APIでパスワード更新
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } }
+    );
+
+    const { error: adminUpdateError } = await supabaseAdmin.auth.admin.updateUserById(
+      user.id,
+      { password: newPassword }
+    );
+
+    if (adminUpdateError) {
+      console.error('admin.updateUserById error:', adminUpdateError);
+      return { success: false, error: 'パスワードの変更に失敗しました' };
+    }
+  } else {
+    // 本番環境: MFA認証を行う
+    // MFA: factorIdを取得
+    const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+    if (factorsError) {
+      console.error('mfa.listFactors error:', factorsError);
+      return { success: false, error: 'MFA情報の取得に失敗しました' };
+    }
+
+    const verifiedTotp = factors.totp?.find((f) => f.status === 'verified');
+    if (!verifiedTotp) {
+      return { success: false, error: 'MFAが設定されていません。管理者に連絡してください。' };
+    }
+
+    // MFA: チャレンジを作成
+    const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+      factorId: verifiedTotp.id,
+    });
+    if (challengeError) {
+      console.error('mfa.challenge error:', challengeError);
+      return { success: false, error: '認証コードの検証準備に失敗しました' };
+    }
+
+    // MFA: TOTPコードを検証
+    const { error: verifyError } = await supabase.auth.mfa.verify({
+      factorId: verifiedTotp.id,
+      challengeId: challengeData.id,
+      code: totpCode!.trim(),
+    });
+    if (verifyError) {
+      return { success: false, error: '認証コードが正しくありません' };
+    }
+
+    // AAL2セッションでパスワードを更新
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (updateError) {
+      console.error('updateUser error:', updateError);
+      return { success: false, error: 'パスワードの変更に失敗しました' };
+    }
+  }
+
+  // 新しいセッションを取得してクッキーを更新
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (sessionData.session) {
+    const commonCookie = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax' as const,
+      maxAge: COOKIE_MAX_AGE,
+      path: '/',
+    };
+
+    cookieStore.set(USER_TOKEN_COOKIE, sessionData.session.access_token, commonCookie);
+    cookieStore.set(USER_REFRESH_TOKEN_COOKIE, sessionData.session.refresh_token, commonCookie);
+
+    // 管理者の場合は管理者トークンも更新
+    if (cookieStore.get(ADMIN_TOKEN_COOKIE)?.value) {
+      cookieStore.set(ADMIN_TOKEN_COOKIE, sessionData.session.access_token, commonCookie);
+      cookieStore.set(ADMIN_REFRESH_TOKEN_COOKIE, sessionData.session.refresh_token, commonCookie);
+    }
+  }
+
+  return { success: true };
+}
+

@@ -1,8 +1,9 @@
 // プロフィールページ（Server Component）
 // 認証・レイアウトはlayout.tsxで処理
 import { getUserWithRole } from "@/lib/supabase/server";
-import { User, Mail, Shield, Calendar, Settings, Key } from "lucide-react";
+import { User, Mail, Shield, Calendar, Settings } from "lucide-react";
 import { DisplayNameEditor } from "./DisplayNameEditor";
+import { PasswordChangeCard } from "./PasswordChangeCard";
 
 export const metadata = {
   title: "プロフィール",
@@ -80,17 +81,8 @@ export default async function ProfilePage() {
             description="表示名やプロフィール情報を変更"
             disabled
           />
-          <ActionCard
-            icon={<Key className="w-5 lg:w-6 h-5 lg:h-6" />}
-            title="パスワード変更"
-            description="ログインパスワードを更新"
-            disabled
-          />
+          <PasswordChangeCard />
         </div>
-
-        <p className="text-center text-xs lg:text-sm font-bold mt-4 lg:mt-6" style={{ color: "var(--text-muted)" }}>
-          ※ パスワード変更など一部機能は現在準備中です
-        </p>
     </div>
   );
 }
