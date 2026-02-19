@@ -29,7 +29,7 @@ export default async function LoginPage() {
 
         <div className="mt-8 text-center">
           <p className="text-sm font-bold" style={{ color: "#323232" }}>
-            © 2024 ScorePredict. All rights reserved.
+            © 2026 解答予測システム. All rights reserved.
           </p>
         </div>
       </div>

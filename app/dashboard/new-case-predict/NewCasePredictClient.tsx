@@ -20,7 +20,8 @@ import {
   Send,
   TrendingUp,
 } from "lucide-react";
-import { exportNewCasePredictToPdf } from "@/lib/pdf-export";
+// PDFエクスポートは使用時にdynamic importする（初期バンドルサイズ削減）
+import type { NewCasePredictExportData } from "@/lib/pdf-export";
 
 interface Case {
   case_id: string;
@@ -231,6 +232,8 @@ export function NewCasePredictClient({ cases }: NewCasePredictClientProps) {
         scoreData.push({ label: "総合スコア", value: overallScore });
       }
 
+      // PDFライブラリを遅延読み込み（初期バンドル削減）
+      const { exportNewCasePredictToPdf } = await import("@/lib/pdf-export");
       await exportNewCasePredictToPdf(
         {
           caseName,

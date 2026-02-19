@@ -78,7 +78,7 @@ export async function predictAnswer(
     // 4. スコア履歴を保存（失敗しても予測は成功扱い）
     await recordUserScores({ caseId, scores });
 
-    // 5. 回答予測履歴を保存（失敗してもエラーにはしない）
+    // 5. 解答予測履歴を保存（失敗してもエラーにはしない）
     savePredictionHistoryAnswer({
       caseId,
       caseName: targetCase.case_name ?? null,

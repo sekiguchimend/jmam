@@ -20,7 +20,7 @@ answer_q2 → 'solution' としてembedding
 
 - `score_problem`（問題把握）と `score_solution`（対策立案）は**評価軸のスコア**
 - 設問1 = problem、設問2 = solution **ではない**
-- 回答全体を評価した結果としてのスコア
+- 解答全体を評価した結果としてのスコア
 
 ---
 
@@ -30,8 +30,8 @@ answer_q2 → 'solution' としてembedding
 
 | 旧ラベル | 新ラベル | 内容 |
 |----------|----------|------|
-| `problem` | `q1` | 設問1の回答（answer_q1） |
-| `solution` | `q2` | 設問2の回答（answer_q2〜q8を結合） |
+| `problem` | `q1` | 設問1の解答（answer_q1） |
+| `solution` | `q2` | 設問2の解答（answer_q2〜q8を結合） |
 
 ### 設問テキストの保存（新機能）
 
@@ -199,31 +199,31 @@ export async function upsertQuestion(
 
 現在:
 ```
-回答のembedding ←→ 過去回答のembedding で類似検索
+解答のembedding ←→ 過去解答のembedding で類似検索
 ```
 
 改善後:
 ```
-(質問embedding + 回答embedding) ←→ (質問embedding + 過去回答embedding)
+(質問embedding + 解答embedding) ←→ (質問embedding + 過去解答embedding)
 ```
 
 または:
 ```
-1. 質問embeddingで「同じ質問への回答」をフィルタリング
-2. その中で回答embeddingの類似検索
+1. 質問embeddingで「同じ質問への解答」をフィルタリング
+2. その中で解答embeddingの類似検索
 ```
 
 ### LLMプロンプトでの活用
 
 ```typescript
-// 回答予測時のプロンプトに質問文を含める
+// 解答予測時のプロンプトに質問文を含める
 const prompt = `
 ケース: ${situationText}
 
 【設問1】${question1Text}
 【設問2】${question2Text}
 
-以下のスコアを目指す回答を生成してください...
+以下のスコアを目指す解答を生成してください...
 `;
 ```
 
@@ -299,7 +299,7 @@ const prompt = `
 - **行44**: パラメータ型を修正
 - UI側との整合性を確認
 
-### 5. 回答予測処理
+### 5. 解答予測処理
 
 #### `/actions/predict.ts`
 - 直接 problem/solution を使っていないが、LLM呼び出し時に影響
@@ -308,12 +308,12 @@ const prompt = `
 - **行151-154**: similarResponses のテキスト参照を修正
   ```typescript
   // 旧
-  問題把握の回答: ${r.answer_q1 || '（なし）'}
-  対策立案の回答: ${r.answer_q2 || '（なし）'}
+  問題把握の解答: ${r.answer_q1 || '（なし）'}
+  対策立案の解答: ${r.answer_q2 || '（なし）'}
 
   // 新
-  設問1の回答: ${r.answer_q1 || '（なし）'}
-  設問2の回答: ${[r.answer_q2, r.answer_q3, ...].filter(Boolean).join('\n') || '（なし）'}
+  設問1の解答: ${r.answer_q1 || '（なし）'}
+  設問2の解答: ${[r.answer_q2, r.answer_q3, ...].filter(Boolean).join('\n') || '（なし）'}
   ```
 
 ### 6. クエリ関数
@@ -439,7 +439,7 @@ UPDATE typical_examples SET question = 'q2' WHERE question = 'solution';
 ### フェーズ3: 予測処理・UIの修正
 
 13. **スコア予測処理の修正**: `lib/scoring.ts`, `actions/predictScore.ts`
-14. **回答予測処理の修正**: `lib/gemini/client.ts`, `actions/predict.ts`
+14. **解答予測処理の修正**: `lib/gemini/client.ts`, `actions/predict.ts`
 15. **UIの修正**: `ScorePredictClient.tsx`, `PredictClient.tsx`
 16. **LLMプロンプトに設問テキストを含める**
 

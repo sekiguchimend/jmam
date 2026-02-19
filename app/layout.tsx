@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "スコア予測システム",
-    template: "%s | スコア予測システム",
+    default: "解答予測システム",
+    template: "%s | 解答予測システム",
   },
   description: "評価スコアに基づき、ケース問題に対する解答内容を予測・生成するシステム",
   robots: {

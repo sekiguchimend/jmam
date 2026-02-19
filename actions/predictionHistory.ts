@@ -124,7 +124,7 @@ export async function savePredictionHistoryNew(params: {
   }
 }
 
-// 回答予測の履歴を保存
+// 解答予測の履歴を保存
 export async function savePredictionHistoryAnswer(params: {
   caseId: string;
   caseName: string | null;

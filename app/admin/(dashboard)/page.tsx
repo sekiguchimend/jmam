@@ -1,10 +1,18 @@
 // 管理者ダッシュボード（Server Component）
 // 認証・レイアウトはlayout.tsxで処理
-import { Suspense } from "react";
-import { fetchDatasetStats, fetchTotalCount } from "@/actions/upload";
+import { Suspense, cache } from "react";
+import { fetchDatasetStats } from "@/actions/upload";
 import { AdminDatasetList } from "./AdminDatasetList";
 import Link from "next/link";
 import { Briefcase, Database, CheckCircle, Plus } from "lucide-react";
+
+// データ取得をキャッシュして重複呼び出しを防ぐ
+const getCachedAdminData = cache(async () => {
+  const stats = await fetchDatasetStats();
+  // stats から合計レコード数を計算（getTotalResponseCount の代わり）
+  const totalCount = stats.reduce((sum, stat) => sum + stat.recordCount, 0);
+  return { stats, totalCount };
+});
 
 export const metadata = {
   title: "学習データ管理",
@@ -85,10 +93,8 @@ function DatasetListSkeleton() {
 
 // 統計テーブルコンポーネント
 async function StatsTable() {
-  const [stats, totalCount] = await Promise.all([
-    fetchDatasetStats(),
-    fetchTotalCount(),
-  ]);
+  // キャッシュされたデータを使用（重複クエリ防止）
+  const { stats, totalCount } = await getCachedAdminData();
 
   return (
     <div
@@ -144,7 +150,8 @@ async function StatsTable() {
 
 // データセット一覧コンポーネント
 async function DatasetListContent() {
-  const stats = await fetchDatasetStats();
+  // キャッシュされたデータを使用（重複クエリ防止）
+  const { stats } = await getCachedAdminData();
 
   return (
     <div

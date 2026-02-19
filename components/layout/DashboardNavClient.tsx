@@ -64,7 +64,7 @@ export function DashboardNavClient({
           <Menu className="w-6 h-6" />
         </button>
         <span className="text-lg font-black" style={{ color: "var(--text-inverse)" }}>
-          ScorePredict
+          解答予測
         </span>
         <div className="w-10" /> {/* スペーサー */}
       </header>

@@ -31,7 +31,7 @@ export default function HelpContent() {
           使い方ガイド
         </h1>
         <p className="text-sm lg:text-base font-bold" style={{ color: "#323232" }}>
-          スコア予測システムの各機能の使い方を説明します
+          解答予測システムの各機能の使い方を説明します
         </p>
       </div>
 

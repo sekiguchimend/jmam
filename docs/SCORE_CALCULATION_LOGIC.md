@@ -344,11 +344,11 @@ export function calculateSolution(
 ### 予測フロー
 
 ```
-1. ユーザーが回答を入力
+1. ユーザーが解答を入力
         ↓
-2. 回答をEmbedding化
+2. 解答をEmbedding化
         ↓
-3. 類似回答を検索（Supabase Vector Search）
+3. 類似解答を検索（Supabase Vector Search）
         ↓
 4. 詳細スコア（15項目）を予測
    - エンベディング類似度に基づく重み付き平均
@@ -375,7 +375,7 @@ export function calculateSolution(
 
 現在のシステムでは、AIは以下の役割を担います：
 
-1. **回答の妥当性チェック** - 無効な回答を検出
+1. **解答の妥当性チェック** - 無効な解答を検出
 2. **role/leadership/developmentの予測** - 詳細スコアがないため、AIが直接予測
 3. **説明文の生成** - 評価の理由を説明
 

@@ -1,12 +1,23 @@
 // ダッシュボード（Server Component）
 // 認証・レイアウトはlayout.tsxで処理
-import { Suspense } from "react";
+import { Suspense, cache } from "react";
 import { getUserWithRole } from "@/lib/supabase/server";
 import { fetchCases } from "@/actions/predict";
-import { fetchTotalCount, fetchDatasetStats } from "@/actions/upload";
+import { fetchDatasetStats } from "@/actions/upload";
 import { GradientButton } from "@/components/ui";
 import Link from "next/link";
 import { Briefcase, Database, CheckCircle, User, Lightbulb, Upload, Inbox, ChevronRight } from "lucide-react";
+
+// データ取得をキャッシュして重複呼び出しを防ぐ
+const getCachedDashboardData = cache(async () => {
+  const [cases, stats] = await Promise.all([
+    fetchCases(),
+    fetchDatasetStats(),
+  ]);
+  // stats から合計レコード数を計算（getTotalResponseCount の代わり）
+  const totalCount = stats.reduce((sum, stat) => sum + stat.recordCount, 0);
+  return { cases, stats, totalCount };
+});
 
 export const metadata = {
   title: "ダッシュボード",
@@ -52,10 +63,8 @@ function DatasetTableSkeleton() {
 
 // 統計カード用の非同期コンポーネント
 async function StatsCards({ isAdmin }: { isAdmin: boolean }) {
-  const [cases, totalCount] = await Promise.all([
-    fetchCases(),
-    fetchTotalCount(),
-  ]);
+  // キャッシュされたデータを使用（重複クエリ防止）
+  const { cases, totalCount } = await getCachedDashboardData();
 
   return (
     <>
@@ -85,10 +94,8 @@ async function StatsCards({ isAdmin }: { isAdmin: boolean }) {
 
 // データセット一覧用の非同期コンポーネント
 async function DatasetList({ isAdmin }: { isAdmin: boolean }) {
-  const [cases, stats] = await Promise.all([
-    fetchCases(),
-    fetchDatasetStats(),
-  ]);
+  // キャッシュされたデータを使用（重複クエリ防止）
+  const { cases, stats } = await getCachedDashboardData();
 
   if (cases.length === 0) {
     return (

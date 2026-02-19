@@ -29,13 +29,13 @@ const filterLabels: Record<FilterType, string> = {
   score_all: "スコア予測",
   score_existing: "スコア予測（既存）",
   score_new: "スコア予測（新規）",
-  answer: "回答予測",
+  answer: "解答予測",
 };
 
 const typeLabels: Record<PredictionType, string> = {
   score_existing: "スコア予測（既存）",
   score_new: "スコア予測（新規）",
-  answer: "回答予測",
+  answer: "解答予測",
 };
 
 const typeColors: Record<PredictionType, { bg: string; text: string }> = {
@@ -393,7 +393,7 @@ const HistoryItem = memo(function HistoryItem({
               </>
             )}
 
-            {/* 回答予測の場合: 入力スコアと結果解答 */}
+            {/* 解答予測の場合: 入力スコアと結果解答 */}
             {record.prediction_type === "answer" && (
               <>
                 {/* 入力スコア */}

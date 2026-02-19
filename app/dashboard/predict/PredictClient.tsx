@@ -6,7 +6,8 @@ import type { Case, Scores, PredictionResponse } from "@/types";
 import { defaultScores } from "@/types";
 import { AlertCircle, ChevronDown, ChevronRight, Download, FolderOpen, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
 import { ScoreSlider } from "@/components/ui/ScoreSlider";
-import { exportAnswerPredictToPdf } from "@/lib/pdf-export";
+// PDFエクスポートは使用時にdynamic importする（初期バンドルサイズ削減）
+import type { AnswerPredictExportData } from "@/lib/pdf-export";
 
 // Set操作を共通化するヘルパー関数
 const toggleSetItem = (prev: Set<string>, key: string): Set<string> => {
@@ -371,7 +372,7 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(["q1", "q2"]));
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["problem", "solution", "collaboration"]));
   const [isExporting, setIsExporting] = useState(false);
 
   const toggleAccordion = useCallback((key: string) => {
@@ -438,6 +439,8 @@ export function PredictClient({ cases }: PredictClientProps) {
         max: item.max,
       }));
 
+      // PDFライブラリを遅延読み込み（初期バンドル削減）
+      const { exportAnswerPredictToPdf } = await import("@/lib/pdf-export");
       await exportAnswerPredictToPdf(
         {
           caseName,

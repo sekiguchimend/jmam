@@ -1,11 +1,27 @@
-"use client";
-
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+// jsPDF と autoTable は使用時に dynamic import する（初期バンドルサイズ削減）
+// "use client" は削除 - 関数は呼び出し側で動的にインポートされる
+import type { jsPDF } from "jspdf";
 
 // フォントデータキャッシュ
 let regularFontBase64: string | null = null;
 let boldFontBase64: string | null = null;
+
+// jsPDF モジュールキャッシュ
+let jsPDFModule: typeof import("jspdf") | null = null;
+let autoTableModule: typeof import("jspdf-autotable") | null = null;
+
+/**
+ * jsPDF と autoTable を遅延読み込み
+ */
+async function loadPdfModules() {
+  if (!jsPDFModule || !autoTableModule) {
+    [jsPDFModule, autoTableModule] = await Promise.all([
+      import("jspdf"),
+      import("jspdf-autotable"),
+    ]);
+  }
+  return { jsPDF: jsPDFModule.jsPDF, autoTable: autoTableModule.default };
+}
 
 /**
  * 日本語フォントを読み込んでjsPDFに登録
@@ -89,6 +105,9 @@ export async function exportAnswerPredictToPdf(
   data: AnswerPredictExportData,
   filename: string
 ): Promise<void> {
+  // PDFライブラリを遅延読み込み
+  const { jsPDF, autoTable } = await loadPdfModules();
+
   const pdf = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -209,6 +228,9 @@ export async function exportScorePredictToPdf(
   data: ScorePredictExportData,
   filename: string
 ): Promise<void> {
+  // PDFライブラリを遅延読み込み
+  const { jsPDF, autoTable } = await loadPdfModules();
+
   const pdf = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -384,6 +406,9 @@ export async function exportNewCasePredictToPdf(
   data: NewCasePredictExportData,
   filename: string
 ): Promise<void> {
+  // PDFライブラリを遅延読み込み
+  const { jsPDF, autoTable } = await loadPdfModules();
+
   const pdf = new jsPDF({
     orientation: "portrait",
     unit: "mm",

@@ -6,8 +6,8 @@
 ## 必要な作業
 
 以下の2つのSQL関数を更新する必要があります:
-1. `find_similar_responses_for_scoring` - 同一ケース内の類似回答検索
-2. `find_similar_responses_cross_cases` - 複数ケース間の類似回答検索
+1. `find_similar_responses_for_scoring` - 同一ケース内の類似解答検索
+2. `find_similar_responses_cross_cases` - 複数ケース間の類似解答検索
 
 ## 適用方法
 
@@ -66,7 +66,7 @@ supabase db push
 マイグレーション適用後、以下を確認してください:
 
 1. アプリケーションをリビルド: `npm run build`
-2. スコア予測ページで回答を入力
+2. スコア予測ページで解答を入力
 3. 予測結果に「詳細スコア」セクションが表示されることを確認
 4. 問題把握、対策立案、連携の詳細スコアが表示されることを確認
 
