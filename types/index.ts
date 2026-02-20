@@ -93,7 +93,14 @@ export interface PredictionResponse {
   similarResponses?: Response[];
 }
 
-// エゴグラム性格特徴（回答の文体に影響を与える）
+// 自由形式マネジメント相談の解答
+export interface FreeQuestionResponse {
+  answer: string;           // AIからの解答
+  reasoning?: string;       // 解答の根拠・考え方
+  suggestions?: string[];   // 追加の提案・アドバイス
+}
+
+// エゴグラム性格特徴（解答の文体に影響を与える）
 export interface PersonalityTraits {
   cp: boolean;  // Critical Parent（批判的な親）: 厳格、規律的、断定的
   np: boolean;  // Nurturing Parent（養育的な親）: 思いやり、支援的、優しい

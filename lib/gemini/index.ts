@@ -1,3 +1,3 @@
 // Gemini モジュールのエクスポート
-export { generatePredictionFromSimilar } from './client';
+export { generatePredictionFromSimilar, generateFreeFormAnswer } from './client';
 export { embedText } from './embeddings';

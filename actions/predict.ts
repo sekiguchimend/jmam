@@ -9,8 +9,8 @@ import {
   getCases,
   getCaseById
 } from '@/lib/supabase';
-import { generatePredictionFromSimilar } from '@/lib/gemini';
-import type { Scores, PredictionResponse, Case, Response, PersonalityTraits } from '@/types';
+import { generatePredictionFromSimilar, generateFreeFormAnswer } from '@/lib/gemini';
+import type { Scores, PredictionResponse, Case, Response, PersonalityTraits, FreeQuestionResponse } from '@/types';
 import { hasAccessToken, hasUserAccessToken } from '@/lib/supabase/server';
 import { recordUserScores } from '@/actions/userScore';
 import { savePredictionHistoryAnswer } from '@/actions/predictionHistory';
@@ -103,6 +103,45 @@ export async function predictAnswer(
     return {
       success: false,
       error: error instanceof Error ? error.message : '予測処理中にエラーが発生しました'
+    };
+  }
+}
+
+// 自由形式のマネジメント相談に解答（エンベディング検索なし）
+export async function predictFreeQuestion(
+  question: string,
+  scores: Scores,
+  personalityTraits?: PersonalityTraits
+): Promise<{ success: true; data: FreeQuestionResponse } | { success: false; error: string }> {
+  try {
+    if (!(await ensureAuthenticated())) {
+      return { success: false, error: 'ログインが必要です' };
+    }
+
+    if (!question || question.trim().length === 0) {
+      return { success: false, error: '質問を入力してください' };
+    }
+
+    if (question.trim().length < 10) {
+      return { success: false, error: '質問は10文字以上で入力してください' };
+    }
+
+    // エンベディング検索なしで直接AIに質問を送信
+    const response = await generateFreeFormAnswer(question, scores, personalityTraits);
+
+    return {
+      success: true,
+      data: {
+        answer: response.answer,
+        reasoning: response.reasoning,
+        suggestions: response.suggestions,
+      }
+    };
+  } catch (error) {
+    console.error('predictFreeQuestion error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : '解答生成中にエラーが発生しました'
     };
   }
 }

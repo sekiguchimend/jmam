@@ -274,6 +274,132 @@ ${formatSimilarExamples()}
   }
 }
 
+// 自由形式のマネジメント相談に解答（エンベディングなし）
+export async function generateFreeFormAnswer(
+  question: string,
+  targetScores: Scores,
+  personalityTraits?: PersonalityTraits
+): Promise<{ answer: string; reasoning?: string; suggestions?: string[] }> {
+  // スコアレベルに基づくアドバイスの深さを調整
+  const getScoreLevelGuidance = () => {
+    const avgScore = (targetScores.problem + targetScores.solution + targetScores.leadership + targetScores.collaboration + targetScores.development) / 5;
+
+    if (avgScore >= 3.5) {
+      return `解答レベル: 高度（スコア${avgScore.toFixed(1)}）- 戦略的視点、組織全体への影響を考慮`;
+    } else if (avgScore >= 2.5) {
+      return `解答レベル: 標準（スコア${avgScore.toFixed(1)}）- 実践的で具体的なアドバイス`;
+    } else {
+      return `解答レベル: 基礎（スコア${avgScore.toFixed(1)}）- 基本的で分かりやすいアドバイス`;
+    }
+  };
+
+  const prompt = `あなたはマネジメントの専門家です。管理職の相談に対して、端的かつ具体的に解答してください。
+
+## 相談内容
+${question}
+
+## 相談者のマネジメント能力
+- 問題把握: ${targetScores.problem}/5.0
+- 対策立案: ${targetScores.solution}/5.0
+- 主導: ${targetScores.leadership}/4.0
+- 連携: ${targetScores.collaboration}/4.0
+- 育成: ${targetScores.development}/4.0
+- ${getScoreLevelGuidance()}
+
+## 解答ルール（厳守）
+- 同情や共感の言葉は一切不要（「お疲れ様です」「辛いですよね」等は禁止）
+- 前置きなしで、すぐに具体的な対応策を述べる
+- 箇条書きで端的に解答する
+- 各項目は1-2文で簡潔に
+- 実行可能な具体的アクションを示す
+
+## 出力形式
+以下のJSON形式で出力してください。answerのみ記載すること。
+
+\`\`\`json
+{
+  "answer": "箇条書きで端的な解答（各項目1-2文、全体で300-500文字程度）"
+}
+\`\`\``;
+
+  // Gemini API呼び出し
+  if (!GEMINI_API_KEY) {
+    console.warn('GEMINI_API_KEY (or GOOGLE_API_KEY) is not set. Returning mock response.');
+    return {
+      answer: '（APIキー未設定のためモック解答）ご相談の内容について、まずは現状の把握と関係者との対話を通じて、具体的な改善策を見出していくことをお勧めします。',
+      reasoning: 'モック解答のため根拠はありません。',
+      suggestions: ['関係者との1on1面談を実施する', 'チームの状況を可視化する', '小さな成功体験を積み重ねる'],
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutMs = 30000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        },
+      }),
+    });
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Gemini API error:', errorText);
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // JSONを抽出してパース
+    const jsonMatch = generatedText.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[1]);
+      return {
+        answer: parsed.answer || '解答を生成できませんでした',
+        reasoning: parsed.reasoning || undefined,
+        suggestions: parsed.suggestions || undefined,
+      };
+    }
+
+    // JSONブロックがない場合は直接パースを試みる
+    try {
+      const parsed = JSON.parse(generatedText);
+      return {
+        answer: parsed.answer || '解答を生成できませんでした',
+        reasoning: parsed.reasoning || undefined,
+        suggestions: parsed.suggestions || undefined,
+      };
+    } catch {
+      return {
+        answer: generatedText.substring(0, 1000),
+        reasoning: undefined,
+        suggestions: undefined,
+      };
+    }
+  } catch (error) {
+    console.error('generateFreeFormAnswer error:', error);
+    return {
+      answer: 'エラーが発生しました。時間をおいて再度お試しください。',
+      reasoning: undefined,
+      suggestions: undefined,
+    };
+  }
+}
+
 // モック予測解答を生成（API未設定時やエラー時用）
 function generateMockPrediction(
   targetScores: Scores

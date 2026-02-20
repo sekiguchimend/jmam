@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useTransition, useCallback, useMemo, memo } from "react";
-import { predictAnswer } from "@/actions/predict";
-import type { Case, Scores, PredictionResponse, PersonalityTraits } from "@/types";
+import { predictAnswer, predictFreeQuestion } from "@/actions/predict";
+import type { Case, Scores, PredictionResponse, PersonalityTraits, FreeQuestionResponse } from "@/types";
 import { defaultScores, defaultPersonalityTraits } from "@/types";
-import { AlertCircle, ChevronDown, ChevronRight, Download, FolderOpen, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronRight, Download, FolderOpen, HelpCircle, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
 import { ScoreSlider } from "@/components/ui/ScoreSlider";
 // PDFエクスポートは使用時にdynamic importする（初期バンドルサイズ削減）
 import type { AnswerPredictExportData } from "@/lib/pdf-export";
@@ -365,7 +365,14 @@ const ScoreTableRow = memo(function ScoreTableRow({
   );
 });
 
+// モードの型定義
+type PredictMode = "existing" | "free";
+
 export function PredictClient({ cases }: PredictClientProps) {
+  // モード切り替え
+  const [mode, setMode] = useState<PredictMode>("existing");
+
+  // 既存ケースモード用
   const [selectedCaseId, setSelectedCaseId] = useState("");
   const [scores, setScores] = useState<Scores>(defaultScores);
   const [result, setResult] = useState<PredictionResponse | null>(null);
@@ -375,6 +382,10 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["problem", "solution", "collaboration"]));
   const [isExporting, setIsExporting] = useState(false);
   const [personalityTraits, setPersonalityTraits] = useState<PersonalityTraits>(defaultPersonalityTraits);
+
+  // 新規質問モード用
+  const [freeQuestion, setFreeQuestion] = useState("");
+  const [freeResult, setFreeResult] = useState<FreeQuestionResponse | null>(null);
 
   const toggleAccordion = useCallback((key: string) => {
     setOpenAccordions((prev) => toggleSetItem(prev, key));
@@ -429,6 +440,34 @@ export function PredictClient({ cases }: PredictClientProps) {
     });
   };
 
+  // 新規質問モードの予測実行
+  const handleFreePredict = () => {
+    if (!freeQuestion.trim()) {
+      setError("質問を入力してください");
+      return;
+    }
+
+    setError(null);
+    startTransition(async () => {
+      const scoresWithRole = { ...scores, role: calculatedRole };
+      const response = await predictFreeQuestion(freeQuestion, scoresWithRole, personalityTraits);
+      if (response.success) {
+        setFreeResult(response.data);
+      } else {
+        setError(response.error);
+        setFreeResult(null);
+      }
+    });
+  };
+
+  // モード切り替え時に結果をクリア
+  const handleModeChange = (newMode: PredictMode) => {
+    setMode(newMode);
+    setResult(null);
+    setFreeResult(null);
+    setError(null);
+  };
+
   const handleExportPdf = async () => {
     if (!result) return;
 
@@ -469,45 +508,124 @@ export function PredictClient({ cases }: PredictClientProps) {
 
   return (
     <div className="space-y-6">
-      {/* ケース選択 */}
+      {/* ケース選択 / モード切り替え */}
       <div className="p-5">
-        <div className="flex items-center gap-3 mb-3 max-w-md">
+        <div className="flex items-center gap-3 mb-3">
           <FolderOpen className="w-5 h-5 flex-shrink-0" style={{ color: "#323232" }} />
           <label className="text-sm font-black" style={{ color: "#323232" }}>
-            ケース
+            ケース:
           </label>
-        </div>
-        <select
-          value={selectedCaseId}
-          onChange={(e) => {
-            setSelectedCaseId(e.target.value);
-            setResult(null);
-          }}
-          className="max-w-md px-4 py-2.5 rounded-lg text-sm font-bold appearance-none cursor-pointer"
-          style={{
-            border: "1px solid var(--border)",
-            background: `var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23323232' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center`,
-            color: "#323232",
-            paddingRight: "36px",
-          }}
-        >
-          <option value="">選択してください</option>
-          {cases.map((c) => (
-            <option key={c.case_id} value={c.case_id}>
-              {c.case_name}
-            </option>
-          ))}
-        </select>
-
-        {selectedCase?.situation_text && (
-          <div className="mt-4 p-4 rounded-lg" style={{ background: "var(--background)" }}>
-            <p className="text-xs font-black mb-1" style={{ color: "var(--text-muted)" }}>
-              シチュエーション
-            </p>
-            <p className="text-sm leading-relaxed" style={{ color: "#323232" }}>
-              {selectedCase.situation_text}
-            </p>
+          <div
+            className="inline-flex rounded-lg p-0.5"
+            style={{ background: "var(--border)" }}
+          >
+            <button
+              onClick={() => handleModeChange("existing")}
+              className="px-3 py-1.5 rounded-md text-xs font-black transition-all"
+              style={{
+                background: mode === "existing" ? "#fff" : "transparent",
+                color: mode === "existing" ? "var(--primary)" : "var(--text-muted)",
+                boxShadow: mode === "existing" ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+              }}
+            >
+              既存
+            </button>
+            <button
+              onClick={() => handleModeChange("free")}
+              className="px-3 py-1.5 rounded-md text-xs font-black transition-all"
+              style={{
+                background: mode === "free" ? "#fff" : "transparent",
+                color: mode === "free" ? "#6366f1" : "var(--text-muted)",
+                boxShadow: mode === "free" ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+              }}
+            >
+              自由相談
+            </button>
           </div>
+        </div>
+
+        {/* 既存ケースモード: ケース選択 */}
+        {mode === "existing" && (
+          <>
+          <select
+            value={selectedCaseId}
+            onChange={(e) => {
+              setSelectedCaseId(e.target.value);
+              setResult(null);
+            }}
+            className="max-w-md px-4 py-2.5 rounded-lg text-sm font-bold appearance-none cursor-pointer"
+            style={{
+              border: "1px solid var(--border)",
+              background: `var(--background) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23323232' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center`,
+              color: "#323232",
+              paddingRight: "36px",
+            }}
+          >
+            <option value="">選択してください</option>
+            {cases.map((c) => (
+              <option key={c.case_id} value={c.case_id}>
+                {c.case_name}
+              </option>
+            ))}
+          </select>
+
+          {selectedCase?.situation_text && (
+            <div className="mt-4 p-4 rounded-lg" style={{ background: "var(--background)" }}>
+              <p className="text-xs font-black mb-1" style={{ color: "var(--text-muted)" }}>
+                シチュエーション
+              </p>
+              <p className="text-sm leading-relaxed" style={{ color: "#323232" }}>
+                {selectedCase.situation_text}
+              </p>
+            </div>
+          )}
+        </>
+        )}
+
+        {/* 新規質問モード: 質問入力 */}
+        {mode === "free" && (
+          <>
+          <p className="text-xs font-bold mb-2" style={{ color: "var(--text-muted)" }}>
+            マネジメントに関する相談内容を入力してください
+          </p>
+          <textarea
+            value={freeQuestion}
+            onChange={(e) => setFreeQuestion(e.target.value)}
+            placeholder="例：管理職業務と現場業務で業務過多になり、マネジメントに時間が割けない。どうしたらよいか。"
+            className="w-full px-4 py-3 rounded-lg text-sm resize-none"
+            style={{
+              border: "1px solid var(--border)",
+              background: "var(--background)",
+              color: "#323232",
+              minHeight: "120px",
+            }}
+          />
+          <p className="text-[10px] mt-2" style={{ color: "var(--text-muted)" }}>
+            マネジメント場面を想定した質問・課題を入力してください。設定したスコアに基づいて、そのレベルのマネージャーに適したアドバイスを生成します。
+          </p>
+          <div className="mt-3 p-3 rounded-lg" style={{ background: "var(--background)" }}>
+            <p className="text-xs font-bold mb-2" style={{ color: "var(--text-muted)" }}>
+              質問例
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                "上司と部下の間で板挟みになる",
+                "チームの目標や方針が浸透しない",
+                "ハラスメントに抵触しないか不安で適切な指導ができない",
+                "プレーヤーからマネージャーへの意識転換ができていない",
+              ].map((example) => (
+                <button
+                  key={example}
+                  onClick={() => setFreeQuestion(example + "。どうしたらよいか。")}
+                  className="text-xs px-2.5 py-1.5 rounded-full hover:opacity-70 transition-opacity"
+                  style={{ background: "var(--surface)", color: "#323232", border: "1px solid var(--border)" }}
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
+          </div>
+          </>
         )}
       </div>
 
@@ -727,27 +845,51 @@ export function PredictClient({ cases }: PredictClientProps) {
 
       {/* 実行ボタン */}
       <div className="flex justify-end">
-        <button
-          onClick={handlePredict}
-          disabled={!selectedCaseId || isPending}
-          className="px-6 py-2.5 text-sm font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
-          style={{
-            background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
-            borderRadius: "5px"
-          }}
-        >
-          {isPending ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              予測中...
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              予測を実行
-            </>
-          )}
-        </button>
+        {mode === "existing" ? (
+          <button
+            onClick={handlePredict}
+            disabled={!selectedCaseId || isPending}
+            className="px-6 py-2.5 text-sm font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
+              borderRadius: "5px"
+            }}
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                予測中...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                予測を実行
+              </>
+            )}
+          </button>
+        ) : (
+          <button
+            onClick={handleFreePredict}
+            disabled={!freeQuestion.trim() || isPending}
+            className="px-6 py-2.5 text-sm font-black transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 text-white flex items-center gap-2"
+            style={{
+              background: "linear-gradient(135deg, #6366f1 0%, #4338ca 100%)",
+              borderRadius: "5px"
+            }}
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                解答生成中...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                解答を生成
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* エラー */}
@@ -761,8 +903,31 @@ export function PredictClient({ cases }: PredictClientProps) {
         </div>
       )}
 
-      {/* 結果 - アコーディオン形式 */}
-      {result && !isPending && (
+      {/* 新規質問モードの結果 */}
+      {mode === "free" && freeResult && !isPending && (
+        <div
+          className="rounded-xl p-5"
+          style={{ background: "var(--surface)", border: "1px solid var(--primary)" }}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center"
+              style={{ background: "var(--primary)" }}
+            >
+              <MessageSquare className="w-4 h-4 text-white" />
+            </div>
+            <span className="text-sm font-black" style={{ color: "#323232" }}>
+              解答
+            </span>
+          </div>
+          <div className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#323232" }}>
+            {freeResult.answer}
+          </div>
+        </div>
+      )}
+
+      {/* 既存ケースモードの結果 - アコーディオン形式 */}
+      {mode === "existing" && result && !isPending && (
         <div className="space-y-3">
           {/* PDF出力リンク */}
           <div className="flex justify-end px-2">
