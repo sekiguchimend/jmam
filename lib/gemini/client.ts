@@ -2,7 +2,7 @@
 // LLMによる解答生成（RAG: Retrieval-Augmented Generation）
 // PE-01: 予測応答時間5秒以内を目標
 
-import type { PredictionResponse, Scores } from '@/types';
+import type { PredictionResponse, Scores, PersonalityTraits } from '@/types';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
@@ -18,7 +18,8 @@ function combineQ2Answers(r: { answer_q2?: string | null; answer_q3?: string | n
 export async function generatePredictionFromSimilar(
   situationText: string,
   similarResponses: { answer_q1: string | null; answer_q2: string | null; answer_q3?: string | null; answer_q4?: string | null; answer_q5?: string | null; answer_q6?: string | null; answer_q7?: string | null; answer_q8?: string | null; score_problem: number | null; score_solution: number | null; score_role: number | null; score_leadership: number | null; score_collaboration: number | null; score_development: number | null }[],
-  targetScores: Scores
+  targetScores: Scores,
+  personalityTraits?: PersonalityTraits
 ): Promise<PredictionResponse> {
   // 類似解答者の解答をフォーマット
   const formatSimilarExamples = () => {
@@ -90,6 +91,61 @@ export async function generatePredictionFromSimilar(
       : '';
   };
 
+  // 性格特徴（エゴグラム）に基づく文体指示を生成
+  const generatePersonalityGuidance = () => {
+    if (!personalityTraits) return '';
+
+    const traits: string[] = [];
+
+    if (personalityTraits.cp) {
+      traits.push(`【CP（批判的な親）の特徴を反映】
+- 規律を重視し、「〜すべきである」「〜してはならない」という断定的・指示的な表現を使う
+- 正義感を持ち、問題に対して厳格な姿勢で臨む
+- 責任の所在を明確にし、ルールや基準を重視する
+- 妥協を許さない毅然とした態度を示す`);
+    }
+
+    if (personalityTraits.np) {
+      traits.push(`【NP（養育的な親）の特徴を反映】
+- 思いやりを持ち、「〜を支援する」「〜をサポートする」という支援的な表現を使う
+- メンバーの気持ちに寄り添い、心理的安全性を重視する
+- 「一緒に〜しよう」「〜してあげる」という協力的・保護的な姿勢
+- 部下や同僚の成長を温かく見守る表現を含める`);
+    }
+
+    if (personalityTraits.a) {
+      traits.push(`【A（大人）の特徴を反映】
+- 論理的・客観的に分析し、感情的な表現を避ける
+- データや事実に基づいた冷静な判断を示す
+- 「〜と考えられる」「〜の観点から」という分析的な表現を使う
+- 因果関係を明確にし、合理的な結論を導く`);
+    }
+
+    if (personalityTraits.fc) {
+      traits.push(`【FC（自由な子供）の特徴を反映】
+- 創造的・革新的なアイデアを積極的に提案する
+- 「〜したい」「〜に挑戦する」という意欲的・前向きな表現を使う
+- 既成概念にとらわれない柔軟な発想を示す
+- 好奇心や情熱を感じさせる表現を含める`);
+    }
+
+    if (personalityTraits.ac) {
+      traits.push(`【AC（順応した子供）の特徴を反映】
+- 協調性を重視し、「〜かもしれない」「〜と思われる」という控えめな表現を使う
+- 周囲の意見を尊重し、合意形成を大切にする姿勢
+- 「〜についてご相談させていただく」という謙虚な態度
+- 対立を避け、調和を重視した表現を含める`);
+    }
+
+    return traits.length > 0
+      ? `\n## 文体の性格特徴（エゴグラム）
+以下の性格特徴を解答の文体に反映させてください。複数選択されている場合は、それらをバランスよく組み合わせてください。
+
+${traits.join('\n\n')}
+`
+      : '';
+  };
+
   const prompt = `あなたは職場改善のスコア評価に精通した専門家です。
 
 以下のシチュエーションについて、指定された目標スコアに相当する解答を生成してください。
@@ -105,8 +161,7 @@ ${situationText || '（シチュエーション情報なし）'}
 - 主導: ${targetScores.leadership}（満点4.0）
 - 連携: ${targetScores.collaboration}（満点4.0）
 - 育成: ${targetScores.development}（満点4.0）
-${generateHighScoreGuidance()}
-## 類似解答者の実際の解答（参考）
+${generateHighScoreGuidance()}${generatePersonalityGuidance()}## 類似解答者の実際の解答（参考）
 ※類似解答者のスコアが目標より低い場合は、これを超えるレベルの解答を生成すること
 ${formatSimilarExamples()}
 

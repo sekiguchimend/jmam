@@ -2,8 +2,8 @@
 
 import { useState, useTransition, useCallback, useMemo, memo } from "react";
 import { predictAnswer } from "@/actions/predict";
-import type { Case, Scores, PredictionResponse } from "@/types";
-import { defaultScores } from "@/types";
+import type { Case, Scores, PredictionResponse, PersonalityTraits } from "@/types";
+import { defaultScores, defaultPersonalityTraits } from "@/types";
 import { AlertCircle, ChevronDown, ChevronRight, Download, FolderOpen, Lightbulb, Loader2, MessageSquare, Send, Target } from "lucide-react";
 import { ScoreSlider } from "@/components/ui/ScoreSlider";
 // PDFエクスポートは使用時にdynamic importする（初期バンドルサイズ削減）
@@ -374,6 +374,7 @@ export function PredictClient({ cases }: PredictClientProps) {
   const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set(["q1", "q2"]));
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["problem", "solution", "collaboration"]));
   const [isExporting, setIsExporting] = useState(false);
+  const [personalityTraits, setPersonalityTraits] = useState<PersonalityTraits>(defaultPersonalityTraits);
 
   const toggleAccordion = useCallback((key: string) => {
     setOpenAccordions((prev) => toggleSetItem(prev, key));
@@ -404,6 +405,10 @@ export function PredictClient({ cases }: PredictClientProps) {
     setScores((prev) => ({ ...prev, [key]: value }));
   }, []);
 
+  const handlePersonalityChange = useCallback((key: keyof PersonalityTraits) => {
+    setPersonalityTraits((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
   const handlePredict = () => {
     if (!selectedCaseId) {
       setError("ケースを選択してください");
@@ -414,7 +419,7 @@ export function PredictClient({ cases }: PredictClientProps) {
     startTransition(async () => {
       // 役割理解を自動計算してスコアに追加
       const scoresWithRole = { ...scores, role: calculatedRole };
-      const response = await predictAnswer(selectedCaseId, scoresWithRole);
+      const response = await predictAnswer(selectedCaseId, scoresWithRole, personalityTraits);
       if (response.success) {
         setResult(response.data);
       } else {
@@ -641,6 +646,82 @@ export function PredictClient({ cases }: PredictClientProps) {
 
         <p className="text-[10px] mt-4 text-center" style={{ color: "var(--text-muted)" }}>
           各スコアの上限値・刻み幅は項目ごとに異なります。詳細項目は親項目の左の矢印をクリックして展開できます。
+        </p>
+      </div>
+
+      {/* 性格特徴の選択 */}
+      <div
+        className="rounded-xl p-5"
+        style={{ background: "var(--surface)" }}
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <label className="text-sm font-black" style={{ color: "#323232" }}>
+            性格特徴（文体の風味付け）
+          </label>
+          <span className="text-[10px] px-2 py-0.5 rounded" style={{ background: "var(--background)", color: "var(--text-muted)" }}>
+            任意・複数選択可
+          </span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {[
+            { key: "cp" as keyof PersonalityTraits, label: "CP高", description: "厳格・規律的" },
+            { key: "np" as keyof PersonalityTraits, label: "NP高", description: "思いやり・支援的" },
+            { key: "a" as keyof PersonalityTraits, label: "A高", description: "論理的・客観的" },
+            { key: "fc" as keyof PersonalityTraits, label: "FC高", description: "自由・創造的" },
+            { key: "ac" as keyof PersonalityTraits, label: "AC高", description: "協調的・控えめ" },
+          ].map((trait) => (
+            <label
+              key={trait.key}
+              className="flex items-start gap-2.5 p-3 rounded-lg cursor-pointer transition-all hover:opacity-80"
+              style={{
+                background: personalityTraits[trait.key] ? "var(--primary)" : "var(--background)",
+                border: personalityTraits[trait.key] ? "1px solid var(--primary)" : "1px solid var(--border)",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={personalityTraits[trait.key]}
+                onChange={() => handlePersonalityChange(trait.key)}
+                className="sr-only"
+              />
+              <div
+                className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 mt-0.5"
+                style={{
+                  background: personalityTraits[trait.key] ? "#fff" : "var(--surface)",
+                  border: personalityTraits[trait.key] ? "none" : "1px solid var(--border)",
+                }}
+              >
+                {personalityTraits[trait.key] && (
+                  <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M2 6L5 9L10 3"
+                      stroke="var(--primary)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
+              </div>
+              <div>
+                <p
+                  className="text-sm font-bold"
+                  style={{ color: personalityTraits[trait.key] ? "#fff" : "#323232" }}
+                >
+                  {trait.label}
+                </p>
+                <p
+                  className="text-[10px] mt-0.5"
+                  style={{ color: personalityTraits[trait.key] ? "rgba(255,255,255,0.7)" : "var(--text-muted)" }}
+                >
+                  {trait.description}
+                </p>
+              </div>
+            </label>
+          ))}
+        </div>
+        <p className="text-[10px] mt-3" style={{ color: "var(--text-muted)" }}>
+          エゴグラム理論に基づく性格特徴を選択すると、予測解答の文体にその特徴が反映されます。
         </p>
       </div>
 

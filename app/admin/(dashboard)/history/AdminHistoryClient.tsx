@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useTransition, useRef, memo, useMemo } from "react";
+import { useState, useCallback, useTransition, useRef, memo } from "react";
 import {
   adminFetchPredictionHistory,
   type PredictionHistoryRecord,
@@ -15,6 +15,7 @@ import {
   Target,
   MessageSquare,
   User,
+  Download,
 } from "lucide-react";
 
 interface AdminHistoryClientProps {
@@ -211,7 +212,101 @@ const HistoryItem = memo(function HistoryItem({
   isExpanded: boolean;
   onToggle: () => void;
 }) {
+  const [isExporting, setIsExporting] = useState(false);
   const typeColor = typeColors[record.prediction_type];
+
+  // PDF出力ハンドラ（解答予測用）
+  const handleExportAnswerPdf = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!record.result_predicted_q1 && !record.result_predicted_q2) return;
+
+    setIsExporting(true);
+    try {
+      const caseName = record.case_name || record.case_id || "不明なケース";
+      const timestamp = new Date(record.created_at).toISOString().slice(0, 10).replace(/-/g, "");
+
+      // スコアデータを整形
+      const scoreData = record.input_scores
+        ? [
+            { label: "問題把握", value: record.input_scores.problem ?? 0, max: 5 },
+            { label: "対策立案", value: record.input_scores.solution ?? 0, max: 5 },
+            { label: "主導", value: record.input_scores.leadership ?? 0, max: 4 },
+            { label: "連携", value: record.input_scores.collaboration ?? 0, max: 4 },
+            { label: "育成", value: record.input_scores.development ?? 0, max: 4 },
+          ]
+        : [];
+
+      // 役割理解スコアを計算
+      const roleScore = record.input_scores
+        ? ((record.input_scores.leadership ?? 0) +
+            (record.input_scores.collaboration ?? 0) +
+            (record.input_scores.development ?? 0)) / 3
+        : 0;
+
+      const { exportAnswerPredictToPdf } = await import("@/lib/pdf-export");
+      await exportAnswerPredictToPdf(
+        {
+          caseName,
+          scores: scoreData,
+          roleScore: Math.round(roleScore * 10) / 10,
+          q1Answer: record.result_predicted_q1 || "",
+          q2Answer: record.result_predicted_q2 || "",
+        },
+        `解答予測_${caseName}_${timestamp}`
+      );
+    } catch (err) {
+      console.error("PDF export failed:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // PDF出力ハンドラ（スコア予測用）
+  const handleExportScorePdf = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!record.result_scores) return;
+
+    setIsExporting(true);
+    try {
+      const caseName = record.case_name || record.case_id || "新規ケース";
+      const timestamp = new Date(record.created_at).toISOString().slice(0, 10).replace(/-/g, "");
+
+      // スコアデータを整形
+      const scores = record.result_scores as Record<string, number>;
+      const scoreData = [
+        { label: "問題把握", value: scores.problem ?? 0 },
+        { label: "対策立案", value: scores.solution ?? 0 },
+        { label: "役割理解", value: scores.role ?? 0 },
+        { label: "主導", value: scores.leadership ?? 0 },
+        { label: "連携", value: scores.collaboration ?? 0 },
+        { label: "育成", value: scores.development ?? 0 },
+      ].filter(s => s.value != null);
+
+      // 解答テキストを結合
+      const answerText = [
+        record.input_q1_answer ? `【設問1】\n${record.input_q1_answer}` : "",
+        record.input_q2_answer ? `【設問2】\n${record.input_q2_answer}` : "",
+      ].filter(Boolean).join("\n\n");
+
+      const { exportScorePredictToPdf } = await import("@/lib/pdf-export");
+      await exportScorePredictToPdf(
+        {
+          caseName,
+          situationText: record.situation_text || undefined,
+          questionLabel: "スコア予測結果",
+          answerText: answerText || "（解答なし）",
+          confidence: record.confidence ?? 0,
+          scores: scoreData,
+          explanation: record.result_explanation || "",
+        },
+        `スコア予測_${caseName}_${timestamp}`
+      );
+    } catch (err) {
+      console.error("PDF export failed:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div
@@ -329,6 +424,25 @@ const HistoryItem = memo(function HistoryItem({
             {/* スコア予測の場合: 入力解答と結果スコア */}
             {(record.prediction_type === "score_existing" || record.prediction_type === "score_new") && (
               <>
+                {/* PDF出力ボタン */}
+                {record.result_scores && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleExportScorePdf}
+                      disabled={isExporting}
+                      className="flex items-center gap-1.5 text-sm font-bold transition-opacity hover:opacity-70 disabled:opacity-50"
+                      style={{ color: "var(--primary)" }}
+                    >
+                      {isExporting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      PDF出力 →
+                    </button>
+                  </div>
+                )}
+
                 {/* 入力解答 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {record.input_q1_answer && (
@@ -396,6 +510,25 @@ const HistoryItem = memo(function HistoryItem({
             {/* 解答予測の場合: 入力スコアと結果解答 */}
             {record.prediction_type === "answer" && (
               <>
+                {/* PDF出力ボタン */}
+                {(record.result_predicted_q1 || record.result_predicted_q2) && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleExportAnswerPdf}
+                      disabled={isExporting}
+                      className="flex items-center gap-1.5 text-sm font-bold transition-opacity hover:opacity-70 disabled:opacity-50"
+                      style={{ color: "var(--primary)" }}
+                    >
+                      {isExporting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      PDF出力 →
+                    </button>
+                  </div>
+                )}
+
                 {/* 入力スコア */}
                 {record.input_scores && (
                   <div>

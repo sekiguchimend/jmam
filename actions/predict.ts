@@ -10,7 +10,7 @@ import {
   getCaseById
 } from '@/lib/supabase';
 import { generatePredictionFromSimilar } from '@/lib/gemini';
-import type { Scores, PredictionResponse, Case, Response } from '@/types';
+import type { Scores, PredictionResponse, Case, Response, PersonalityTraits } from '@/types';
 import { hasAccessToken, hasUserAccessToken } from '@/lib/supabase/server';
 import { recordUserScores } from '@/actions/userScore';
 import { savePredictionHistoryAnswer } from '@/actions/predictionHistory';
@@ -46,7 +46,8 @@ export async function fetchCaseById(caseId: string): Promise<Case | null> {
 // スコアに基づいて解答を予測（6指標ユークリッド距離で類似解答者を検索）
 export async function predictAnswer(
   caseId: string,
-  scores: Scores
+  scores: Scores,
+  personalityTraits?: PersonalityTraits
 ): Promise<{ success: true; data: PredictionResponse } | { success: false; error: string }> {
   try {
     if (!(await ensureAuthenticated())) {
@@ -72,7 +73,8 @@ export async function predictAnswer(
     const prediction = await generatePredictionFromSimilar(
       situationText,
       similarResponses,
-      scores
+      scores,
+      personalityTraits
     );
 
     // 4. スコア履歴を保存（失敗しても予測は成功扱い）

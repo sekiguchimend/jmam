@@ -93,6 +93,24 @@ export interface PredictionResponse {
   similarResponses?: Response[];
 }
 
+// エゴグラム性格特徴（回答の文体に影響を与える）
+export interface PersonalityTraits {
+  cp: boolean;  // Critical Parent（批判的な親）: 厳格、規律的、断定的
+  np: boolean;  // Nurturing Parent（養育的な親）: 思いやり、支援的、優しい
+  a: boolean;   // Adult（大人）: 論理的、客観的、冷静
+  fc: boolean;  // Free Child（自由な子供）: 自由奔放、創造的、感情的
+  ac: boolean;  // Adapted Child（順応した子供）: 協調的、遠慮がち、控えめ
+}
+
+// 性格特徴のデフォルト値（すべてオフ）
+export const defaultPersonalityTraits: PersonalityTraits = {
+  cp: false,
+  np: false,
+  a: false,
+  fc: false,
+  ac: false,
+};
+
 export type TypicalExample = {
   case_id: string;
   question: 'q1' | 'q2';
