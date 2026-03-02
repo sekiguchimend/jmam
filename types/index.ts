@@ -61,9 +61,9 @@ export interface Scores {
   problem: number;           // 問題把握（0.5刻み、上限5）
   solution: number;          // 対策立案（0.5刻み、上限5）
   role: number;              // 役割理解（0.1刻み、上限5）
-  leadership: number;        // 主導（0.5刻み、上限4）
-  collaboration: number;     // 連携（0.5刻み、上限4）
-  development: number;       // 育成（0.5刻み、上限4）
+  leadership: number;        // 主導（0.5刻み、上限5）
+  collaboration: number;     // 連携（0.5刻み、上限5）
+  development: number;       // 育成（0.5刻み、上限5）
   // 問題把握の詳細スコア（1刻み、上限4）
   problemUnderstanding?: number;     // 状況理解
   problemEssence?: number;           // 本質把握

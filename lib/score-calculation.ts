@@ -16,7 +16,7 @@
  * @param supervisor - 上司との連携 (1-4)
  * @param external - 職場外との連携 (1-4)
  * @param member - メンバーとの連携 (1-4)
- * @returns 連携スコア (1.0-4.0, 0.5刻み)
+ * @returns 連携スコア (1.0-5.0, 0.5刻み)
  */
 export function calculateCollaborationScore(
   supervisor: number | null | undefined,
@@ -30,8 +30,8 @@ export function calculateCollaborationScore(
   const sum = supervisor + external + member;
   const raw = sum / 2 - 0.5;
 
-  // 範囲制限 (1.0-4.0) と0.5刻みに丸め
-  const clamped = Math.max(1, Math.min(4, raw));
+  // 範囲制限 (1.0-5.0) と0.5刻みに丸め
+  const clamped = Math.max(1, Math.min(5, raw));
   return Math.round(clamped * 2) / 2;
 }
 
@@ -218,10 +218,10 @@ export function calculateMainScoresFromDetails(detailScores: {
  * 式: (主導 + 連携 + 育成) ÷ 3
  * 役割理解は主導・連携・育成の平均として定義される
  *
- * @param leadership - 主導スコア (1-4)
- * @param collaboration - 連携スコア (1-4)
- * @param development - 育成スコア (1-4)
- * @returns 役割理解スコア (1.0-4.0, 小数点1桁)
+ * @param leadership - 主導スコア (1-5)
+ * @param collaboration - 連携スコア (1-5)
+ * @param development - 育成スコア (1-5)
+ * @returns 役割理解スコア (1.0-5.0, 小数点1桁)
  */
 export function calculateRoleScore(
   leadership: number | null | undefined,
@@ -292,8 +292,8 @@ export function estimateLeadershipScore(
     return null;
   }
 
-  // 対策立案を主導の範囲(1-4)に調整
-  const adjusted = Math.min(4, solution);
+  // 対策立案を主導の範囲(1-5)に調整
+  const adjusted = Math.min(5, solution);
   // 0.5刻みに丸め
   return Math.round(adjusted * 2) / 2;
 }
@@ -315,7 +315,7 @@ export function estimateDevelopmentScore(
   }
 
   const raw = solutionMaintenanceHr + 0.5;
-  // 育成は0.5刻み、上限4
-  const clamped = Math.max(1, Math.min(4, raw));
+  // 育成は0.5刻み、上限5
+  const clamped = Math.max(1, Math.min(5, raw));
   return Math.round(clamped * 2) / 2;
 }

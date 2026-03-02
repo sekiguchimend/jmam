@@ -494,7 +494,7 @@ function ScoringGuideSection() {
         />
 
         <ScoreGuideCard
-          title="主導（上限4.0点、刻み0.5点）"
+          title="主導（上限5.0点、刻み0.5点）"
           criteria={[
             "リーダーシップを発揮しているか",
             "主体的に行動する姿勢があるか",
@@ -503,7 +503,7 @@ function ScoringGuideSection() {
         />
 
         <ScoreGuideCard
-          title="連携（上限4.0点、刻み0.5点）"
+          title="連携（上限5.0点、刻み0.5点）"
           criteria={[
             "上司との連携: 報告・相談ができているか",
             "職場外との連携: 他部署・外部との協力体制があるか",
@@ -512,7 +512,7 @@ function ScoringGuideSection() {
         />
 
         <ScoreGuideCard
-          title="育成（上限4.0点、刻み0.5点）"
+          title="育成（上限5.0点、刻み0.5点）"
           criteria={[
             "メンバーの成長を支援する視点があるか",
             "指導・助言の機会を設けているか",

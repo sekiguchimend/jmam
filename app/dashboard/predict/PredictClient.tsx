@@ -67,14 +67,14 @@ const scoreStructure: ScoreItemConfig[] = [
     label: "主導",
     description: "主体的に問題解決に取り組む",
     step: 0.5,
-    max: 4,
+    max: 5,
   },
   {
     key: "collaboration",
     label: "連携",
     description: "関係者に働きかける",
     step: 0.5,
-    max: 4,
+    max: 5,
     children: [
       { key: "collabSupervisor", label: "上司", description: "上司に適切なタイミングで報告・連絡・相談する", step: 1, max: 4 },
       { key: "collabExternal", label: "職場外", description: "職場外の関係者を適切に巻き込みながら、問題を解決する", step: 1, max: 4 },
@@ -86,7 +86,7 @@ const scoreStructure: ScoreItemConfig[] = [
     label: "育成",
     description: "メンバーや部下を育成する",
     step: 0.5,
-    max: 4,
+    max: 5,
   },
 ];
 

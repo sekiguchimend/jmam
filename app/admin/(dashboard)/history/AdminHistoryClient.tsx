@@ -230,9 +230,9 @@ const HistoryItem = memo(function HistoryItem({
         ? [
             { label: "問題把握", value: record.input_scores.problem ?? 0, max: 5 },
             { label: "対策立案", value: record.input_scores.solution ?? 0, max: 5 },
-            { label: "主導", value: record.input_scores.leadership ?? 0, max: 4 },
-            { label: "連携", value: record.input_scores.collaboration ?? 0, max: 4 },
-            { label: "育成", value: record.input_scores.development ?? 0, max: 4 },
+            { label: "主導", value: record.input_scores.leadership ?? 0, max: 5 },
+            { label: "連携", value: record.input_scores.collaboration ?? 0, max: 5 },
+            { label: "育成", value: record.input_scores.development ?? 0, max: 5 },
           ]
         : [];
 

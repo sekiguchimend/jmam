@@ -34,7 +34,7 @@ score_collaboration = (上司 + 職場外 + メンバー) ÷ 2 - 0.5
 
 ### 制約
 - 最小値: 1.0
-- 最大値: 4.0
+- 最大値: 5.0
 - 刻み: 0.5
 
 ### TypeScript実装
@@ -47,7 +47,7 @@ function calculateCollaboration(
   const sum = supervisor + external + member;
   const raw = sum / 2 - 0.5;
   // 範囲制限と0.5刻みに丸め
-  return Math.max(1, Math.min(4, Math.round(raw * 2) / 2));
+  return Math.max(1, Math.min(5, Math.round(raw * 2) / 2));
 }
 ```
 
@@ -294,7 +294,7 @@ export function calculateCollaboration(
 ): number {
   const sum = supervisor + external + member;
   const raw = sum / 2 - 0.5;
-  return Math.max(1, Math.min(4, Math.round(raw * 2) / 2));
+  return Math.max(1, Math.min(5, Math.round(raw * 2) / 2));
 }
 
 export function calculateProblem(

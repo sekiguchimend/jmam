@@ -17,9 +17,9 @@ const SCORE_CONFIG = {
   problem: { step: 0.5, max: 5 },           // 問題把握：刻み0.5、上限5
   solution: { step: 0.5, max: 5 },          // 対策立案：刻み0.5、上限5
   role: { step: 0.1, max: 5 },              // 役割理解：刻み0.1、上限5
-  leadership: { step: 0.5, max: 4 },        // 主導：刻み0.5、上限4
-  collaboration: { step: 0.5, max: 4 },     // 連携：刻み0.5、上限4
-  development: { step: 0.5, max: 4 },       // 育成：刻み0.5、上限4
+  leadership: { step: 0.5, max: 5 },        // 主導：刻み0.5、上限5
+  collaboration: { step: 0.5, max: 5 },     // 連携：刻み0.5、上限5
+  development: { step: 0.5, max: 5 },       // 育成：刻み0.5、上限5
   // 詳細スコア（すべて）：刻み1、上限4
   detail: { step: 1, max: 4 },
 } as const;

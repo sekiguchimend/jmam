@@ -387,11 +387,11 @@ export function calculateMainScores(details: DetailScores): MainScores {
   const collaboration = COLLAB_LOOKUP[collabSum] ?? fallbackCalculation(collabSum, 3, 4);
 
   // 4. 主導を計算（対策立案とほぼ同じ）
-  const leadership = Math.min(4, Math.max(1.5, solution));
+  const leadership = Math.min(5, Math.max(1.5, solution));
 
   // 5. 育成を計算（対策立案の維持管理・人 + 0.5）
   const developmentRaw = details.solutionMaintenanceHr + 0.5;
-  const development = Math.min(4, Math.max(1.5, Math.round(developmentRaw / 0.5) * 0.5));
+  const development = Math.min(5, Math.max(1.5, Math.round(developmentRaw / 0.5) * 0.5));
 
   // 6. 役割理解を計算（連携と主導の平均）
   const roleRaw = (collaboration + leadership) / 2;

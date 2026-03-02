@@ -873,8 +873,8 @@ function normalizeAIResponse(parsed: any, request: AIScoringRequest): AIScoringR
   // AIが評価したrole/leadership/developmentを正規化
   const normalizedAIScores = {
     role: normalizeMainScore(aiScores.role, 0.1, 5),          // 0.1刻み、上限5
-    leadership: normalizeMainScore(aiScores.leadership, 0.5, 4), // 0.5刻み、上限4
-    development: normalizeMainScore(aiScores.development, 0.5, 4), // 0.5刻み、上限4
+    leadership: normalizeMainScore(aiScores.leadership, 0.5, 5), // 0.5刻み、上限5
+    development: normalizeMainScore(aiScores.development, 0.5, 5), // 0.5刻み、上限5
   };
 
   // 詳細スコアから主要スコア（problem/solution/collaboration）を計算
@@ -912,7 +912,7 @@ function calculateMainScoresFromDetail(
     const sum = supervisor + external + member;
     const raw = sum / 2 - 0.5;
     // 範囲制限と0.5刻みに丸め
-    return Math.max(1, Math.min(4, Math.round(raw * 2) / 2));
+    return Math.max(1, Math.min(5, Math.round(raw * 2) / 2));
   };
 
   // 問題把握スコアの計算（設問1のみ）
@@ -966,7 +966,7 @@ function calculateMainScoresFromDetail(
   // AIスコアがない場合のフォールバック用推定関数
   const estimateLeadership = (solution: number | null): number | null => {
     if (solution !== null) {
-      return Math.max(1, Math.min(4, Math.round(solution * 2) / 2));
+      return Math.max(1, Math.min(5, Math.round(solution * 2) / 2));
     }
     return null;
   };
@@ -974,7 +974,7 @@ function calculateMainScoresFromDetail(
   const estimateDevelopment = (solutionMaintenanceHr: number | null): number | null => {
     if (solutionMaintenanceHr !== null) {
       const raw = solutionMaintenanceHr + 0.5;
-      return Math.max(1, Math.min(4, Math.round(raw * 2) / 2));
+      return Math.max(1, Math.min(5, Math.round(raw * 2) / 2));
     }
     return null;
   };
