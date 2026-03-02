@@ -6,6 +6,9 @@ import { AdminDatasetList } from "./AdminDatasetList";
 import Link from "next/link";
 import { Briefcase, Database, CheckCircle, Plus } from "lucide-react";
 
+// 動的レンダリングを強制（cookies使用のため）
+export const dynamic = 'force-dynamic';
+
 // データ取得をキャッシュして重複呼び出しを防ぐ
 const getCachedAdminData = cache(async () => {
   const stats = await fetchDatasetStats();

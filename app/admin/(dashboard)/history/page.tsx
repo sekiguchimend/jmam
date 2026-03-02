@@ -4,6 +4,9 @@ import { AdminHistoryClient } from "./AdminHistoryClient";
 import { adminFetchPredictionHistory } from "@/actions/predictionHistory";
 import { Loader2 } from "lucide-react";
 
+// 動的レンダリングを強制（cookies使用のため）
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: "予測履歴 | 管理者",
 };
