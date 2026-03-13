@@ -532,16 +532,64 @@ export async function updateCaseSituation(
   }
 }
 
-// 解答データをバッチinsert（各行を1レコードとして保存）
+// 解答データをバッチ挿入/更新（重複チェックしてから挿入または更新）
 export async function insertResponses(responses: ResponseInsert[], accessToken?: string): Promise<void> {
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
-  const { error } = await supabase.from('responses').insert(responses satisfies ResponseInsert[]);
 
-  if (error) {
-    console.error('insertResponses error:', error);
-    throw new Error(`解答データの登録に失敗しました: ${error.message ?? 'unknown error'}`);
+  // 既存レコードのキーを取得
+  const keys = responses.map((r) => ({ case_id: r.case_id, response_id: r.response_id }));
+  const uniqueKeys = Array.from(
+    new Map(keys.map((k) => [`${k.case_id}|${k.response_id}`, k])).values()
+  );
+
+  // 既存レコードを検索
+  const existingMap = new Map<string, string>(); // key -> id
+  const batchSize = 100;
+  for (let i = 0; i < uniqueKeys.length; i += batchSize) {
+    const batch = uniqueKeys.slice(i, i + batchSize);
+    const orConditions = batch.map((k) => `and(case_id.eq.${k.case_id},response_id.eq.${k.response_id})`).join(',');
+    const { data } = await supabase
+      .from('responses')
+      .select('id, case_id, response_id')
+      .or(orConditions);
+    for (const row of data ?? []) {
+      existingMap.set(`${row.case_id}|${row.response_id}`, row.id);
+    }
+  }
+
+  // 挿入と更新に分類
+  const toInsert: ResponseInsert[] = [];
+  const toUpdate: { id: string; data: ResponseInsert }[] = [];
+
+  for (const r of responses) {
+    const key = `${r.case_id}|${r.response_id}`;
+    const existingId = existingMap.get(key);
+    if (existingId) {
+      toUpdate.push({ id: existingId, data: r });
+    } else {
+      toInsert.push(r);
+      existingMap.set(key, 'pending'); // 重複挿入を防ぐ
+    }
+  }
+
+  // 新規挿入
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from('responses').insert(toInsert satisfies ResponseInsert[]);
+    if (error) {
+      console.error('insertResponses insert error:', error);
+      throw new Error(`解答データの登録に失敗しました: ${error.message ?? 'unknown error'}`);
+    }
+  }
+
+  // 既存更新（バッチで処理）
+  for (const { id, data } of toUpdate) {
+    const { error } = await supabase.from('responses').update(data).eq('id', id);
+    if (error) {
+      console.error('insertResponses update error:', error);
+      // 更新エラーは警告のみ（処理継続）
+    }
   }
 }
 
