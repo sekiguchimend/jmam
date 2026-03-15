@@ -589,6 +589,79 @@ export type Database = {
           }
         ];
       };
+      upload_jobs: {
+        Row: {
+          id: string;
+          admin_user_id: string;
+          file_name: string;
+          file_path: string;
+          file_size: number;
+          status: 'pending' | 'processing' | 'completed' | 'error';
+          total_rows: number | null;
+          processed_rows: number;
+          error_message: string | null;
+          errors: unknown;
+          prepare_status: 'pending' | 'processing' | 'completed' | 'skipped' | null;
+          embedding_processed: number;
+          embedding_succeeded: number;
+          embedding_failed: number;
+          typicals_done: number;
+          typicals_total: number;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          admin_user_id: string;
+          file_name: string;
+          file_path: string;
+          file_size: number;
+          status?: 'pending' | 'processing' | 'completed' | 'error';
+          total_rows?: number | null;
+          processed_rows?: number;
+          error_message?: string | null;
+          errors?: unknown;
+          prepare_status?: 'pending' | 'processing' | 'completed' | 'skipped' | null;
+          embedding_processed?: number;
+          embedding_succeeded?: number;
+          embedding_failed?: number;
+          typicals_done?: number;
+          typicals_total?: number;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          admin_user_id?: string;
+          file_name?: string;
+          file_path?: string;
+          file_size?: number;
+          status?: 'pending' | 'processing' | 'completed' | 'error';
+          total_rows?: number | null;
+          processed_rows?: number;
+          error_message?: string | null;
+          errors?: unknown;
+          prepare_status?: 'pending' | 'processing' | 'completed' | 'skipped' | null;
+          embedding_processed?: number;
+          embedding_succeeded?: number;
+          embedding_failed?: number;
+          typicals_done?: number;
+          typicals_total?: number;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'upload_jobs_admin_user_id_fkey';
+            columns: ['admin_user_id'];
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {

@@ -1,4 +1,5 @@
-// CSVアップロード API（SSEで進捗を返す）
+// CSVアップロード処理 API（SSEで進捗を返す）
+// ハイブリッド方式: Server ActionでStorage保存済み → このAPIでジョブ処理
 // FR-07〜FR-11 / PE-02 / MN-02
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,7 @@ import type { CsvRowData } from '@/types';
 import { toScoreBucket } from '@/lib/scoring';
 import { processEmbeddingQueueBatchWithToken, rebuildTypicalExamplesForBucketWithToken } from '@/lib/prepare/worker';
 import { sanitizeText, stripControlChars, truncateString } from '@/lib/security';
+import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 
 const BATCH_SIZE = 5000; // DB往復を減らすため大きめに設定
 // 必須ヘッダー（正規化後の形式で定義 - 半角スペース）
@@ -124,83 +126,11 @@ function parseRow(
   };
 }
 
-async function detectEncodingAndRebuildStream(file: File): Promise<{
-  stream: ReadableStream<Uint8Array>;
-  encoding: string;
-}> {
-  // 先頭の少量だけ読んでUTF-8/Shift_JISを判定し、その後に同じストリームを復元してデコードする
-  const source = file.stream();
-  const reader = source.getReader();
-  const prefixChunks: Uint8Array[] = [];
-  let prefixBytes = 0;
-
-  while (prefixBytes < 64 * 1024) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (value) {
-      prefixChunks.push(value);
-      prefixBytes += value.byteLength;
-    }
-    // ヘッダー行が取れそうなら早めに止める（適当な閾値）
-    if (prefixBytes >= 8 * 1024) break;
-  }
-
-  const concatPrefix = (chunks: Uint8Array[]) => {
-    const total = chunks.reduce((acc, c) => acc + c.byteLength, 0);
-    const out = new Uint8Array(total);
-    let offset = 0;
-    for (const c of chunks) {
-      out.set(c, offset);
-      offset += c.byteLength;
-    }
-    return out;
-  };
-
-  const prefix = concatPrefix(prefixChunks);
-
-  const tryDecode = (encoding: string) => {
-    try {
-      const dec = new TextDecoder(encoding as never, { fatal: false });
-      return dec.decode(prefix);
-    } catch {
-      return '';
-    }
-  };
-
-  const utf8 = tryDecode('utf-8');
-  // Shift_JISの判定は不要（utf8LooksOk=falseの場合にshift-jisへフォールバックするため）
-  const utf8LooksOk =
-    utf8.includes('受注番号') || utf8.includes('題材コード') || utf8.includes('Ⅱ') || utf8.includes('MC');
-
-  const encoding = utf8LooksOk ? 'utf-8' : 'shift-jis';
-
-  // prefix + 残りのストリームを連結
-  const rebuilt = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const c of prefixChunks) controller.enqueue(c);
-      (async () => {
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (value) controller.enqueue(value);
-          }
-          controller.close();
-        } catch (e) {
-          controller.error(e);
-        }
-      })();
-    },
-  });
-
-  // ここではバイトストリームの復元まで。デコードはiterateLinesFromBytesで行う。
-  return { stream: rebuilt, encoding };
-}
-
 function sseEvent(event: string, data: unknown) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
+// ジョブIDを受け取り、Storageからファイルを取得して処理
 export async function POST(request: Request) {
   const encoder = new TextEncoder();
 
@@ -216,18 +146,6 @@ export async function POST(request: Request) {
           return;
         }
 
-        const formData = await request.formData();
-        const file = formData.get('file');
-
-        if (!(file instanceof File)) {
-          send('error', { error: 'ファイルが選択されていません' });
-          controller.close();
-          return;
-        }
-
-        const fileName = file.name || 'upload.csv';
-        send('start', { fileName });
-
         const adminToken = await getAccessToken();
         if (!adminToken) {
           send('error', { error: '管理者トークンが見つかりません（再ログインしてください）' });
@@ -235,7 +153,92 @@ export async function POST(request: Request) {
           return;
         }
 
-        const { stream: byteStream, encoding } = await detectEncodingAndRebuildStream(file);
+        // URLからジョブIDを取得
+        const url = new URL(request.url);
+        const jobId = url.searchParams.get('jobId');
+
+        if (!jobId) {
+          send('error', { error: 'ジョブIDが指定されていません' });
+          controller.close();
+          return;
+        }
+
+        const supabase = createAuthedAnonServerClient(adminToken);
+
+        // ジョブ情報を取得
+        const { data: job, error: jobError } = await supabase
+          .from('upload_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single();
+
+        if (jobError || !job) {
+          send('error', { error: 'ジョブが見つかりません' });
+          controller.close();
+          return;
+        }
+
+        if (job.status !== 'pending') {
+          send('error', { error: `このジョブは既に処理されています（状態: ${job.status}）` });
+          controller.close();
+          return;
+        }
+
+        // ジョブステータスを処理中に更新
+        await supabase
+          .from('upload_jobs')
+          .update({ status: 'processing' })
+          .eq('id', jobId);
+
+        const fileName = job.file_name;
+        send('start', { fileName });
+
+        // StorageからCSVファイルを取得
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from('csv-uploads')
+          .download(job.file_path);
+
+        if (downloadError || !fileData) {
+          console.error('Storage download error:', downloadError);
+          await supabase
+            .from('upload_jobs')
+            .update({ status: 'error', error_message: 'ファイルのダウンロードに失敗しました' })
+            .eq('id', jobId);
+          send('error', { error: 'ファイルのダウンロードに失敗しました' });
+          controller.close();
+          return;
+        }
+
+        // Blobをストリームに変換してエンコーディング検出
+        const arrayBuffer = await fileData.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        // エンコーディング検出
+        const detectEncoding = (bytes: Uint8Array): string => {
+          const prefix = bytes.slice(0, Math.min(64 * 1024, bytes.length));
+          const tryDecode = (encoding: string) => {
+            try {
+              return new TextDecoder(encoding as never, { fatal: false }).decode(prefix);
+            } catch {
+              return '';
+            }
+          };
+          const utf8 = tryDecode('utf-8');
+          const utf8LooksOk =
+            utf8.includes('受注番号') || utf8.includes('題材コード') || utf8.includes('Ⅱ') || utf8.includes('MC');
+          return utf8LooksOk ? 'utf-8' : 'shift-jis';
+        };
+
+        const encoding = detectEncoding(uint8Array);
+
+        // Uint8ArrayをReadableStreamに変換
+        const byteStream = new ReadableStream<Uint8Array>({
+          start(ctrl) {
+            ctrl.enqueue(uint8Array);
+            ctrl.close();
+          },
+        });
+
         const records = iterateCsvRecordsFromBytes(byteStream, encoding);
 
         let headers: string[] | null = null;
@@ -279,6 +282,10 @@ export async function POST(request: Request) {
 
             const msg = `必須カラムが見つかりません: ${headerValidation.missing.join(', ')}`;
             console.error('CSV header error:', { fileName, missing: headerValidation.missing });
+            await supabase
+              .from('upload_jobs')
+              .update({ status: 'error', error_message: msg, errors: [msg] })
+              .eq('id', jobId);
             send('error', { fileName, error: msg, errors: [msg] });
             controller.close();
             return;
@@ -292,6 +299,14 @@ export async function POST(request: Request) {
             debugSkippedError += 1;
             console.error('CSV row validation error:', { fileName, recordNo, error: result.error });
             if (errors.length >= 10) {
+              await supabase
+                .from('upload_jobs')
+                .update({
+                  status: 'error',
+                  error_message: '検証エラーが多数あります。最初の10件を表示します。',
+                  errors,
+                })
+                .eq('id', jobId);
               send('error', {
                 fileName,
                 error: '検証エラーが多数あります。最初の10件を表示します。',
@@ -356,6 +371,12 @@ export async function POST(request: Request) {
             processedCount += batch.length;
             batch = [];
 
+            // ジョブ進捗を更新
+            await supabase
+              .from('upload_jobs')
+              .update({ processed_rows: processedCount })
+              .eq('id', jobId);
+
             send('progress', {
               fileName,
               processed: processedCount,
@@ -365,6 +386,10 @@ export async function POST(request: Request) {
         }
 
         if (!headers) {
+          await supabase
+            .from('upload_jobs')
+            .update({ status: 'error', error_message: 'データが存在しません' })
+            .eq('id', jobId);
           send('error', { fileName: 'upload.csv', error: 'データが存在しません' });
           controller.close();
           return;
@@ -403,6 +428,13 @@ export async function POST(request: Request) {
             }
           }
           processedCount += batch.length;
+
+          // ジョブ進捗を更新
+          await supabase
+            .from('upload_jobs')
+            .update({ processed_rows: processedCount })
+            .eq('id', jobId);
+
           send('progress', {
             fileName,
             processed: processedCount,
@@ -436,12 +468,29 @@ export async function POST(request: Request) {
         let totalFailed = 0;
         send('prepare_start', { status: 'started' });
 
+        // ジョブの事前準備ステータスを更新
+        await supabase
+          .from('upload_jobs')
+          .update({ prepare_status: 'processing' })
+          .eq('id', jobId);
+
         while (Date.now() - prepareStartedAt < AUTO_PREPARE_MAX_MS) {
           const res = await processEmbeddingQueueBatchWithToken(adminToken, 200);
           if (res.processed === 0) break;
           totalProcessed += res.processed;
           totalSucceeded += res.succeeded;
           totalFailed += res.failed;
+
+          // ジョブのembedding進捗を更新
+          await supabase
+            .from('upload_jobs')
+            .update({
+              embedding_processed: totalProcessed,
+              embedding_succeeded: totalSucceeded,
+              embedding_failed: totalFailed,
+            })
+            .eq('id', jobId);
+
           send('prepare_progress', {
             phase: 'embeddings',
             processed: totalProcessed,
@@ -453,6 +502,13 @@ export async function POST(request: Request) {
         // 典型例生成（このアップロードで触れた範囲だけ）
         const items = Array.from(touchedBuckets.values()).slice(0, 200); // 大量アップロード対策
         let typicalDone = 0;
+
+        // ジョブのtypicals_totalを更新
+        await supabase
+          .from('upload_jobs')
+          .update({ typicals_total: items.length })
+          .eq('id', jobId);
+
         for (const key of items) {
           if (Date.now() - prepareStartedAt >= AUTO_PREPARE_MAX_MS) break;
           const [caseId, question, bucketStr] = key.split('__');
@@ -467,9 +523,34 @@ export async function POST(request: Request) {
           });
           typicalDone += 1;
           if (typicalDone % 10 === 0) {
+            // ジョブのtypicals進捗を更新
+            await supabase
+              .from('upload_jobs')
+              .update({ typicals_done: typicalDone })
+              .eq('id', jobId);
+
             send('prepare_progress', { phase: 'typicals', done: typicalDone, total: items.length });
           }
         }
+
+        // ジョブを完了に更新
+        await supabase
+          .from('upload_jobs')
+          .update({
+            status: 'completed',
+            prepare_status: 'completed',
+            processed_rows: processedCount,
+            total_rows: processedCount,
+            embedding_processed: totalProcessed,
+            embedding_succeeded: totalSucceeded,
+            embedding_failed: totalFailed,
+            typicals_done: typicalDone,
+            completed_at: new Date().toISOString(),
+          })
+          .eq('id', jobId);
+
+        // Storageから一時ファイルを削除
+        await supabase.storage.from('csv-uploads').remove([job.file_path]);
 
         send('prepare_done', {
           status: 'done',
@@ -494,5 +575,3 @@ export async function POST(request: Request) {
     },
   });
 }
-
-

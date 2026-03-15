@@ -4,13 +4,109 @@
 
 'use server';
 
-import { 
+import {
   getDatasetStats,
   deleteResponsesByCaseId,
   getTotalResponseCount
 } from '@/lib/supabase';
 import type { DatasetStats } from '@/types';
-import { isAdmin } from '@/lib/supabase/server';
+import { isAdmin, getAccessToken } from '@/lib/supabase/server';
+import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
+import { getUserIdFromJwt } from '@/lib/jwt';
+
+// ============================================
+// CSVファイルアップロード（ハイブリッド方式）
+// Server ActionでStorageへ保存 → API RouteでSSE処理
+// ============================================
+
+export type UploadJobResult = {
+  success: boolean;
+  jobId?: string;
+  error?: string;
+};
+
+// CSVファイルをSupabase Storageにアップロードし、ジョブを作成
+export async function uploadCsvToStorage(formData: FormData): Promise<UploadJobResult> {
+  try {
+    // 管理者チェック
+    if (!(await isAdmin())) {
+      return { success: false, error: '管理者権限がありません' };
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      return { success: false, error: '認証トークンが見つかりません（再ログインしてください）' };
+    }
+
+    const userId = getUserIdFromJwt(token);
+    if (!userId) {
+      return { success: false, error: 'ユーザーIDの取得に失敗しました' };
+    }
+
+    const file = formData.get('file');
+    if (!(file instanceof File)) {
+      return { success: false, error: 'ファイルが選択されていません' };
+    }
+
+    if (!file.name.endsWith('.csv')) {
+      return { success: false, error: 'CSVファイルのみアップロード可能です' };
+    }
+
+    // ファイルサイズチェック（100MB上限）
+    const maxSize = 100 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return { success: false, error: 'ファイルサイズが100MBを超えています' };
+    }
+
+    const supabase = createAuthedAnonServerClient(token);
+
+    // ファイルをStorageにアップロード
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filePath = `uploads/${userId}/${timestamp}_${safeName}`;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const { error: uploadError } = await supabase.storage
+      .from('csv-uploads')
+      .upload(filePath, arrayBuffer, {
+        contentType: 'text/csv',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('Storage upload error:', uploadError);
+      return { success: false, error: `ファイルのアップロードに失敗しました: ${uploadError.message}` };
+    }
+
+    // upload_jobsテーブルにジョブを作成
+    const { data: job, error: jobError } = await supabase
+      .from('upload_jobs')
+      .insert({
+        admin_user_id: userId,
+        file_name: file.name,
+        file_path: filePath,
+        file_size: file.size,
+        status: 'pending',
+      })
+      .select('id')
+      .single();
+
+    if (jobError || !job) {
+      console.error('Job creation error:', jobError);
+      // アップロード済みファイルを削除
+      await supabase.storage.from('csv-uploads').remove([filePath]);
+      return { success: false, error: `ジョブの作成に失敗しました: ${jobError?.message ?? 'unknown'}` };
+    }
+
+    return { success: true, jobId: job.id };
+  } catch (error) {
+    console.error('uploadCsvToStorage error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'アップロード処理に失敗しました',
+    };
+  }
+}
 
 // データセット統計を取得（FR-12）
 export async function fetchDatasetStats(): Promise<DatasetStats[]> {

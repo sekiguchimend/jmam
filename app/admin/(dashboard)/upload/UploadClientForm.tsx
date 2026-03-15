@@ -1,5 +1,6 @@
 // CSVアップロードフォーム（Client Component）
 // FR-07〜FR-11: アップロード、検証、バッチ処理、進捗表示、エラー報告
+// ハイブリッド方式: Server ActionでStorage保存 → API RouteでSSE進捗
 
 "use client";
 
@@ -8,6 +9,7 @@ import Link from "next/link";
 import { ProgressBar } from "@/components/ui";
 import { CloudUpload, Loader2, Check, X } from "lucide-react";
 import { iterateCsvRecordsFromBytes, parseCSVLine } from "@/lib/utils";
+import { uploadCsvToStorage } from "@/actions/upload";
 
 type UploadState = "idle" | "uploading" | "preparing" | "completed" | "error";
 
@@ -231,16 +233,23 @@ export function UploadClientForm() {
         const total = await countCsvDataRecords(file);
         setTotalCount(total);
 
+        // Step 1: Server ActionでStorageにアップロード（100MBまで対応）
         const formData = new FormData();
         formData.append("file", file);
 
-        const response = await fetch("/api/admin/upload", {
+        const uploadResult = await uploadCsvToStorage(formData);
+
+        if (!uploadResult.success || !uploadResult.jobId) {
+          throw new Error(uploadResult.error ?? "アップロードに失敗しました");
+        }
+
+        // Step 2: API RouteでSSE接続して処理進捗を受信
+        const response = await fetch(`/api/admin/upload?jobId=${uploadResult.jobId}`, {
           method: "POST",
-          body: formData,
         });
 
         if (!response.ok) {
-          throw new Error(`アップロードに失敗しました (${response.status})`);
+          throw new Error(`処理の開始に失敗しました (${response.status})`);
         }
 
         await readSseStream(response, (ev) => {

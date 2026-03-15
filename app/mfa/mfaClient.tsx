@@ -123,48 +123,79 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
         </SurfaceCard>
       )}
 
-      {enroll && (
-        <SurfaceCard className="space-y-4">
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="w-6 h-6 flex-shrink-0" style={{ color: 'var(--primary)' }} />
-            <div>
-              <p className="font-black" style={{ color: '#323232' }}>
-                認証アプリに追加
-              </p>
-              <p className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
-                QRコードをスキャンして、表示された6桁コードを入力してください
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-lg p-3 flex items-center justify-center" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={enroll.qrCode} alt="TOTP QR code" className="w-48 h-48" />
-          </div>
-
-          <div className="text-xs font-black" style={{ color: 'var(--text-muted)' }}>
-            うまくスキャンできない場合は、シークレットを手入力してください：
-          </div>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 px-3 py-2 rounded-lg text-xs font-black overflow-x-auto" style={{ background: 'var(--background)', border: '1px solid var(--border)', color: '#323232' }}>
-              {enroll.secret}
-            </code>
-            <button
-              type="button"
-              onClick={handleCopySecret}
-              className="p-2 rounded-lg hover:bg-black/5"
-              style={{ border: '1px solid var(--border)', color: '#323232' }}
-              aria-label="シークレットをコピー"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
-          </div>
-        </SurfaceCard>
-      )}
-
-      {/* verify */}
+      {/* verify - ログイン時もQRコード表示可能 */}
       {status.ok && (status.mode === 'needsVerify' || enroll) && (
         <div className="space-y-3">
+          {/* ログイン時（needsVerify）でもQRコードを表示できるようにする */}
+          {status.mode === 'needsVerify' && !enroll && (
+            <SurfaceCard className="space-y-3">
+              <div className="flex items-start gap-3">
+                <QrCode className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+                <div>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
+                    認証アプリを再設定する場合はQRコードを表示してください
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={handleStartEnroll}
+                className="w-full py-2 px-4 rounded-lg font-bold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'var(--background)', color: '#323232', border: '1px solid var(--border)' }}
+              >
+                {isPending ? (
+                  <LoadingSpinner text="準備中..." className="font-bold" />
+                ) : (
+                  <span className="flex items-center justify-center gap-2 font-bold">
+                    <QrCode className="w-4 h-4" />
+                    QRコードを表示
+                  </span>
+                )}
+              </button>
+            </SurfaceCard>
+          )}
+
+          {/* QRコード表示（enrollがある場合） - コード入力欄の上に表示 */}
+          {enroll && (
+            <SurfaceCard className="space-y-4">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="w-6 h-6 flex-shrink-0" style={{ color: 'var(--primary)' }} />
+                <div>
+                  <p className="font-black" style={{ color: '#323232' }}>
+                    認証アプリに追加
+                  </p>
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
+                    QRコードをスキャンして、表示された6桁コードを入力してください
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg p-3 flex items-center justify-center" style={{ background: 'var(--background)', border: '1px solid var(--border)' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={enroll.qrCode} alt="TOTP QR code" className="w-48 h-48" />
+              </div>
+
+              <div className="text-xs font-black" style={{ color: 'var(--text-muted)' }}>
+                うまくスキャンできない場合は、シークレットを手入力してください：
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-3 py-2 rounded-lg text-xs font-black overflow-x-auto" style={{ background: 'var(--background)', border: '1px solid var(--border)', color: '#323232' }}>
+                  {enroll.secret}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopySecret}
+                  className="p-2 rounded-lg hover:bg-black/5"
+                  style={{ border: '1px solid var(--border)', color: '#323232' }}
+                  aria-label="シークレットをコピー"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+            </SurfaceCard>
+          )}
+
           <div>
             <label className="block text-sm font-extrabold mb-2" style={{ color: '#323232' }}>
               認証コード（6桁）
