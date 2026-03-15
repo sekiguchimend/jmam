@@ -1,6 +1,6 @@
 // CSVアップロードフォーム（Client Component）
 // FR-07〜FR-11: アップロード、検証、バッチ処理、進捗表示、エラー報告
-// ハイブリッド方式: Server ActionでStorage保存 → API RouteでSSE進捗
+// ハイブリッド方式: Server ActionでStorageへ保存 → API RouteでSSE処理
 
 "use client";
 
@@ -233,7 +233,7 @@ export function UploadClientForm() {
         const total = await countCsvDataRecords(file);
         setTotalCount(total);
 
-        // Step 1: Server ActionでStorageにアップロード（100MBまで対応）
+        // Step 1: Server ActionでSupabase Storageにアップロード＆ジョブ作成
         const formData = new FormData();
         formData.append("file", file);
 

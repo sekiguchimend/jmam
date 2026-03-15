@@ -27,23 +27,31 @@ export type UploadJobResult = {
 
 // CSVファイルをSupabase Storageにアップロードし、ジョブを作成
 export async function uploadCsvToStorage(formData: FormData): Promise<UploadJobResult> {
+  console.log('[uploadCsvToStorage] 開始');
   try {
     // 管理者チェック
+    console.log('[uploadCsvToStorage] 管理者チェック');
     if (!(await isAdmin())) {
+      console.log('[uploadCsvToStorage] 管理者権限なし');
       return { success: false, error: '管理者権限がありません' };
     }
 
+    console.log('[uploadCsvToStorage] トークン取得');
     const token = await getAccessToken();
     if (!token) {
+      console.log('[uploadCsvToStorage] トークンなし');
       return { success: false, error: '認証トークンが見つかりません（再ログインしてください）' };
     }
 
     const userId = getUserIdFromJwt(token);
     if (!userId) {
+      console.log('[uploadCsvToStorage] ユーザーIDなし');
       return { success: false, error: 'ユーザーIDの取得に失敗しました' };
     }
+    console.log('[uploadCsvToStorage] ユーザーID:', userId);
 
     const file = formData.get('file');
+    console.log('[uploadCsvToStorage] ファイル取得:', file ? 'あり' : 'なし', file instanceof File ? `(${file.name}, ${file.size}bytes)` : '');
     if (!(file instanceof File)) {
       return { success: false, error: 'ファイルが選択されていません' };
     }
@@ -64,8 +72,13 @@ export async function uploadCsvToStorage(formData: FormData): Promise<UploadJobR
     const timestamp = Date.now();
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const filePath = `uploads/${userId}/${timestamp}_${safeName}`;
+    console.log('[uploadCsvToStorage] ファイルパス:', filePath);
 
+    console.log('[uploadCsvToStorage] arrayBuffer取得開始');
     const arrayBuffer = await file.arrayBuffer();
+    console.log('[uploadCsvToStorage] arrayBuffer取得完了:', arrayBuffer.byteLength, 'bytes');
+
+    console.log('[uploadCsvToStorage] Storage upload開始');
     const { error: uploadError } = await supabase.storage
       .from('csv-uploads')
       .upload(filePath, arrayBuffer, {
@@ -74,11 +87,13 @@ export async function uploadCsvToStorage(formData: FormData): Promise<UploadJobR
       });
 
     if (uploadError) {
-      console.error('Storage upload error:', uploadError);
+      console.error('[uploadCsvToStorage] Storage upload error:', uploadError);
       return { success: false, error: `ファイルのアップロードに失敗しました: ${uploadError.message}` };
     }
+    console.log('[uploadCsvToStorage] Storage upload完了');
 
     // upload_jobsテーブルにジョブを作成
+    console.log('[uploadCsvToStorage] ジョブ作成開始');
     const { data: job, error: jobError } = await supabase
       .from('upload_jobs')
       .insert({
@@ -92,18 +107,22 @@ export async function uploadCsvToStorage(formData: FormData): Promise<UploadJobR
       .single();
 
     if (jobError || !job) {
-      console.error('Job creation error:', jobError);
+      console.error('[uploadCsvToStorage] Job creation error:', jobError);
       // アップロード済みファイルを削除
       await supabase.storage.from('csv-uploads').remove([filePath]);
       return { success: false, error: `ジョブの作成に失敗しました: ${jobError?.message ?? 'unknown'}` };
     }
+    console.log('[uploadCsvToStorage] ジョブ作成完了:', job.id);
 
     return { success: true, jobId: job.id };
   } catch (error) {
-    console.error('uploadCsvToStorage error:', error);
+    console.error('[uploadCsvToStorage] 例外発生:', error);
+    const errorMessage = error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : String(error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'アップロード処理に失敗しました',
+      error: `アップロード処理に失敗しました: ${errorMessage}`,
     };
   }
 }

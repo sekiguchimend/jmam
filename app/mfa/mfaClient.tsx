@@ -123,39 +123,9 @@ export function MfaClient({ initial }: { initial: MfaStatus }) {
         </SurfaceCard>
       )}
 
-      {/* verify - ログイン時もQRコード表示可能 */}
+      {/* verify */}
       {status.ok && (status.mode === 'needsVerify' || enroll) && (
         <div className="space-y-3">
-          {/* ログイン時（needsVerify）でもQRコードを表示できるようにする */}
-          {status.mode === 'needsVerify' && !enroll && (
-            <SurfaceCard className="space-y-3">
-              <div className="flex items-start gap-3">
-                <QrCode className="w-5 h-5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
-                <div>
-                  <p className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>
-                    認証アプリを再設定する場合はQRコードを表示してください
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={handleStartEnroll}
-                className="w-full py-2 px-4 rounded-lg font-bold text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ background: 'var(--background)', color: '#323232', border: '1px solid var(--border)' }}
-              >
-                {isPending ? (
-                  <LoadingSpinner text="準備中..." className="font-bold" />
-                ) : (
-                  <span className="flex items-center justify-center gap-2 font-bold">
-                    <QrCode className="w-4 h-4" />
-                    QRコードを表示
-                  </span>
-                )}
-              </button>
-            </SurfaceCard>
-          )}
-
           {/* QRコード表示（enrollがある場合） - コード入力欄の上に表示 */}
           {enroll && (
             <SurfaceCard className="space-y-4">
