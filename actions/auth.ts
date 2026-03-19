@@ -28,6 +28,9 @@ import { getSafeRedirectUrl } from '@/lib/security';
 // クッキーの有効期限（7日間）
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
+// HTTP環境でもクッキーを許可するフラグ（本番HTTPS化までの一時対応）
+const SECURE_COOKIES = process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true';
+
 function isDevMfaBypass(host: string | null): boolean {
   // 開発中（localhost）だけMFA必須を無効化
   if (process.env.NODE_ENV === 'production') return false;
@@ -134,7 +137,7 @@ export async function login(formData: FormData): Promise<{
 
     const commonCookie = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: SECURE_COOKIES,
       sameSite: 'lax' as const,
       maxAge: COOKIE_MAX_AGE,
       path: '/',
@@ -193,7 +196,7 @@ export async function login(formData: FormData): Promise<{
 
   const commonCookie = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: SECURE_COOKIES,
     sameSite: 'lax' as const,
     maxAge: COOKIE_MAX_AGE,
     path: '/',
@@ -444,7 +447,7 @@ export async function changePassword(
   if (sessionData.session) {
     const commonCookie = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: SECURE_COOKIES,
       sameSite: 'lax' as const,
       maxAge: COOKIE_MAX_AGE,
       path: '/',

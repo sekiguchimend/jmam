@@ -18,6 +18,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 
+// HTTP環境でもクッキーを許可するフラグ（本番HTTPS化までの一時対応）
+const SECURE_COOKIES = process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true';
+
 // ========================================
 // JWT（ローカル処理のみ）
 // ========================================
@@ -95,7 +98,7 @@ function addSecurityHeaders(res: NextResponse, isDev: boolean): NextResponse {
 // ========================================
 
 function setTokenCookies(res: NextResponse, accessToken: string, refreshToken: string, isAdmin: boolean): void {
-  const opts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, maxAge: COOKIE_MAX_AGE, path: '/' };
+  const opts = { httpOnly: true, secure: SECURE_COOKIES, sameSite: 'lax' as const, maxAge: COOKIE_MAX_AGE, path: '/' };
   res.cookies.set(USER_TOKEN_COOKIE, accessToken, opts);
   res.cookies.set(USER_REFRESH_TOKEN_COOKIE, refreshToken, opts);
   if (isAdmin) {

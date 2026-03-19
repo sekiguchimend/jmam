@@ -25,6 +25,9 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const PENDING_COOKIE_MAX_AGE = 60 * 10; // 10分
 const FINAL_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7日
 
+// HTTP環境でもクッキーを許可するフラグ（本番HTTPS化までの一時対応）
+const SECURE_COOKIES = process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true';
+
 function createAnonClient() {
   return createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -188,7 +191,7 @@ export async function verifyTotp(params: { factorId: string; code: string }): Pr
 
   const commonCookie = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: SECURE_COOKIES,
     sameSite: 'lax' as const,
     maxAge: FINAL_COOKIE_MAX_AGE,
     path: '/',
@@ -233,7 +236,7 @@ export async function setMfaPendingCookies(params: {
   const cookieStore = await cookies();
   const commonCookie = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: SECURE_COOKIES,
     sameSite: 'lax' as const,
     maxAge: PENDING_COOKIE_MAX_AGE,
     path: '/',
