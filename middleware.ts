@@ -275,8 +275,13 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // ページ
-    '/admin/:path*',
+    // ページ（/admin/uploadは大ファイルServer Actionのため除外）
+    '/admin',
+    '/admin/history',
+    '/admin/login',
+    '/admin/questions',
+    '/admin/setup',
+    '/admin/users',
     '/dashboard/:path*',
     '/mfa',
     '/login',
