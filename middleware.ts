@@ -275,13 +275,13 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // ページ（/admin/uploadは大きなファイルのServer Actionsを扱うため除外）
-    '/admin/((?!upload).*)',
+    // ページ
+    '/admin/:path*',
     '/dashboard/:path*',
     '/mfa',
     '/login',
     '/predict',
-    // API（/api/admin/uploadは大きなファイルを扱うため除外）
-    '/api/admin/((?!upload).)*',
+    // API
+    '/api/admin/:path*',
   ],
 };
