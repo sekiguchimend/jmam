@@ -702,15 +702,24 @@ export async function markEmbeddingJobs(
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
 
-  // バッチ更新（1回のRPC呼び出しで全件更新）
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase.rpc as any)('batch_update_embedding_queue', {
-    updates: updates,
-  });
+  // 個別更新（タイムアウト対策）
+  for (const u of updates) {
+    const { error } = await supabase
+      .from('embedding_queue')
+      .update({
+        status: u.status,
+        attempts: u.attempts ?? 1,
+        last_error: u.last_error ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('case_id', u.case_id)
+      .eq('response_id', u.response_id)
+      .eq('question', u.question);
 
-  if (error) {
-    console.error('markEmbeddingJobs error:', error);
-    throw new Error(`embedding_queue の更新に失敗しました: ${error.message ?? 'unknown error'}`);
+    if (error) {
+      console.error('markEmbeddingJobs error:', error);
+      // 個別エラーは無視して続行
+    }
   }
 }
 
