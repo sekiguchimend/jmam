@@ -1,15 +1,31 @@
 // CSVアップロードフォーム（Client Component）
 // FR-07〜FR-11: アップロード、検証、バッチ処理、進捗表示、エラー報告
-// Storage不要・直接処理版
+// Storage不要・API Route直接送信+SSE進捗表示版
 
 "use client";
 
-import { useState, useRef, useTransition } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { ProgressBar } from "@/components/ui";
 import { CloudUpload, Loader2, Check, X } from "lucide-react";
-import { processCsvUpload, type UploadResult } from "@/actions/upload";
 
-type UploadState = "idle" | "uploading" | "completed" | "error";
+type UploadState = "idle" | "uploading" | "preparing" | "completed" | "error";
+
+type SseEvent =
+  | { event: "start"; data: { fileName: string } }
+  | { event: "progress"; data: { fileName: string; processed: number; status: string } }
+  | { event: "completed"; data: { fileName: string; processed: number; status: string } }
+  | { event: "prepare_start"; data: { status: string } }
+  | { event: "prepare_progress"; data: { phase: string; processed?: number; succeeded?: number; failed?: number; done?: number; total?: number } }
+  | { event: "prepare_done"; data: { status: string; embeddings: { processed: number; succeeded: number; failed: number }; typicals: { done: number; scheduled: number } } }
+  | { event: "error"; data: { fileName?: string; error: string; errors?: string[] } };
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
 
 function LoadingDots() {
   return (
@@ -21,13 +37,80 @@ function LoadingDots() {
   );
 }
 
+async function readSseStream(
+  response: Response,
+  onEvent: (ev: SseEvent) => void
+): Promise<void> {
+  const body = response.body;
+  if (!body) throw new Error("レスポンスボディが空です");
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  const flush = (chunk: string) => {
+    buffer += chunk;
+    while (true) {
+      const idx = buffer.indexOf("\n\n");
+      if (idx === -1) break;
+      const rawEvent = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+
+      const lines = rawEvent.split("\n").filter(Boolean);
+      const eventLine = lines.find((l) => l.startsWith("event:"));
+      const dataLine = lines.find((l) => l.startsWith("data:"));
+      if (!eventLine || !dataLine) continue;
+
+      const event = eventLine.replace("event:", "").trim();
+      const dataJson = dataLine.replace("data:", "").trim();
+      try {
+        const data = JSON.parse(dataJson) as unknown;
+        onEvent({ event: event as SseEvent["event"], data } as SseEvent);
+      } catch {
+        // パースできない場合は無視
+      }
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    flush(decoder.decode(value, { stream: true }));
+  }
+
+  flush(decoder.decode());
+}
+
 export function UploadClientForm() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
-  const [result, setResult] = useState<UploadResult | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [processedCount, setProcessedCount] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // エンベディング生成の進捗
+  const [embeddingProcessed, setEmbeddingProcessed] = useState(0);
+  const [embeddingSucceeded, setEmbeddingSucceeded] = useState(0);
+  const [embeddingFailed, setEmbeddingFailed] = useState(0);
+  const [preparePhase, setPreparePhase] = useState<"embeddings" | "typicals">("embeddings");
+  const [typicalsDone, setTypicalsDone] = useState(0);
+  const [typicalsTotal, setTypicalsTotal] = useState(0);
+
+  useEffect(() => {
+    if (uploadState !== "uploading" && uploadState !== "preparing") {
+      return;
+    }
+    const startedAt = Date.now() - elapsedMs;
+    const timer = setInterval(() => {
+      setElapsedMs(Date.now() - startedAt);
+    }, 500);
+    return () => clearInterval(timer);
+  }, [uploadState]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -54,35 +137,96 @@ export function UploadClientForm() {
     }
   };
 
-  const handleUpload = () => {
-    if (!file) return;
+  const handleUpload = async () => {
+    if (!file || isUploading) return;
 
     setUploadState("uploading");
-    setResult(null);
+    setErrors([]);
+    setErrorMessage(null);
+    setProcessedCount(0);
+    setElapsedMs(0);
+    setIsUploading(true);
 
-    startTransition(async () => {
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
+    try {
+      // FormDataを直接API Routeに送信
+      const formData = new FormData();
+      formData.append("file", file);
 
-        const uploadResult = await processCsvUpload(formData);
+      const response = await fetch("/api/admin/upload", {
+        method: "POST",
+        body: formData,
+      });
 
-        setResult(uploadResult);
-        setUploadState(uploadResult.success ? "completed" : "error");
-      } catch (e) {
-        setResult({
-          success: false,
-          error: e instanceof Error ? e.message : "アップロード処理に失敗しました",
-        });
-        setUploadState("error");
+      if (!response.ok) {
+        throw new Error(`処理の開始に失敗しました (${response.status})`);
       }
-    });
+
+      await readSseStream(response, (ev) => {
+        if (ev.event === "progress") {
+          setProcessedCount(ev.data.processed ?? 0);
+          return;
+        }
+        if (ev.event === "completed") {
+          setProcessedCount(ev.data.processed ?? 0);
+          return;
+        }
+        if (ev.event === "prepare_start") {
+          setUploadState("preparing");
+          setEmbeddingProcessed(0);
+          setEmbeddingSucceeded(0);
+          setEmbeddingFailed(0);
+          setPreparePhase("embeddings");
+          return;
+        }
+        if (ev.event === "prepare_progress") {
+          if (ev.data.phase === "embeddings") {
+            setPreparePhase("embeddings");
+            setEmbeddingProcessed(ev.data.processed ?? 0);
+            setEmbeddingSucceeded(ev.data.succeeded ?? 0);
+            setEmbeddingFailed(ev.data.failed ?? 0);
+          } else if (ev.data.phase === "typicals") {
+            setPreparePhase("typicals");
+            setTypicalsDone(ev.data.done ?? 0);
+            setTypicalsTotal(ev.data.total ?? 0);
+          }
+          return;
+        }
+        if (ev.event === "prepare_done") {
+          setEmbeddingProcessed(ev.data.embeddings.processed);
+          setEmbeddingSucceeded(ev.data.embeddings.succeeded);
+          setEmbeddingFailed(ev.data.embeddings.failed);
+          setTypicalsDone(ev.data.typicals.done);
+          setTypicalsTotal(ev.data.typicals.scheduled);
+          setUploadState("completed");
+          return;
+        }
+        if (ev.event === "error") {
+          setUploadState("error");
+          setErrorMessage(ev.data.error);
+          if (ev.data.errors) setErrors(ev.data.errors);
+        }
+      });
+    } catch (e) {
+      setUploadState("error");
+      setErrorMessage(e instanceof Error ? e.message : "アップロード処理に失敗しました");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const resetUpload = () => {
     setFile(null);
     setUploadState("idle");
-    setResult(null);
+    setProcessedCount(0);
+    setElapsedMs(0);
+    setErrors([]);
+    setErrorMessage(null);
+    setEmbeddingProcessed(0);
+    setEmbeddingSucceeded(0);
+    setEmbeddingFailed(0);
+    setPreparePhase("embeddings");
+    setTypicalsDone(0);
+    setTypicalsTotal(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -138,7 +282,7 @@ export function UploadClientForm() {
             <div className="mt-4 lg:mt-6 flex justify-end gap-3">
               <button
                 onClick={resetUpload}
-                disabled={isPending}
+                disabled={isUploading}
                 className="px-4 py-2 rounded-lg text-sm font-bold transition-all disabled:opacity-50 hover:bg-gray-100"
                 style={{ color: "var(--text-muted)" }}
               >
@@ -146,7 +290,7 @@ export function UploadClientForm() {
               </button>
               <button
                 onClick={handleUpload}
-                disabled={isPending}
+                disabled={isUploading}
                 className="px-5 py-2 rounded-lg text-sm font-black transition-all hover:opacity-90 disabled:opacity-50"
                 style={{ background: "var(--primary)", color: "#fff" }}
               >
@@ -167,7 +311,7 @@ export function UploadClientForm() {
             <Loader2 className="w-5 lg:w-6 h-5 lg:h-6 animate-spin flex-shrink-0" style={{ color: "#323232" }} />
             <div>
               <p className="text-sm lg:text-base font-black" style={{ color: "#323232" }}>
-                処理中<LoadingDots />
+                アップロード中<LoadingDots />
               </p>
               <p className="text-xs lg:text-sm font-bold break-all" style={{ color: "#323232" }}>
                 {file?.name}
@@ -175,8 +319,62 @@ export function UploadClientForm() {
             </div>
           </div>
 
+          <div className="mb-3 lg:mb-4">
+            <ProgressBar current={processedCount} total={Math.max(processedCount + 100, 1)} animated />
+          </div>
+
           <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
-            CSV解析・DB登録・エンベディング生成を実行しています。
+            進捗: {processedCount.toLocaleString()} 件処理済み・経過 {formatElapsed(elapsedMs)}
+          </p>
+        </div>
+      )}
+
+      {/* エンベディング生成中 */}
+      {uploadState === "preparing" && (
+        <div
+          className="rounded-2xl p-4 lg:p-8"
+          style={{ background: "#f0f9ff", border: "1px solid #bae6fd" }}
+        >
+          <div className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6">
+            <Loader2 className="w-5 lg:w-6 h-5 lg:h-6 animate-spin flex-shrink-0" style={{ color: "#0284c7" }} />
+            <div>
+              <p className="text-sm lg:text-base font-black" style={{ color: "#0284c7" }}>
+                {preparePhase === "embeddings" ? "エンベディング生成中" : "典型例生成中"}<LoadingDots />
+              </p>
+              <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
+                データ登録完了（{processedCount.toLocaleString()}件）
+              </p>
+            </div>
+          </div>
+
+          <div className="mb-3 lg:mb-4">
+            {preparePhase === "embeddings" ? (
+              <ProgressBar
+                current={embeddingProcessed}
+                total={Math.max(processedCount * 2, embeddingProcessed + 1)}
+                animated
+              />
+            ) : (
+              <ProgressBar
+                current={typicalsDone}
+                total={Math.max(typicalsTotal, 1)}
+                animated
+              />
+            )}
+          </div>
+
+          <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
+            {preparePhase === "embeddings" ? (
+              <>
+                エンベディング: {embeddingSucceeded.toLocaleString()} 件成功
+                {embeddingFailed > 0 && <span style={{ color: "#dc2626" }}> / {embeddingFailed} 件失敗</span>}
+                ・経過 {formatElapsed(elapsedMs)}
+              </>
+            ) : (
+              <>
+                典型例: {typicalsDone} / {typicalsTotal} 件・経過 {formatElapsed(elapsedMs)}
+              </>
+            )}
           </p>
           <p className="text-xs mt-2 font-bold" style={{ color: "var(--text-muted)" }}>
             ※ この処理には数分かかることがあります。ページを閉じないでください。
@@ -185,7 +383,7 @@ export function UploadClientForm() {
       )}
 
       {/* 完了 */}
-      {uploadState === "completed" && result && (
+      {uploadState === "completed" && (
         <div
           className="rounded-2xl p-6 lg:p-8 text-center"
           style={{ background: "#f9f9f9", border: "1px solid #e5e5e5" }}
@@ -195,18 +393,16 @@ export function UploadClientForm() {
             アップロード完了
           </h3>
           <div className="text-sm lg:text-base mb-4 lg:mb-6 font-bold space-y-1" style={{ color: "#323232" }}>
-            <p>{(result.processed ?? 0).toLocaleString()}件のデータを登録しました</p>
-            {result.embeddings && result.embeddings.succeeded > 0 && (
+            <p>{processedCount.toLocaleString()}件のデータを登録しました</p>
+            {embeddingSucceeded > 0 && (
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                エンベディング: {result.embeddings.succeeded.toLocaleString()}件生成
-                {result.embeddings.failed > 0 && (
-                  <span style={{ color: "#dc2626" }}> / {result.embeddings.failed}件失敗</span>
-                )}
+                エンベディング: {embeddingSucceeded.toLocaleString()}件生成
+                {embeddingFailed > 0 && <span style={{ color: "#dc2626" }}> / {embeddingFailed}件失敗</span>}
               </p>
             )}
-            {result.typicals && result.typicals.done > 0 && (
+            {typicalsDone > 0 && (
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                典型例: {result.typicals.done}件生成
+                典型例: {typicalsDone}件生成
               </p>
             )}
           </div>
@@ -247,23 +443,23 @@ export function UploadClientForm() {
             </div>
           </div>
 
-          {result?.error && (
+          {errorMessage && (
             <p className="text-sm lg:text-base mb-3 lg:mb-4 font-bold" style={{ color: "#dc2626" }}>
-              {result.error}
+              {errorMessage}
             </p>
           )}
 
-          {result?.errors && result.errors.length > 0 && (
+          {errors.length > 0 && (
             <div className="mb-3 lg:mb-4 p-3 lg:p-4 rounded-lg" style={{ background: "#fff" }}>
               <p className="text-sm lg:text-base font-black mb-2" style={{ color: "#dc2626" }}>
-                検証エラー ({result.errors.length}件):
+                検証エラー ({errors.length}件):
               </p>
               <ul className="text-xs lg:text-sm space-y-1 font-bold" style={{ color: "#323232" }}>
-                {result.errors.slice(0, 10).map((err, i) => (
+                {errors.slice(0, 10).map((err, i) => (
                   <li key={i}>{err}</li>
                 ))}
-                {result.errors.length > 10 && (
-                  <li>...他 {result.errors.length - 10}件のエラー</li>
+                {errors.length > 10 && (
+                  <li>...他 {errors.length - 10}件のエラー</li>
                 )}
               </ul>
             </div>

@@ -284,7 +284,7 @@ export async function processCsvUpload(formData: FormData): Promise<UploadResult
     console.log('[processCsvUpload] エンベディング処理開始');
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const res = await processEmbeddingQueueBatchWithToken(token, 200);
+      const res = await processEmbeddingQueueBatchWithToken(token, 50);
       if (res.processed === 0) break;
       totalProcessed += res.processed;
       totalSucceeded += res.succeeded;
