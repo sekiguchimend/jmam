@@ -835,7 +835,9 @@ export async function fetchResponsesForEmbeddingJobs(
   );
 
   const token = accessToken ?? (await getAccessToken());
-  const supabase = token ? createAuthedAnonServerClient(token) : await createSupabaseServerClient();
+  // 型を統一するため、tokenがある場合のみ処理（エンベディング処理は管理者権限必須）
+  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
   const allResults: ResponseForEmbedding[] = [];
 
   // 初期バッチサイズ（HeadersOverflowError 発生時に自動縮小）
