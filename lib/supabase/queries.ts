@@ -698,12 +698,45 @@ export async function markEmbeddingJobs(
   accessToken?: string
 ): Promise<void> {
   if (updates.length === 0) return;
+
+  // ステータスごとの件数をログ出力
+  const statusCounts = new Map<string, number>();
+  for (const u of updates) {
+    statusCounts.set(u.status, (statusCounts.get(u.status) ?? 0) + 1);
+  }
+  const statusSummary = Array.from(statusCounts.entries()).map(([s, c]) => `${s}=${c}`).join(', ');
+  console.log(`[markEmbeddingJobs] 更新開始: ${updates.length}件 (${statusSummary})`);
+
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
 
-  // 個別更新（タイムアウト対策）
+  // ステータスごとにグループ化してバッチ更新
+  const groupedByStatus = new Map<string, typeof updates>();
   for (const u of updates) {
+    const key = `${u.status}__${u.attempts ?? 1}`;
+    if (!groupedByStatus.has(key)) groupedByStatus.set(key, []);
+    groupedByStatus.get(key)!.push(u);
+  }
+
+  const BATCH_SIZE = 10; // 1回のリクエストで処理する件数（502対策で縮小）
+  const DELAY_MS = 200; // リクエスト間の遅延（ms）
+  const MAX_RETRIES = 3;
+
+  let successCount = 0;
+  let errorCount = 0;
+  let retryCount = 0;
+
+  // 502等のサーバーエラー判定
+  const isServerError = (error: unknown): boolean => {
+    if (!error) return false;
+    const msg = typeof error === 'object' && 'message' in error ? String((error as { message: unknown }).message) : String(error);
+    return msg.includes('502') || msg.includes('503') || msg.includes('504') ||
+           msg.toLowerCase().includes('bad gateway') || msg.toLowerCase().includes('service unavailable');
+  };
+
+  // リトライ付き更新
+  const updateWithRetry = async (u: typeof updates[number], retries = 0): Promise<boolean> => {
     const { error } = await supabase
       .from('embedding_queue')
       .update({
@@ -717,10 +750,53 @@ export async function markEmbeddingJobs(
       .eq('question', u.question);
 
     if (error) {
-      console.error('markEmbeddingJobs error:', error);
-      // 個別エラーは無視して続行
+      if (isServerError(error) && retries < MAX_RETRIES) {
+        const delay = 1000 * Math.pow(2, retries); // 1s, 2s, 4s
+        console.log(`[markEmbeddingJobs] サーバーエラー (${u.case_id}/${u.response_id}/${u.question})、${delay}ms後にリトライ (${retries + 1}/${MAX_RETRIES})`);
+        retryCount++;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return updateWithRetry(u, retries + 1);
+      }
+      // エラー詳細を短く表示
+      const errMsg = typeof error === 'object' && 'message' in error
+        ? String((error as { message: unknown }).message).slice(0, 100)
+        : String(error).slice(0, 100);
+      console.error(`[markEmbeddingJobs] 更新失敗 (${u.case_id}/${u.response_id}/${u.question}): ${errMsg}`);
+      return false;
+    }
+    return true;
+  };
+
+  const startTime = Date.now();
+  let processedCount = 0;
+
+  for (const [, group] of groupedByStatus) {
+    // グループ内をバッチに分割
+    for (let i = 0; i < group.length; i += BATCH_SIZE) {
+      const batch = group.slice(i, i + BATCH_SIZE);
+
+      // バッチ内の各アイテムを順次更新（並列だと502になるため）
+      for (const u of batch) {
+        const ok = await updateWithRetry(u);
+        if (ok) successCount++; else errorCount++;
+        processedCount++;
+      }
+
+      // 進捗ログ（100件ごと）
+      if (processedCount % 100 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[markEmbeddingJobs] 進捗: ${processedCount}/${updates.length} (${elapsed}秒経過)`);
+      }
+
+      // バッチ間に遅延を入れてレート制限を回避
+      if (i + BATCH_SIZE < group.length) {
+        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+      }
     }
   }
+
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`[markEmbeddingJobs] 更新完了: 成功=${successCount}, 失敗=${errorCount}, リトライ=${retryCount} (${totalTime}秒)`);
 }
 
 type ResponseForEmbedding = {
@@ -748,7 +824,8 @@ function isHeadersOverflowError(error: unknown): boolean {
 }
 
 export async function fetchResponsesForEmbeddingJobs(
-  jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[]
+  jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[],
+  accessToken?: string
 ): Promise<ResponseForEmbedding[]> {
   if (jobs.length === 0) return [];
 
@@ -757,7 +834,8 @@ export async function fetchResponsesForEmbeddingJobs(
     new Map(jobs.map((j) => [`${j.case_id}|${j.response_id}`, j])).values()
   );
 
-  const supabase = await createSupabaseServerClient();
+  const token = accessToken ?? (await getAccessToken());
+  const supabase = token ? createAuthedAnonServerClient(token) : await createSupabaseServerClient();
   const allResults: ResponseForEmbedding[] = [];
 
   // 初期バッチサイズ（HeadersOverflowError 発生時に自動縮小）
@@ -788,6 +866,7 @@ export async function fetchResponsesForEmbeddingJobs(
         throw new Error(`解答テキストの取得に失敗しました: ${error.message}`);
       }
 
+      console.log('[fetchResponsesForEmbeddingJobs] batch取得:', batch.length, '件リクエスト →', data?.length ?? 0, '件取得');
       allResults.push(...((data ?? []) as ResponseForEmbedding[]));
       cursor += batch.length;
     } catch (e) {
@@ -811,6 +890,9 @@ export async function insertResponseEmbeddings(
   accessToken?: string
 ): Promise<void> {
   if (rows.length === 0) return;
+
+  console.log(`[insertResponseEmbeddings] 保存開始: ${rows.length}件`);
+
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
@@ -822,15 +904,66 @@ export async function insertResponseEmbeddings(
     uniqueMap.set(key, row);
   }
   const uniqueRows = Array.from(uniqueMap.values());
+  console.log(`[insertResponseEmbeddings] 重複除去後: ${uniqueRows.length}件`);
 
-  // UPSERT: 同じ (case_id, response_id, question) の組み合わせがあれば更新
-  const { error } = await supabase.from('response_embeddings').upsert(
-    uniqueRows satisfies ResponseEmbeddingInsert[],
-    { onConflict: 'case_id,response_id,question' }
-  );
-  if (error) {
-    console.error('insertResponseEmbeddings error:', error);
-    throw new Error(`response_embeddings の登録に失敗しました: ${error.message ?? 'unknown error'}`);
+  // 大量データの場合はバッチに分割（ペイロードサイズ制限対策）
+  const BATCH_SIZE = 50;
+  const startTime = Date.now();
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (let i = 0; i < uniqueRows.length; i += BATCH_SIZE) {
+    const batch = uniqueRows.slice(i, i + BATCH_SIZE);
+
+    // リトライ付きUPSERT
+    let retries = 0;
+    const MAX_RETRIES = 3;
+    while (retries <= MAX_RETRIES) {
+      const { error } = await supabase.from('response_embeddings').upsert(
+        batch satisfies ResponseEmbeddingInsert[],
+        { onConflict: 'case_id,response_id,question' }
+      );
+
+      if (!error) {
+        successCount += batch.length;
+        break;
+      }
+
+      // サーバーエラーならリトライ
+      const errMsg = error.message ?? '';
+      const isServerError = errMsg.includes('502') || errMsg.includes('503') || errMsg.includes('504') ||
+                            errMsg.toLowerCase().includes('bad gateway');
+      if (isServerError && retries < MAX_RETRIES) {
+        const delay = 1000 * Math.pow(2, retries);
+        console.log(`[insertResponseEmbeddings] サーバーエラー、${delay}ms後にリトライ (${retries + 1}/${MAX_RETRIES})`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        retries++;
+        continue;
+      }
+
+      // リトライしてもダメなら失敗
+      console.error(`[insertResponseEmbeddings] バッチ保存失敗 (${i}〜${i + batch.length}): ${errMsg.slice(0, 100)}`);
+      errorCount += batch.length;
+      break;
+    }
+
+    // 進捗ログ
+    if ((i + BATCH_SIZE) % 200 === 0 || i + BATCH_SIZE >= uniqueRows.length) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`[insertResponseEmbeddings] 進捗: ${Math.min(i + BATCH_SIZE, uniqueRows.length)}/${uniqueRows.length} (${elapsed}秒)`);
+    }
+
+    // バッチ間の遅延
+    if (i + BATCH_SIZE < uniqueRows.length) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`[insertResponseEmbeddings] 保存完了: 成功=${successCount}, 失敗=${errorCount} (${totalTime}秒)`);
+
+  if (errorCount > 0) {
+    throw new Error(`response_embeddings の登録に一部失敗しました: ${errorCount}/${uniqueRows.length}件`);
   }
 }
 
