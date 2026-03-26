@@ -160,7 +160,8 @@ export async function processCsvUpload(formData: FormData): Promise<UploadResult
       return { success: false, error: 'ファイルサイズが100MBを超えています' };
     }
 
-    console.log('[processCsvUpload] ファイル:', file.name, file.size, 'bytes');
+    const fileName = file.name;
+    console.log('[processCsvUpload] ファイル:', fileName, file.size, 'bytes');
 
     // ファイルをバイト配列に変換
     const arrayBuffer = await file.arrayBuffer();
@@ -251,6 +252,7 @@ export async function processCsvUpload(formData: FormData): Promise<UploadResult
         await upsertCase({
           case_id: caseId,
           case_name: result.data.case_name ?? null,
+          file_name: fileName,
         }, token);
       }
 

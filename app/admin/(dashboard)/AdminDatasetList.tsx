@@ -6,10 +6,27 @@
 import { useState, useTransition } from "react";
 import { deleteDatasetByCaseId } from "@/actions/upload";
 import type { DatasetStats } from "@/types";
-import { FileText, Trash2, Loader2, Package } from "lucide-react";
+import { FileText, Trash2, Loader2, Package, Calendar } from "lucide-react";
 
 interface AdminDatasetListProps {
   initialStats: DatasetStats[];
+}
+
+// 日時フォーマット関数
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "-";
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleString("ja-JP", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "-";
+  }
 }
 
 export function AdminDatasetList({ initialStats }: AdminDatasetListProps) {
@@ -54,7 +71,7 @@ export function AdminDatasetList({ initialStats }: AdminDatasetListProps) {
             >
               <div className="flex items-center gap-3 lg:gap-4 min-w-0 flex-1">
                 <FileText className="w-4 lg:w-5 h-4 lg:h-5 flex-shrink-0 hidden sm:block" style={{ color: "var(--primary)" }} />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-sm lg:text-base font-black truncate" style={{ color: "#323232" }}>
                     {stat.caseName}
                   </p>
@@ -62,6 +79,19 @@ export function AdminDatasetList({ initialStats }: AdminDatasetListProps) {
                     <span className="hidden sm:inline">ケースID: {stat.caseId} • </span>
                     {stat.recordCount.toLocaleString()}件
                   </p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
+                    {stat.fileName && (
+                      <span className="truncate max-w-[200px]" title={stat.fileName}>
+                        {stat.fileName}
+                      </span>
+                    )}
+                    {stat.uploadedAt && (
+                      <span className="flex items-center gap-1 whitespace-nowrap">
+                        <Calendar className="w-3 h-3" />
+                        {formatDate(stat.uploadedAt)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <button

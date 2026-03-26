@@ -252,6 +252,7 @@ export async function POST(request: Request) {
             await upsertCase({
               case_id: caseId,
               case_name: result.data.case_name ?? null,
+              file_name: fileName,
             }, adminToken);
           }
 

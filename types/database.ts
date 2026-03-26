@@ -42,6 +42,7 @@ export type Database = {
           situation_text: string | null;
           situation_embedding: number[] | null;
           embedding_model: string | null;
+          file_name: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -51,6 +52,7 @@ export type Database = {
           situation_text?: string | null;
           situation_embedding?: number[] | null;
           embedding_model?: string | null;
+          file_name?: string | null;
         };
         Update: {
           case_id?: string;
@@ -58,6 +60,7 @@ export type Database = {
           situation_text?: string | null;
           situation_embedding?: number[] | null;
           embedding_model?: string | null;
+          file_name?: string | null;
         };
         Relationships: [];
       };

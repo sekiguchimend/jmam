@@ -434,8 +434,8 @@ export async function getDatasetStats(): Promise<DatasetStats[]> {
   const [casesResult, countsResult] = await Promise.all([
     supabase
       .from('cases')
-      .select('case_id, case_name')
-      .order('case_id') as unknown as Promise<{ data: { case_id: string; case_name: string | null }[] | null; error: Error | null }>,
+      .select('case_id, case_name, file_name, created_at')
+      .order('created_at', { ascending: false }) as unknown as Promise<{ data: { case_id: string; case_name: string | null; file_name: string | null; created_at: string }[] | null; error: Error | null }>,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase.rpc as any)('get_response_counts_by_case') as Promise<{ data: { case_id: string; record_count: number }[] | null; error: Error | null }>,
   ]);
@@ -465,6 +465,8 @@ export async function getDatasetStats(): Promise<DatasetStats[]> {
         caseId: c.case_id,
         caseName: c.case_name,
         recordCount,
+        fileName: c.file_name,
+        uploadedAt: c.created_at,
       });
     }
   }

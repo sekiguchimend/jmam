@@ -152,6 +152,8 @@ export interface DatasetStats {
   caseId: string;
   caseName: string | null;
   recordCount: number;
+  fileName: string | null;
+  uploadedAt: string | null;
 }
 
 // データセット型（レガシー互換用）
