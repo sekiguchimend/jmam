@@ -406,4 +406,313 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
   return { clusters: rows.length, points: n };
 }
 
+// ============================================
+// Service Role版（JWT期限切れの影響を受けない）
+// バックグラウンドアップロード処理用
+// ============================================
+
+// エンベディング処理（Service Role版）
+export async function processEmbeddingQueueBatchServiceRole(
+  limit: number = 30
+): Promise<{ processed: number; succeeded: number; failed: number }> {
+  console.log(`[processEmbeddingServiceRole] === バッチ開始 (limit=${limit}) ===`);
+
+  const { supabaseServiceRole } = await import('@/lib/supabase/service-role');
+
+  // pending状態のジョブを取得
+  const { data: jobs, error: fetchError } = await supabaseServiceRole
+    .from('embedding_queue')
+    .select('case_id,response_id,question,attempts')
+    .eq('status', 'pending')
+    .order('updated_at', { ascending: true })
+    .limit(limit);
+
+  if (fetchError) {
+    console.error('fetchPendingEmbeddingJobs error:', fetchError);
+    return { processed: 0, succeeded: 0, failed: 0 };
+  }
+
+  if (!jobs || jobs.length === 0) {
+    console.log('[processEmbeddingServiceRole] 処理待ちジョブなし');
+    return { processed: 0, succeeded: 0, failed: 0 };
+  }
+  console.log(`[processEmbeddingServiceRole] 取得ジョブ数: ${jobs.length}`);
+
+  const nextAttempts = new Map<string, number>();
+  for (const j of jobs) {
+    nextAttempts.set(`${j.case_id}__${j.response_id}__${j.question}`, (j.attempts ?? 0) + 1);
+  }
+
+  // ステータスを processing に更新
+  for (const j of jobs) {
+    await supabaseServiceRole
+      .from('embedding_queue')
+      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .eq('case_id', j.case_id)
+      .eq('response_id', j.response_id)
+      .eq('question', j.question);
+  }
+
+  // 解答データを取得
+  type ResponseData = {
+    case_id: string;
+    response_id: string;
+    answer_q1: string | null;
+    answer_q2: string | null;
+    answer_q3: string | null;
+    answer_q4: string | null;
+    answer_q5: string | null;
+    answer_q6: string | null;
+    answer_q7: string | null;
+    answer_q8: string | null;
+    score_problem: number | null;
+    score_solution: number | null;
+  };
+  const orFilter = jobs.map((p) => `and(case_id.eq.${p.case_id},response_id.eq.${p.response_id})`).join(',');
+  const { data: responses } = await supabaseServiceRole
+    .from('responses')
+    .select('case_id,response_id,answer_q1,answer_q2,answer_q3,answer_q4,answer_q5,answer_q6,answer_q7,answer_q8,score_problem,score_solution')
+    .or(orFilter);
+
+  const responseMap = new Map<string, ResponseData>();
+  for (const r of (responses ?? []) as ResponseData[]) {
+    responseMap.set(`${r.case_id}__${r.response_id}`, r);
+  }
+
+  let succeeded = 0;
+  let failed = 0;
+  const embeddings: { case_id: string; response_id: string; question: 'q1' | 'q2'; embedding: number[]; score: number | null; score_bucket: number }[] = [];
+  const updateResults: { case_id: string; response_id: string; question: 'q1' | 'q2'; status: 'done' | 'error'; attempts: number; last_error: string | null }[] = [];
+
+  for (const job of jobs) {
+    const key = `${job.case_id}__${job.response_id}`;
+    const resp = responseMap.get(key);
+    const question = job.question as 'q1' | 'q2';
+    const nextAtt = nextAttempts.get(`${key}__${question}`) ?? 1;
+
+    let text = '';
+    let score: number | null = null;
+
+    if (question === 'q1') {
+      text = resp?.answer_q1?.trim() ?? '';
+      score = resp?.score_problem ?? null;
+    } else {
+      const parts = [resp?.answer_q2, resp?.answer_q3, resp?.answer_q4, resp?.answer_q5, resp?.answer_q6, resp?.answer_q7, resp?.answer_q8]
+        .filter(Boolean)
+        .map(s => String(s).trim())
+        .filter(Boolean);
+      text = parts.join('\n\n');
+      score = resp?.score_solution ?? null;
+    }
+
+    if (!text) {
+      updateResults.push({ case_id: job.case_id, response_id: job.response_id, question, status: 'error', attempts: nextAtt, last_error: 'テキストが空' });
+      failed++;
+      continue;
+    }
+
+    try {
+      const result = await withRetry(() => embedText(text));
+      embeddings.push({
+        case_id: job.case_id,
+        response_id: job.response_id,
+        question,
+        embedding: result.values,
+        score,
+        score_bucket: toScoreBucket(score ?? 0),
+      });
+      updateResults.push({ case_id: job.case_id, response_id: job.response_id, question, status: 'done', attempts: nextAtt, last_error: null });
+      succeeded++;
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      updateResults.push({ case_id: job.case_id, response_id: job.response_id, question, status: 'error', attempts: nextAtt, last_error: errMsg.slice(0, 500) });
+      failed++;
+    }
+  }
+
+  // エンベディングを保存
+  if (embeddings.length > 0) {
+    const rows = embeddings.map(e => ({
+      case_id: e.case_id,
+      response_id: e.response_id,
+      question: e.question,
+      embedding: e.embedding,
+      score: e.score,
+      score_bucket: e.score_bucket,
+      embedding_model: EMBEDDING_MODEL,
+      embedding_dim: EMBEDDING_DIM,
+    }));
+
+    const { error: insertError } = await supabaseServiceRole.from('response_embeddings').upsert(
+      rows,
+      { onConflict: 'case_id,response_id,question' }
+    );
+    if (insertError) {
+      console.error('insertResponseEmbeddings error:', insertError);
+    }
+  }
+
+  // キューのステータスを更新
+  for (const u of updateResults) {
+    await supabaseServiceRole
+      .from('embedding_queue')
+      .update({
+        status: u.status,
+        attempts: u.attempts,
+        last_error: u.last_error,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('case_id', u.case_id)
+      .eq('response_id', u.response_id)
+      .eq('question', u.question);
+  }
+
+  console.log(`[processEmbeddingServiceRole] 完了: succeeded=${succeeded}, failed=${failed}`);
+  return { processed: jobs.length, succeeded, failed };
+}
+
+// 典型例再計算（Service Role版）
+export async function rebuildTypicalExamplesForBucketServiceRole(params: {
+  caseId: string;
+  question: 'q1' | 'q2';
+  scoreBucket: number;
+  maxClusters?: number;
+}): Promise<{ clusters: number; points: number }> {
+  const { caseId, question, scoreBucket, maxClusters = 3 } = params;
+  const { supabaseServiceRole } = await import('@/lib/supabase/service-role');
+
+  // 既存の典型例を削除
+  await supabaseServiceRole
+    .from('typical_examples')
+    .delete()
+    .eq('case_id', caseId)
+    .eq('question', question)
+    .eq('score_bucket', scoreBucket);
+
+  // エンベディングを取得
+  const { data: embData } = await supabaseServiceRole
+    .from('response_embeddings')
+    .select('case_id,response_id,question,score,score_bucket,embedding')
+    .eq('case_id', caseId)
+    .eq('question', question)
+    .eq('score_bucket', scoreBucket)
+    .limit(5000);
+
+  if (!embData || embData.length === 0) {
+    return { clusters: 0, points: 0 };
+  }
+
+  type EmbeddingData = {
+    case_id: string;
+    response_id: string;
+    question: string;
+    score: number | null;
+    score_bucket: number;
+    embedding: unknown;
+  };
+  const typedEmbData = embData as EmbeddingData[];
+  const n = typedEmbData.length;
+  const k = Math.min(maxClusters, n);
+
+  const vectors = typedEmbData.map(r => parseVector(r.embedding));
+  const clusters = kmeansCosine(vectors, k);
+
+  // 各クラスタの代表を選択
+  const clusterInfos: { clusterId: number; clusterSize: number; centroid: Vector; repMember: EmbeddingData; distance: number }[] = [];
+  clusters.forEach((cluster, clusterId) => {
+    if (cluster.indices.length === 0) return;
+
+    let bestIdx = cluster.indices[0];
+    let bestDist = Infinity;
+    for (const i of cluster.indices) {
+      const d = cosineDistance(vectors[i], cluster.centroid);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+
+    clusterInfos.push({
+      clusterId,
+      clusterSize: cluster.indices.length,
+      centroid: cluster.centroid,
+      repMember: typedEmbData[bestIdx],
+      distance: bestDist,
+    });
+  });
+
+  // 代表の解答テキストを取得
+  type ResponseData2 = {
+    case_id: string;
+    response_id: string;
+    answer_q1: string | null;
+    answer_q2: string | null;
+    answer_q3: string | null;
+    answer_q4: string | null;
+    answer_q5: string | null;
+    answer_q6: string | null;
+    answer_q7: string | null;
+    answer_q8: string | null;
+    score_problem: number | null;
+    score_solution: number | null;
+  };
+  const repKeys = clusterInfos.map(c => c.repMember);
+  const orFilter = repKeys.map(m => `and(case_id.eq.${m.case_id},response_id.eq.${m.response_id})`).join(',');
+  const { data: respData } = await supabaseServiceRole
+    .from('responses')
+    .select('case_id,response_id,answer_q1,answer_q2,answer_q3,answer_q4,answer_q5,answer_q6,answer_q7,answer_q8,score_problem,score_solution')
+    .or(orFilter);
+
+  const respMap = new Map<string, ResponseData2>();
+  for (const r of (respData ?? []) as ResponseData2[]) {
+    respMap.set(`${r.case_id}__${r.response_id}`, r);
+  }
+
+  type TypicalExampleInsert = Database['public']['Tables']['typical_examples']['Insert'];
+  const rows: TypicalExampleInsert[] = [];
+  for (const r of clusterInfos) {
+    const embRow = r.repMember;
+    const resp = respMap.get(`${embRow.case_id}__${embRow.response_id}`);
+    let repText = '';
+    let repScore: number | null = null;
+
+    if (question === 'q1') {
+      repText = resp?.answer_q1?.trim() ?? '';
+      repScore = resp?.score_problem ?? null;
+    } else {
+      const parts = [resp?.answer_q2, resp?.answer_q3, resp?.answer_q4, resp?.answer_q5, resp?.answer_q6, resp?.answer_q7, resp?.answer_q8]
+        .filter(Boolean)
+        .map(s => String(s).trim())
+        .filter(Boolean);
+      repText = parts.join('\n\n');
+      repScore = resp?.score_solution ?? null;
+    }
+
+    if (!repText) continue;
+
+    rows.push({
+      case_id: caseId,
+      question,
+      score_bucket: scoreBucket,
+      cluster_id: r.clusterId,
+      cluster_size: r.clusterSize,
+      centroid: r.centroid as unknown,
+      rep_case_id: caseId,
+      rep_response_id: embRow.response_id,
+      rep_text: repText,
+      rep_score: repScore,
+      rep_distance: r.distance,
+      embedding_model: EMBEDDING_MODEL,
+      embedding_dim: EMBEDDING_DIM,
+    });
+  }
+
+  if (rows.length > 0) {
+    await supabaseServiceRole.from('typical_examples').upsert(rows, {
+      onConflict: 'case_id,question,score_bucket,cluster_id',
+    });
+  }
+
+  return { clusters: rows.length, points: n };
+}
 

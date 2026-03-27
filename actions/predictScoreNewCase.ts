@@ -192,13 +192,107 @@ export async function submitCombinedPrediction(params: {
       return { success: false, error: '認証が必要です' };
     }
 
-    // ケース名を取得
+    // ケース情報を取得（situation_textも含める）
     const { data: caseData } = await supabaseAnonServer
       .from('cases')
-      .select('case_name')
+      .select('case_name, situation_text')
       .eq('case_id', sanitizedCaseId)
       .single();
 
+    // 解答データがあるかチェック
+    const { count: responseCount } = await supabaseAnonServer
+      .from('responses')
+      .select('*', { count: 'exact', head: true })
+      .eq('case_id', sanitizedCaseId);
+
+    const hasResponses = (responseCount ?? 0) > 0;
+
+    // 解答データがない場合は新規ケースと同じ処理にフォールバック
+    if (!hasResponses) {
+      console.log(`[submitCombinedPrediction] ケース ${sanitizedCaseId} に解答データがないため、新規ケースモードで処理`);
+
+      // シチュエーションがなければエラー
+      if (!caseData?.situation_text?.trim()) {
+        return {
+          success: false,
+          error: 'このケースには解答データがありません。シチュエーション情報を登録すれば、類似ケースから予測できます。',
+        };
+      }
+
+      // 新規ケースと同じ処理を実行
+      const [q1NewResult, q2NewResult] = await Promise.all([
+        predictScoreForNewCase({
+          token,
+          situationText: caseData.situation_text,
+          question: 'q1',
+          answerText: sanitizedQ1Answer.trim(),
+          topKCases: 5,
+          topKResponses: 10,
+        }),
+        predictScoreForNewCase({
+          token,
+          situationText: caseData.situation_text,
+          question: 'q2',
+          answerText: sanitizedQ2Answer.trim(),
+          topKCases: 5,
+          topKResponses: 10,
+        }),
+      ]);
+
+      // スコアを統合
+      const predictedScores: ScoreItems = {
+        problem: q1NewResult.predictedScores.problem,
+        solution: q2NewResult.predictedScores.solution,
+        role: q1NewResult.predictedScores.role ?? q2NewResult.predictedScores.role ?? null,
+        leadership: q2NewResult.predictedScores.leadership,
+        collaboration: q2NewResult.predictedScores.collaboration,
+        development: q2NewResult.predictedScores.development,
+        problemUnderstanding: q1NewResult.predictedScores.problemUnderstanding,
+        problemEssence: q1NewResult.predictedScores.problemEssence,
+        problemMaintenanceBiz: q1NewResult.predictedScores.problemMaintenanceBiz,
+        problemMaintenanceHr: q1NewResult.predictedScores.problemMaintenanceHr,
+        problemReformBiz: q1NewResult.predictedScores.problemReformBiz,
+        problemReformHr: q1NewResult.predictedScores.problemReformHr,
+        solutionCoverage: q2NewResult.predictedScores.solutionCoverage,
+        solutionPlanning: q2NewResult.predictedScores.solutionPlanning,
+        solutionMaintenanceBiz: q2NewResult.predictedScores.solutionMaintenanceBiz,
+        solutionMaintenanceHr: q2NewResult.predictedScores.solutionMaintenanceHr,
+        solutionReformBiz: q2NewResult.predictedScores.solutionReformBiz,
+        solutionReformHr: q2NewResult.predictedScores.solutionReformHr,
+        collabSupervisor: q2NewResult.predictedScores.collabSupervisor,
+        collabExternal: q2NewResult.predictedScores.collabExternal,
+        collabMember: q2NewResult.predictedScores.collabMember,
+      };
+
+      const confidence = Math.round(((q1NewResult.confidence + q2NewResult.confidence) / 2) * 100) / 100;
+      const combinedExplanation = `【問題把握（設問1）】\n${q1NewResult.explanation}\n\n【対策立案・主導・連携・育成（設問2）】\n${q2NewResult.explanation}`;
+
+      // 履歴保存（新規ケースとして）
+      savePredictionHistoryNew({
+        situationText: caseData.situation_text,
+        q1Answer: sanitizedQ1Answer.trim(),
+        q2Answer: sanitizedQ2Answer.trim(),
+        resultScores: predictedScores,
+        explanation: combinedExplanation,
+        confidence,
+      }).catch((err) => {
+        console.error('Failed to save prediction history:', err);
+      });
+
+      return {
+        success: true,
+        result: {
+          predictedScores,
+          confidence,
+          q1Explanation: q1NewResult.explanation,
+          q2Explanation: q2NewResult.explanation,
+          combinedExplanation,
+          isNewCase: true, // 新規ケースモードで処理したことを示す
+        },
+      };
+    }
+
+    // 解答データがある場合は従来通りの処理
     // 設問1と設問2を並列で予測
     const [q1Result, q2Result] = await Promise.all([
       predictScoreFromAnswer({

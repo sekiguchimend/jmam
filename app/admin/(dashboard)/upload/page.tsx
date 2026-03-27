@@ -10,6 +10,11 @@ const UploadClientForm = dynamic(
   { loading: () => <div className="animate-pulse p-8 text-center">読み込み中...</div> }
 );
 
+const CreateCaseForm = dynamic(
+  () => import("./CreateCaseForm").then(mod => mod.CreateCaseForm),
+  { loading: () => <div className="animate-pulse p-4 text-center text-sm">読み込み中...</div> }
+);
+
 export const metadata = {
   title: "データアップロード",
 };
@@ -42,6 +47,14 @@ export default async function UploadPage() {
           style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
         >
           <UploadClientForm />
+        </div>
+
+        {/* 新規ケース作成（解答データなし） */}
+        <div
+          className="rounded-xl p-4 lg:p-6 mb-4 lg:mb-6"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        >
+          <CreateCaseForm />
         </div>
 
         {/* 注意事項 */}

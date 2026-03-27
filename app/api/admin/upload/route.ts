@@ -1,16 +1,19 @@
-// CSVアップロード処理 API（SSEで進捗を返す）
+// CSVアップロード処理 API（SSEで進捗を返す + DBにジョブ状態を保存）
 // Storage不要・FormData直接受信版
+// ページを離れても処理は継続し、戻ってきたらジョブ状態を取得可能
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // 5分（Vercel Pro/Enterprise用）
 
-import { getAccessToken, isAdmin } from '@/lib/supabase/server';
+import { isAdmin } from '@/lib/supabase/server';
 import { iterateCsvRecordsFromBytes, parseCSVLine, parseDate, parseScore } from '@/lib/utils';
-import { enqueueEmbeddingJobs, upsertCase, insertResponses } from '@/lib/supabase';
+import { enqueueEmbeddingJobsServiceRole, upsertCaseServiceRole, insertResponsesServiceRole } from '@/lib/supabase';
 import type { CsvRowData } from '@/types';
 import { toScoreBucket } from '@/lib/scoring';
-import { processEmbeddingQueueBatchWithToken, rebuildTypicalExamplesForBucketWithToken } from '@/lib/prepare/worker';
+import { processEmbeddingQueueBatchServiceRole, rebuildTypicalExamplesForBucketServiceRole } from '@/lib/prepare/worker';
 import { sanitizeText, stripControlChars, truncateString } from '@/lib/security';
+import { updateUploadJobServiceRole, isJobCancelled } from '@/lib/uploadJobUtils';
 
 const BATCH_SIZE = 5000;
 const REQUIRED_HEADERS_NORMALIZED = ['受注番号', 'Ⅱ MC 題材コード'];
@@ -113,25 +116,41 @@ function sseEvent(event: string, data: unknown) {
 }
 
 // FormDataを直接受け取り、SSEで進捗を配信
+// ジョブIDをクエリパラメータで受け取り、進捗をDBに保存
 export async function POST(request: Request) {
   const encoder = new TextEncoder();
+  const url = new URL(request.url);
+  const jobId = url.searchParams.get('jobId');
+
+  // SSE接続が切れてもエラーにならないようにする
+  let sseConnected = true;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: string, data: unknown) =>
-        controller.enqueue(encoder.encode(sseEvent(event, data)));
+      // SSE送信（接続が切れていてもエラーにしない）
+      const send = (event: string, data: unknown) => {
+        if (!sseConnected) return;
+        try {
+          controller.enqueue(encoder.encode(sseEvent(event, data)));
+        } catch {
+          sseConnected = false;
+        }
+      };
+
+      // ジョブ更新ヘルパー（DBに進捗を保存 - Service Role版）
+      const updateJob = async (updates: Parameters<typeof updateUploadJobServiceRole>[1]) => {
+        if (!jobId) return;
+        try {
+          await updateUploadJobServiceRole(jobId, updates);
+        } catch (err) {
+          console.error('updateJob error:', err);
+        }
+      };
 
       try {
         // 認証チェック
         if (!(await isAdmin())) {
           send('error', { error: '管理者権限がありません' });
-          controller.close();
-          return;
-        }
-
-        const adminToken = await getAccessToken();
-        if (!adminToken) {
-          send('error', { error: '管理者トークンが見つかりません（再ログインしてください）' });
           controller.close();
           return;
         }
@@ -142,12 +161,14 @@ export async function POST(request: Request) {
 
         if (!(file instanceof File)) {
           send('error', { error: 'ファイルが選択されていません' });
+          await updateJob({ status: 'error', error_message: 'ファイルが選択されていません' });
           controller.close();
           return;
         }
 
         if (!file.name.endsWith('.csv')) {
           send('error', { error: 'CSVファイルのみアップロード可能です' });
+          await updateJob({ status: 'error', error_message: 'CSVファイルのみアップロード可能です' });
           controller.close();
           return;
         }
@@ -155,12 +176,16 @@ export async function POST(request: Request) {
         const maxSize = 100 * 1024 * 1024;
         if (file.size > maxSize) {
           send('error', { error: 'ファイルサイズが100MBを超えています' });
+          await updateJob({ status: 'error', error_message: 'ファイルサイズが100MBを超えています' });
           controller.close();
           return;
         }
 
         const fileName = file.name;
-        send('start', { fileName });
+        send('start', { fileName, jobId });
+
+        // ジョブを処理中に更新
+        await updateJob({ status: 'processing' });
 
         // ファイルをバイト配列に変換
         const arrayBuffer = await file.arrayBuffer();
@@ -222,6 +247,7 @@ export async function POST(request: Request) {
 
             const msg = `必須カラムが見つかりません: ${headerValidation.missing.join(', ')}`;
             send('error', { fileName, error: msg, errors: [msg] });
+            await updateJob({ status: 'error', error_message: msg, errors: [msg] });
             controller.close();
             return;
           }
@@ -232,11 +258,9 @@ export async function POST(request: Request) {
           if (result.error) {
             errors.push(result.error);
             if (errors.length >= 10) {
-              send('error', {
-                fileName,
-                error: '検証エラーが多数あります。最初の10件を表示します。',
-                errors,
-              });
+              const msg = '検証エラーが多数あります。最初の10件を表示します。';
+              send('error', { fileName, error: msg, errors });
+              await updateJob({ status: 'error', error_message: msg, errors });
               controller.close();
               return;
             }
@@ -245,21 +269,28 @@ export async function POST(request: Request) {
 
           if (!result.data) continue;
 
-          // ケースをupsert
+          // ケースをupsert（Service Role版）
           const caseId = result.data.case_id;
           if (!caseSeen.has(caseId)) {
             caseSeen.add(caseId);
-            await upsertCase({
+            await upsertCaseServiceRole({
               case_id: caseId,
               case_name: result.data.case_name ?? null,
               file_name: fileName,
-            }, adminToken);
+            });
           }
 
           batch.push(result.data);
 
           if (batch.length >= BATCH_SIZE) {
-            await flushBatch(batch, adminToken, touchedBuckets);
+            // キャンセル確認
+            if (jobId && await isJobCancelled(jobId)) {
+              send('cancelled', { status: 'cancelled' });
+              controller.close();
+              return;
+            }
+
+            await flushBatchServiceRole(batch, touchedBuckets);
             processedCount += batch.length;
             batch = [];
 
@@ -268,18 +299,29 @@ export async function POST(request: Request) {
               processed: processedCount,
               status: 'processing',
             });
+
+            // DBにも進捗を保存
+            await updateJob({ processed_rows: processedCount });
           }
+        }
+
+        // 最終キャンセル確認
+        if (jobId && await isJobCancelled(jobId)) {
+          send('cancelled', { status: 'cancelled' });
+          controller.close();
+          return;
         }
 
         if (!headers) {
           send('error', { fileName: 'upload.csv', error: 'データが存在しません' });
+          await updateJob({ status: 'error', error_message: 'データが存在しません' });
           controller.close();
           return;
         }
 
         // 残りをフラッシュ
         if (batch.length > 0) {
-          await flushBatch(batch, adminToken, touchedBuckets);
+          await flushBatchServiceRole(batch, touchedBuckets);
           processedCount += batch.length;
 
           send('progress', {
@@ -287,10 +329,20 @@ export async function POST(request: Request) {
             processed: processedCount,
             status: 'processing',
           });
+
+          // DBにも進捗を保存
+          await updateJob({ processed_rows: processedCount });
         }
 
         // アップロード完了
         send('completed', { fileName, processed: processedCount, status: 'completed' });
+
+        // DBにも完了を保存（事前準備はまだ）
+        await updateJob({
+          processed_rows: processedCount,
+          total_rows: processedCount,
+          prepare_status: 'processing',
+        });
 
         // エンベディング処理開始
         send('prepare_start', { status: 'started' });
@@ -299,9 +351,26 @@ export async function POST(request: Request) {
         let totalSucceeded = 0;
         let totalFailed = 0;
 
+        // キャンセル確認用
+        let cancelled = false;
+        const checkCancelled = async () => {
+          if (jobId && await isJobCancelled(jobId)) {
+            cancelled = true;
+            return true;
+          }
+          return false;
+        };
+
         // eslint-disable-next-line no-constant-condition
         while (true) {
-          const res = await processEmbeddingQueueBatchWithToken(adminToken, 50);
+          // キャンセル確認
+          if (await checkCancelled()) {
+            send('cancelled', { status: 'cancelled' });
+            controller.close();
+            return;
+          }
+
+          const res = await processEmbeddingQueueBatchServiceRole(50);
           if (res.processed === 0) break;
           totalProcessed += res.processed;
           totalSucceeded += res.succeeded;
@@ -313,19 +382,40 @@ export async function POST(request: Request) {
             succeeded: totalSucceeded,
             failed: totalFailed,
           });
+
+          // DBにも進捗を保存
+          await updateJob({
+            embedding_processed: totalProcessed,
+            embedding_succeeded: totalSucceeded,
+            embedding_failed: totalFailed,
+          });
+        }
+
+        if (cancelled) {
+          controller.close();
+          return;
         }
 
         // 典型例再計算
         const items = Array.from(touchedBuckets.values()).slice(0, 200);
         let typicalDone = 0;
 
+        // DBに典型例の総数を保存
+        await updateJob({ typicals_total: items.length });
+
         for (const key of items) {
+          // キャンセル確認（10件ごと）
+          if (typicalDone % 10 === 0 && await checkCancelled()) {
+            send('cancelled', { status: 'cancelled' });
+            controller.close();
+            return;
+          }
+
           const [caseId, question, bucketStr] = key.split('__');
           const scoreBucket = Number(bucketStr);
           if (!caseId || (question !== 'q1' && question !== 'q2') || !Number.isFinite(scoreBucket)) continue;
 
-          await rebuildTypicalExamplesForBucketWithToken({
-            adminToken: adminToken,
+          await rebuildTypicalExamplesForBucketServiceRole({
             caseId,
             question,
             scoreBucket,
@@ -335,7 +425,15 @@ export async function POST(request: Request) {
 
           if (typicalDone % 10 === 0) {
             send('prepare_progress', { phase: 'typicals', done: typicalDone, total: items.length });
+
+            // DBにも進捗を保存
+            await updateJob({ typicals_done: typicalDone });
           }
+        }
+
+        if (cancelled) {
+          controller.close();
+          return;
         }
 
         send('prepare_done', {
@@ -344,10 +442,40 @@ export async function POST(request: Request) {
           typicals: { done: typicalDone, scheduled: items.length },
         });
 
+        // DBに完了を保存
+        await updateJob({
+          status: 'completed',
+          prepare_status: 'completed',
+          typicals_done: typicalDone,
+          completed_at: new Date().toISOString(),
+        });
+
         controller.close();
       } catch (error) {
         console.error('upload route error:', error);
-        controller.enqueue(encoder.encode(sseEvent('error', { error: 'アップロード処理中にエラーが発生しました' })));
+        const errorMsg = error instanceof Error ? error.message : 'アップロード処理中にエラーが発生しました';
+
+        // SSEでエラーを送信
+        if (sseConnected) {
+          try {
+            controller.enqueue(encoder.encode(sseEvent('error', { error: errorMsg })));
+          } catch {
+            // SSE送信失敗は無視
+          }
+        }
+
+        // DBにエラーを保存（Service Role版）
+        if (jobId) {
+          try {
+            await updateUploadJobServiceRole(jobId, {
+              status: 'error',
+              error_message: errorMsg,
+            });
+          } catch (dbErr) {
+            console.error('Failed to update job status:', dbErr);
+          }
+        }
+
         controller.close();
       }
     },
@@ -362,17 +490,17 @@ export async function POST(request: Request) {
   });
 }
 
-// バッチをDBに保存
-async function flushBatch(batch: CsvRowData[], token: string, touchedBuckets: Set<string>) {
+// バッチをDBに保存（Service Role版 - JWT期限切れの影響を受けない）
+async function flushBatchServiceRole(batch: CsvRowData[], touchedBuckets: Set<string>) {
   const dbRecords = batch.map(({ case_name: _caseName, ...rest }) => {
     void _caseName;
     return rest;
   });
 
-  await insertResponses(dbRecords, token);
+  await insertResponsesServiceRole(dbRecords);
 
   // エンベディングキュー投入
-  await enqueueEmbeddingJobs(
+  await enqueueEmbeddingJobsServiceRole(
     batch.flatMap((r) => {
       const jobs: { case_id: string; response_id: string; question: 'q1' | 'q2' }[] = [];
       if (r.answer_q1 && r.answer_q1.trim()) {
@@ -384,8 +512,7 @@ async function flushBatch(batch: CsvRowData[], token: string, touchedBuckets: Se
         jobs.push({ case_id: r.case_id, response_id: r.response_id, question: 'q2' });
       }
       return jobs;
-    }),
-    token
+    })
   );
 
   // 典型例再計算用

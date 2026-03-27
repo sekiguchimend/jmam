@@ -1,18 +1,26 @@
 // CSVアップロードフォーム（Client Component）
 // FR-07〜FR-11: アップロード、検証、バッチ処理、進捗表示、エラー報告
-// Storage不要・API Route直接送信+SSE進捗表示版
+// バックグラウンドアップロード対応: ページを離れても処理継続
 
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { ProgressBar } from "@/components/ui";
-import { CloudUpload, Loader2, Check, X } from "lucide-react";
+import { CloudUpload, Loader2, Check, X, RefreshCw, StopCircle } from "lucide-react";
+import {
+  getActiveUploadJob,
+  createUploadJob,
+  dismissUploadJob,
+  cancelUploadJob,
+  CANCELLED_MESSAGE,
+  type UploadJob,
+} from "@/actions/uploadJobs";
 
-type UploadState = "idle" | "uploading" | "preparing" | "completed" | "error";
+type UploadState = "idle" | "uploading" | "preparing" | "completed" | "error" | "cancelled";
 
 type SseEvent =
-  | { event: "start"; data: { fileName: string } }
+  | { event: "start"; data: { fileName: string; jobId?: string } }
   | { event: "progress"; data: { fileName: string; processed: number; status: string } }
   | { event: "completed"; data: { fileName: string; processed: number; status: string } }
   | { event: "prepare_start"; data: { status: string } }
@@ -82,6 +90,21 @@ async function readSseStream(
   flush(decoder.decode());
 }
 
+// ジョブ状態からUploadStateに変換
+function jobToUploadState(job: UploadJob): UploadState {
+  // キャンセルはerrorステータス+特定のメッセージで判定
+  if (job.status === "error" && job.error_message === CANCELLED_MESSAGE) return "cancelled";
+  if (job.status === "error") return "error";
+  if (job.status === "completed") return "completed";
+  if (job.status === "processing") {
+    if (job.prepare_status === "processing" || job.prepare_status === "completed") {
+      return "preparing";
+    }
+    return "uploading";
+  }
+  return "uploading"; // pending
+}
+
 export function UploadClientForm() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -91,7 +114,10 @@ export function UploadClientForm() {
   const [errors, setErrors] = useState<string[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const startTimeRef = useRef<number | null>(null);
 
   // エンベディング生成の進捗
   const [embeddingProcessed, setEmbeddingProcessed] = useState(0);
@@ -100,14 +126,82 @@ export function UploadClientForm() {
   const [preparePhase, setPreparePhase] = useState<"embeddings" | "typicals">("embeddings");
   const [typicalsDone, setTypicalsDone] = useState(0);
   const [typicalsTotal, setTypicalsTotal] = useState(0);
+  const [isCancelling, setIsCancelling] = useState(false);
 
+  // ジョブ状態をUIに反映
+  const applyJobState = useCallback((job: UploadJob) => {
+    setCurrentJobId(job.id);
+    setFileName(job.file_name);
+    setUploadState(jobToUploadState(job));
+    setProcessedCount(job.processed_rows);
+    setEmbeddingProcessed(job.embedding_processed);
+    setEmbeddingSucceeded(job.embedding_succeeded);
+    setEmbeddingFailed(job.embedding_failed);
+    setTypicalsDone(job.typicals_done);
+    setTypicalsTotal(job.typicals_total);
+    if (job.error_message) setErrorMessage(job.error_message);
+    if (job.errors) setErrors(job.errors);
+
+    // 経過時間を計算
+    const createdAt = new Date(job.created_at).getTime();
+    const updatedAt = new Date(job.updated_at).getTime();
+    if (job.status === "processing" || job.status === "pending") {
+      startTimeRef.current = createdAt;
+      setElapsedMs(Date.now() - createdAt);
+    } else {
+      setElapsedMs(updatedAt - createdAt);
+    }
+
+    // フェーズを判定
+    if (job.typicals_done > 0 || job.typicals_total > 0) {
+      setPreparePhase("typicals");
+    } else if (job.embedding_processed > 0) {
+      setPreparePhase("embeddings");
+    }
+  }, []);
+
+  // 初回マウント時にアクティブなジョブがあるかチェック
+  useEffect(() => {
+    const checkActiveJob = async () => {
+      const result = await getActiveUploadJob();
+      if (result.success && result.job) {
+        applyJobState(result.job);
+      }
+    };
+    checkActiveJob();
+  }, [applyJobState]);
+
+  // 処理中のジョブを定期的にポーリング
   useEffect(() => {
     if (uploadState !== "uploading" && uploadState !== "preparing") {
       return;
     }
-    const startedAt = Date.now() - elapsedMs;
+
+    const poll = async () => {
+      if (!currentJobId) return;
+      const result = await getActiveUploadJob();
+      if (result.success && result.job && result.job.id === currentJobId) {
+        applyJobState(result.job);
+      }
+    };
+
+    // 3秒ごとにポーリング
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [uploadState, currentJobId, applyJobState]);
+
+  // 経過時間タイマー
+  useEffect(() => {
+    if (uploadState !== "uploading" && uploadState !== "preparing") {
+      return;
+    }
+    if (!startTimeRef.current) {
+      startTimeRef.current = Date.now();
+    }
     const timer = setInterval(() => {
-      setElapsedMs(Date.now() - startedAt);
+      if (startTimeRef.current) {
+        setElapsedMs(Date.now() - startTimeRef.current);
+      }
     }, 500);
     return () => clearInterval(timer);
   }, [uploadState]);
@@ -146,13 +240,27 @@ export function UploadClientForm() {
     setProcessedCount(0);
     setElapsedMs(0);
     setIsUploading(true);
+    setFileName(file.name);
+    startTimeRef.current = Date.now();
 
     try {
-      // FormDataを直接API Routeに送信
+      // 1. ジョブを作成
+      const jobResult = await createUploadJob({
+        fileName: file.name,
+        fileSize: file.size,
+      });
+
+      if (!jobResult.success || !jobResult.jobId) {
+        throw new Error(jobResult.error ?? "ジョブの作成に失敗しました");
+      }
+
+      setCurrentJobId(jobResult.jobId);
+
+      // 2. FormDataを直接API Routeに送信（ジョブIDをクエリパラメータで渡す）
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/api/admin/upload", {
+      const response = await fetch(`/api/admin/upload?jobId=${jobResult.jobId}`, {
         method: "POST",
         body: formData,
       });
@@ -161,6 +269,7 @@ export function UploadClientForm() {
         throw new Error(`処理の開始に失敗しました (${response.status})`);
       }
 
+      // 3. SSEで進捗を受信
       await readSseStream(response, (ev) => {
         if (ev.event === "progress") {
           setProcessedCount(ev.data.processed ?? 0);
@@ -214,7 +323,12 @@ export function UploadClientForm() {
     }
   };
 
-  const resetUpload = () => {
+  const resetUpload = async () => {
+    // 完了/エラー/キャンセルのジョブをdismiss
+    if (currentJobId && (uploadState === "completed" || uploadState === "error" || uploadState === "cancelled")) {
+      await dismissUploadJob(currentJobId);
+    }
+
     setFile(null);
     setUploadState("idle");
     setProcessedCount(0);
@@ -227,8 +341,40 @@ export function UploadClientForm() {
     setPreparePhase("embeddings");
     setTypicalsDone(0);
     setTypicalsTotal(0);
+    setCurrentJobId(null);
+    setFileName(null);
+    setIsCancelling(false);
+    startTimeRef.current = null;
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  };
+
+  // 手動で最新状態を取得
+  const refreshJobState = async () => {
+    if (!currentJobId) return;
+    const result = await getActiveUploadJob();
+    if (result.success && result.job && result.job.id === currentJobId) {
+      applyJobState(result.job);
+    }
+  };
+
+  // アップロードをキャンセル
+  const handleCancel = async () => {
+    if (!currentJobId || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      const result = await cancelUploadJob(currentJobId);
+      if (result.success) {
+        setUploadState("cancelled");
+        setErrorMessage("ユーザーによりキャンセルされました");
+      } else {
+        console.error("Cancel failed:", result.error);
+      }
+    } catch (e) {
+      console.error("Cancel error:", e);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -307,25 +453,50 @@ export function UploadClientForm() {
           className="rounded-2xl p-4 lg:p-8"
           style={{ background: "#f9f9f9", border: "1px solid #e5e5e5" }}
         >
-          <div className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6">
-            <Loader2 className="w-5 lg:w-6 h-5 lg:h-6 animate-spin flex-shrink-0" style={{ color: "#323232" }} />
-            <div>
-              <p className="text-sm lg:text-base font-black" style={{ color: "#323232" }}>
-                アップロード中<LoadingDots />
-              </p>
-              <p className="text-xs lg:text-sm font-bold break-all" style={{ color: "#323232" }}>
-                {file?.name}
-              </p>
+          <div className="flex items-center justify-between mb-4 lg:mb-6">
+            <div className="flex items-center gap-3 lg:gap-4">
+              <Loader2 className="w-5 lg:w-6 h-5 lg:h-6 animate-spin flex-shrink-0" style={{ color: "#323232" }} />
+              <div>
+                <p className="text-sm lg:text-base font-black" style={{ color: "#323232" }}>
+                  アップロード中<LoadingDots />
+                </p>
+                <p className="text-xs lg:text-sm font-bold break-all" style={{ color: "#323232" }}>
+                  {fileName ?? file?.name}
+                </p>
+              </div>
             </div>
+            <button
+              onClick={refreshJobState}
+              className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+              title="最新状態を取得"
+            >
+              <RefreshCw className="w-4 h-4" style={{ color: "var(--text-muted)" }} />
+            </button>
           </div>
 
           <div className="mb-3 lg:mb-4">
             <ProgressBar current={processedCount} total={Math.max(processedCount + 100, 1)} animated />
           </div>
 
-          <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
-            進捗: {processedCount.toLocaleString()} 件処理済み・経過 {formatElapsed(elapsedMs)}
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
+                進捗: {processedCount.toLocaleString()} 件処理済み・経過 {formatElapsed(elapsedMs)}
+              </p>
+              <p className="text-xs mt-2 font-bold" style={{ color: "var(--success)" }}>
+                ページを離れても処理は継続されます
+              </p>
+            </div>
+            <button
+              onClick={handleCancel}
+              disabled={isCancelling}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all hover:opacity-80 disabled:opacity-50"
+              style={{ background: "#dc2626", color: "#fff" }}
+            >
+              <StopCircle className="w-4 h-4" />
+              {isCancelling ? "停止中..." : "停止"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -335,16 +506,25 @@ export function UploadClientForm() {
           className="rounded-2xl p-4 lg:p-8"
           style={{ background: "#f0f9ff", border: "1px solid #bae6fd" }}
         >
-          <div className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6">
-            <Loader2 className="w-5 lg:w-6 h-5 lg:h-6 animate-spin flex-shrink-0" style={{ color: "#0284c7" }} />
-            <div>
-              <p className="text-sm lg:text-base font-black" style={{ color: "#0284c7" }}>
-                {preparePhase === "embeddings" ? "エンベディング生成中" : "典型例生成中"}<LoadingDots />
-              </p>
-              <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
-                データ登録完了（{processedCount.toLocaleString()}件）
-              </p>
+          <div className="flex items-center justify-between mb-4 lg:mb-6">
+            <div className="flex items-center gap-3 lg:gap-4">
+              <Loader2 className="w-5 lg:w-6 h-5 lg:h-6 animate-spin flex-shrink-0" style={{ color: "#0284c7" }} />
+              <div>
+                <p className="text-sm lg:text-base font-black" style={{ color: "#0284c7" }}>
+                  {preparePhase === "embeddings" ? "エンベディング生成中" : "典型例生成中"}<LoadingDots />
+                </p>
+                <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
+                  データ登録完了（{processedCount.toLocaleString()}件）
+                </p>
+              </div>
             </div>
+            <button
+              onClick={refreshJobState}
+              className="p-2 rounded-lg hover:bg-sky-200 transition-colors"
+              title="最新状態を取得"
+            >
+              <RefreshCw className="w-4 h-4" style={{ color: "#0284c7" }} />
+            </button>
           </div>
 
           <div className="mb-3 lg:mb-4">
@@ -363,22 +543,35 @@ export function UploadClientForm() {
             )}
           </div>
 
-          <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
-            {preparePhase === "embeddings" ? (
-              <>
-                エンベディング: {embeddingSucceeded.toLocaleString()} 件成功
-                {embeddingFailed > 0 && <span style={{ color: "#dc2626" }}> / {embeddingFailed} 件失敗</span>}
-                ・経過 {formatElapsed(elapsedMs)}
-              </>
-            ) : (
-              <>
-                典型例: {typicalsDone} / {typicalsTotal} 件・経過 {formatElapsed(elapsedMs)}
-              </>
-            )}
-          </p>
-          <p className="text-xs mt-2 font-bold" style={{ color: "var(--text-muted)" }}>
-            ※ この処理には数分かかることがあります。ページを閉じないでください。
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs lg:text-sm font-bold" style={{ color: "#323232" }}>
+                {preparePhase === "embeddings" ? (
+                  <>
+                    エンベディング: {embeddingSucceeded.toLocaleString()} 件成功
+                    {embeddingFailed > 0 && <span style={{ color: "#dc2626" }}> / {embeddingFailed} 件失敗</span>}
+                    ・経過 {formatElapsed(elapsedMs)}
+                  </>
+                ) : (
+                  <>
+                    典型例: {typicalsDone} / {typicalsTotal} 件・経過 {formatElapsed(elapsedMs)}
+                  </>
+                )}
+              </p>
+              <p className="text-xs mt-2 font-bold" style={{ color: "var(--success)" }}>
+                ページを離れても処理は継続されます
+              </p>
+            </div>
+            <button
+              onClick={handleCancel}
+              disabled={isCancelling}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all hover:opacity-80 disabled:opacity-50"
+              style={{ background: "#dc2626", color: "#fff" }}
+            >
+              <StopCircle className="w-4 h-4" />
+              {isCancelling ? "停止中..." : "停止"}
+            </button>
+          </div>
         </div>
       )}
 
@@ -425,6 +618,41 @@ export function UploadClientForm() {
         </div>
       )}
 
+      {/* キャンセル */}
+      {uploadState === "cancelled" && (
+        <div
+          className="rounded-2xl p-4 lg:p-8"
+          style={{ background: "#fef9c3", border: "1px solid #fde047" }}
+        >
+          <div className="flex items-center gap-3 lg:gap-4 mb-4 lg:mb-6">
+            <StopCircle className="w-5 lg:w-6 h-5 lg:h-6 flex-shrink-0" style={{ color: "#ca8a04" }} />
+            <div>
+              <p className="text-sm lg:text-base font-black" style={{ color: "#ca8a04" }}>
+                アップロードを停止しました
+              </p>
+              <p className="text-xs lg:text-sm font-bold break-all" style={{ color: "#323232" }}>
+                {fileName ?? file?.name}
+              </p>
+            </div>
+          </div>
+
+          <p className="text-sm lg:text-base mb-4 font-bold" style={{ color: "#323232" }}>
+            処理済み: {processedCount.toLocaleString()} 件
+            {embeddingSucceeded > 0 && ` / エンベディング: ${embeddingSucceeded.toLocaleString()} 件`}
+          </p>
+
+          <div className="flex justify-end">
+            <button
+              onClick={resetUpload}
+              className="px-5 py-2 rounded-lg text-sm font-black transition-all hover:opacity-90"
+              style={{ background: "#ca8a04", color: "#fff" }}
+            >
+              やり直す
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* エラー */}
       {uploadState === "error" && (
         <div
@@ -438,7 +666,7 @@ export function UploadClientForm() {
                 アップロードエラー
               </p>
               <p className="text-xs lg:text-sm font-bold break-all" style={{ color: "#323232" }}>
-                {file?.name}
+                {fileName ?? file?.name}
               </p>
             </div>
           </div>

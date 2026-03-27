@@ -412,3 +412,55 @@ export async function deleteDatasetByCaseId(caseId: string): Promise<{
     };
   }
 }
+
+// ============================================
+// 新規ケース作成（解答データなし）
+// ============================================
+
+export async function createNewCase(data: {
+  caseId: string;
+  caseName: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!(await isAdmin())) {
+      return { success: false, error: '管理者権限がありません' };
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      return { success: false, error: '認証トークンが見つかりません（再ログインしてください）' };
+    }
+
+    // バリデーション
+    const caseId = data.caseId.trim();
+    const caseName = data.caseName.trim();
+
+    if (!caseId) {
+      return { success: false, error: 'ケースIDを入力してください' };
+    }
+
+    if (caseId.length > 100) {
+      return { success: false, error: 'ケースIDは100文字以内で入力してください' };
+    }
+
+    if (caseName.length > 255) {
+      return { success: false, error: 'ケース名は255文字以内で入力してください' };
+    }
+
+    // ケースを作成
+    await upsertCase({
+      case_id: caseId,
+      case_name: caseName || null,
+    }, token);
+
+    console.log('[createNewCase] ケース作成完了:', caseId, caseName);
+
+    return { success: true };
+  } catch (error) {
+    console.error('createNewCase error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'ケースの作成に失敗しました'
+    };
+  }
+}
