@@ -48,13 +48,16 @@ export async function getActiveUploadJob(): Promise<{
     // Service Roleを使用（JWT期限切れの影響を受けない）
     const { supabaseServiceRole } = await import('@/lib/supabase/service-role');
 
-    // 実行中のジョブ、または過去1時間以内に完了/エラーになったジョブを取得
+    // 古いスタックしたジョブを自動クリーンアップ
+    await cleanupStaleJobs();
+
+    // 実行中のジョブ（1時間以内）、または過去1時間以内に完了/エラーになったジョブを取得
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const { data, error } = await supabaseServiceRole
       .from('upload_jobs')
       .select('*')
-      .or(`status.in.(pending,processing),and(status.in.(completed,error),updated_at.gte.${oneHourAgo})`)
+      .gte('updated_at', oneHourAgo)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -75,6 +78,26 @@ export async function getActiveUploadJob(): Promise<{
       success: false,
       error: error instanceof Error ? error.message : 'ジョブの取得に失敗しました',
     };
+  }
+}
+
+// 古いスタックしたジョブをクリーンアップ（1時間以上経過したpending/processingジョブ）
+async function cleanupStaleJobs(): Promise<void> {
+  const { supabaseServiceRole } = await import('@/lib/supabase/service-role');
+
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabaseServiceRole
+    .from('upload_jobs')
+    .update({
+      status: 'error',
+      error_message: 'タイムアウト: 処理が1時間以上停止していたためエラーとしました',
+    })
+    .in('status', ['pending', 'processing'])
+    .lt('updated_at', oneHourAgo);
+
+  if (error) {
+    console.error('cleanupStaleJobs error:', error);
   }
 }
 
@@ -101,16 +124,24 @@ export async function createUploadJob(params: {
     // Service Roleを使用（JWT期限切れの影響を受けない）
     const { supabaseServiceRole } = await import('@/lib/supabase/service-role');
 
-    // 実行中のジョブがあればエラー
+    // 古いスタックしたジョブを自動クリーンアップ
+    await cleanupStaleJobs();
+
+    // 実行中のジョブがあればエラー（クリーンアップ後に再確認）
     const { data: existingJob } = await supabaseServiceRole
       .from('upload_jobs')
-      .select('id')
+      .select('id, file_name, created_at')
       .in('status', ['pending', 'processing'])
       .limit(1)
       .single();
 
     if (existingJob) {
-      return { success: false, error: '別のアップロードが実行中です' };
+      const createdAt = new Date(existingJob.created_at);
+      const elapsed = Math.round((Date.now() - createdAt.getTime()) / 1000 / 60);
+      return {
+        success: false,
+        error: `別のアップロード（${existingJob.file_name}）が実行中です（${elapsed}分経過）`
+      };
     }
 
     // 新しいジョブを作成
