@@ -13,9 +13,8 @@ import {
   createUploadJob,
   dismissUploadJob,
   cancelUploadJob,
-  CANCELLED_MESSAGE,
-  type UploadJob,
 } from "@/actions/uploadJobs";
+import { CANCELLED_MESSAGE, type UploadJob } from "@/lib/uploadJobTypes";
 
 type UploadState = "idle" | "uploading" | "preparing" | "completed" | "error" | "cancelled";
 

@@ -1,13 +1,12 @@
 // アップロードジョブのユーティリティ関数
-// Server ActionsとAPI Routeの両方から使用される
+// API Routeから使用されるサーバー専用モジュール
 
 import 'server-only';
 
-export type UploadJobStatus = 'pending' | 'processing' | 'completed' | 'error';
-export type PrepareStatus = 'pending' | 'processing' | 'completed' | 'skipped';
+import { CANCELLED_MESSAGE, type UploadJobStatus, type PrepareStatus } from './uploadJobTypes';
 
-// キャンセル時のエラーメッセージ（これでキャンセルかどうかを判定）
-export const CANCELLED_MESSAGE = 'ユーザーによりキャンセルされました';
+// 型のみ再エクスポート（API Routeの便宜のため）
+export type { UploadJobStatus, PrepareStatus };
 
 // ジョブを更新（Service Role版 - JWT期限切れの影響を受けない）
 export async function updateUploadJobServiceRole(

@@ -4,33 +4,7 @@
 'use server';
 
 import { isAdmin, getAuthedUserId } from '@/lib/supabase/server';
-
-// 型を直接定義（server-onlyモジュールからの再エクスポートを避ける）
-export type UploadJobStatus = 'pending' | 'processing' | 'completed' | 'error';
-export type PrepareStatus = 'pending' | 'processing' | 'completed' | 'skipped';
-
-// キャンセル時のエラーメッセージ
-export const CANCELLED_MESSAGE = 'ユーザーによりキャンセルされました';
-
-export interface UploadJob {
-  id: string;
-  file_name: string;
-  file_size: number;
-  status: UploadJobStatus;
-  total_rows: number | null;
-  processed_rows: number;
-  error_message: string | null;
-  errors: string[];
-  prepare_status: PrepareStatus | null;
-  embedding_processed: number;
-  embedding_succeeded: number;
-  embedding_failed: number;
-  typicals_done: number;
-  typicals_total: number;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-}
+import { CANCELLED_MESSAGE, type UploadJob } from '@/lib/uploadJobTypes';
 
 // 実行中または最近完了したジョブを取得（Service Role版）
 export async function getActiveUploadJob(): Promise<{
