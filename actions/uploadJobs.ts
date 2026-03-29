@@ -4,15 +4,13 @@
 'use server';
 
 import { isAdmin, getAuthedUserId } from '@/lib/supabase/server';
-import {
-  type UploadJobStatus,
-  type PrepareStatus,
-  CANCELLED_MESSAGE,
-} from '@/lib/uploadJobUtils';
 
-// 型とメッセージを再エクスポート
-export type { UploadJobStatus, PrepareStatus };
-export { CANCELLED_MESSAGE };
+// 型を直接定義（server-onlyモジュールからの再エクスポートを避ける）
+export type UploadJobStatus = 'pending' | 'processing' | 'completed' | 'error';
+export type PrepareStatus = 'pending' | 'processing' | 'completed' | 'skipped';
+
+// キャンセル時のエラーメッセージ
+export const CANCELLED_MESSAGE = 'ユーザーによりキャンセルされました';
 
 export interface UploadJob {
   id: string;
