@@ -65,13 +65,16 @@ function DatasetTableSkeleton() {
 // 統計カード用の非同期コンポーネント
 async function StatsCards({ isAdmin }: { isAdmin: boolean }) {
   // キャッシュされたデータを使用（重複クエリ防止）
-  const { cases, totalCount } = await getCachedDashboardData();
+  const { cases, stats, totalCount } = await getCachedDashboardData();
+
+  // 管理者はstats.length（レスポンスがあるケース数）、一般ユーザーはcases.length
+  const caseCount = isAdmin ? stats.length : cases.length;
 
   return (
     <>
       <StatCard
         title="ケース数"
-        value={cases.length.toString()}
+        value={caseCount.toString()}
         icon={<Briefcase className="w-6 h-6" />}
       />
       <StatCard
