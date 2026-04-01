@@ -534,7 +534,7 @@ export async function updateCaseSituation(
   }
 }
 
-// 解答データをバッチ挿入（常に新規レコードとして追加）
+// 解答データをバッチupsert（同じcase_id+response_idは更新、新規は追加）
 export async function insertResponses(responses: ResponseInsert[], accessToken?: string): Promise<void> {
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
@@ -542,46 +542,47 @@ export async function insertResponses(responses: ResponseInsert[], accessToken?:
 
   if (responses.length === 0) return;
 
-  const { error } = await supabase.from('responses').insert(responses satisfies ResponseInsert[]);
+  const { error } = await supabase.from('responses').upsert(responses satisfies ResponseInsert[], {
+    onConflict: 'case_id,response_id',
+  });
   if (error) {
-    console.error('insertResponses insert error:', error);
+    console.error('insertResponses upsert error:', error);
     throw new Error(`解答データの登録に失敗しました: ${error.message ?? 'unknown error'}`);
   }
 }
 
 // ケースの解答と関連データを全削除（データセット削除用）
-export async function deleteResponsesByCaseId(caseId: string, accessToken?: string): Promise<number> {
-  const token = accessToken ?? (await getAccessToken());
-  if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
-  const supabase = createAuthedAnonServerClient(token);
+// Service Roleを使用してRLSをバイパス（管理者チェックはServer Action側で実施）
+export async function deleteResponsesByCaseId(caseId: string, _accessToken?: string): Promise<number> {
+  const { supabaseServiceRole } = await import('./service-role');
 
   // 関連テーブルを先に削除（外部キー制約がないので手動で削除）
-  const { error: e1 } = await supabase.from('typical_examples').delete().eq('case_id', caseId);
+  const { error: e1 } = await supabaseServiceRole.from('typical_examples').delete().eq('case_id', caseId);
   if (e1) console.error('delete typical_examples error:', e1);
 
-  const { error: e2 } = await supabase.from('response_embeddings').delete().eq('case_id', caseId);
+  const { error: e2 } = await supabaseServiceRole.from('response_embeddings').delete().eq('case_id', caseId);
   if (e2) console.error('delete response_embeddings error:', e2);
 
-  const { error: e3 } = await supabase.from('embedding_queue').delete().eq('case_id', caseId);
+  const { error: e3 } = await supabaseServiceRole.from('embedding_queue').delete().eq('case_id', caseId);
   if (e3) console.error('delete embedding_queue error:', e3);
 
-  const { error: e4 } = await supabase.from('questions').delete().eq('case_id', caseId);
+  const { error: e4 } = await supabaseServiceRole.from('questions').delete().eq('case_id', caseId);
   if (e4) console.error('delete questions error:', e4);
 
-  const { error: e5 } = await supabase.from('score_distribution').delete().eq('case_id', caseId);
+  const { error: e5 } = await supabaseServiceRole.from('score_distribution').delete().eq('case_id', caseId);
   if (e5) console.error('delete score_distribution error:', e5);
 
-  const { error: e6 } = await supabase.from('score_prototypes').delete().eq('case_id', caseId);
+  const { error: e6 } = await supabaseServiceRole.from('score_prototypes').delete().eq('case_id', caseId);
   if (e6) console.error('delete score_prototypes error:', e6);
 
-  const { error: e7 } = await supabase.from('prediction_history').delete().eq('case_id', caseId);
+  const { error: e7 } = await supabaseServiceRole.from('prediction_history').delete().eq('case_id', caseId);
   if (e7) console.error('delete prediction_history error:', e7);
 
-  const { error: e8 } = await supabase.from('user_score_records').delete().eq('case_id', caseId);
+  const { error: e8 } = await supabaseServiceRole.from('user_score_records').delete().eq('case_id', caseId);
   if (e8) console.error('delete user_score_records error:', e8);
 
   // 解答データを削除
-  const { data, error } = await supabase
+  const { data, error } = await supabaseServiceRole
     .from('responses')
     .delete()
     .eq('case_id', caseId)
@@ -593,7 +594,7 @@ export async function deleteResponsesByCaseId(caseId: string, accessToken?: stri
   }
 
   // ケースマスタも削除
-  const { error: e9 } = await supabase.from('cases').delete().eq('case_id', caseId);
+  const { error: e9 } = await supabaseServiceRole.from('cases').delete().eq('case_id', caseId);
   if (e9) console.error('delete cases error:', e9);
 
   console.log(`[DELETE] case_id=${caseId}: responses=${data?.length ?? 0}件削除, cases=1件削除`);
@@ -1119,12 +1120,14 @@ export async function upsertCaseServiceRole(caseData: CaseInsert): Promise<void>
   }
 }
 
-// 解答データをバッチ挿入（Service Role版）
+// 解答データをバッチupsert（Service Role版）
 export async function insertResponsesServiceRole(responses: ResponseInsert[]): Promise<void> {
   if (responses.length === 0) return;
   const { supabaseServiceRole } = await import('./service-role');
 
-  const { error } = await supabaseServiceRole.from('responses').insert(responses satisfies ResponseInsert[]);
+  const { error } = await supabaseServiceRole.from('responses').upsert(responses satisfies ResponseInsert[], {
+    onConflict: 'case_id,response_id',
+  });
   if (error) {
     console.error('insertResponsesServiceRole error:', error);
     throw new Error(`解答データの登録に失敗しました: ${error.message ?? 'unknown error'}`);

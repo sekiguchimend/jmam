@@ -25,7 +25,8 @@ type SseEvent =
   | { event: "prepare_start"; data: { status: string } }
   | { event: "prepare_progress"; data: { phase: string; processed?: number; succeeded?: number; failed?: number; done?: number; total?: number } }
   | { event: "prepare_done"; data: { status: string; embeddings: { processed: number; succeeded: number; failed: number }; typicals: { done: number; scheduled: number } } }
-  | { event: "error"; data: { fileName?: string; error: string; errors?: string[] } };
+  | { event: "error"; data: { fileName?: string; error: string; errors?: string[] } }
+  | { event: "cancelled"; data: { status: string } };
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -42,51 +43,6 @@ function LoadingDots() {
       <span className="w-1.5 h-1.5 rounded-full bg-[#323232] animate-bounce" style={{ animationDelay: "300ms" }} />
     </span>
   );
-}
-
-async function readSseStream(
-  response: Response,
-  onEvent: (ev: SseEvent) => void
-): Promise<void> {
-  const body = response.body;
-  if (!body) throw new Error("レスポンスボディが空です");
-
-  const reader = body.getReader();
-  const decoder = new TextDecoder("utf-8");
-  let buffer = "";
-
-  const flush = (chunk: string) => {
-    buffer += chunk;
-    while (true) {
-      const idx = buffer.indexOf("\n\n");
-      if (idx === -1) break;
-      const rawEvent = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-
-      const lines = rawEvent.split("\n").filter(Boolean);
-      const eventLine = lines.find((l) => l.startsWith("event:"));
-      const dataLine = lines.find((l) => l.startsWith("data:"));
-      if (!eventLine || !dataLine) continue;
-
-      const event = eventLine.replace("event:", "").trim();
-      const dataJson = dataLine.replace("data:", "").trim();
-      try {
-        const data = JSON.parse(dataJson) as unknown;
-        onEvent({ event: event as SseEvent["event"], data } as SseEvent);
-      } catch {
-        // パースできない場合は無視
-      }
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    if (!value) continue;
-    flush(decoder.decode(value, { stream: true }));
-  }
-
-  flush(decoder.decode());
 }
 
 // ジョブ状態からUploadStateに変換
@@ -127,9 +83,22 @@ export function UploadClientForm() {
   const [typicalsTotal, setTypicalsTotal] = useState(0);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  // ジョブ状態をUIに反映
+  // SSE接続を中断するためのAbortController
+  const abortControllerRef = useRef<AbortController | null>(null);
+  // リセットされたかどうかのフラグ（SSEイベント処理をスキップするため）
+  const isResetRef = useRef(false);
+  // 現在アクティブなジョブID（SSEイベントの検証用）
+  const activeJobIdRef = useRef<string | null>(null);
+
+  // ジョブ状態をUIに反映（リセット後は無視）
   const applyJobState = useCallback((job: UploadJob) => {
+    // リセット後は無視
+    if (isResetRef.current) return;
+    // 現在のジョブIDと一致しない場合は無視
+    if (activeJobIdRef.current && job.id !== activeJobIdRef.current) return;
+
     setCurrentJobId(job.id);
+    activeJobIdRef.current = job.id;
     setFileName(job.file_name);
     setUploadState(jobToUploadState(job));
     setProcessedCount(job.processed_rows);
@@ -162,6 +131,9 @@ export function UploadClientForm() {
   // 初回マウント時にアクティブなジョブがあるかチェック
   useEffect(() => {
     const checkActiveJob = async () => {
+      // リセット後は無視
+      if (isResetRef.current) return;
+
       const result = await getActiveUploadJob();
       if (result.success && result.job) {
         applyJobState(result.job);
@@ -177,7 +149,10 @@ export function UploadClientForm() {
     }
 
     const poll = async () => {
+      // リセット後は無視
+      if (isResetRef.current) return;
       if (!currentJobId) return;
+
       const result = await getActiveUploadJob();
       if (result.success && result.job && result.job.id === currentJobId) {
         applyJobState(result.job);
@@ -233,6 +208,9 @@ export function UploadClientForm() {
   const handleUpload = async () => {
     if (!file || isUploading) return;
 
+    // リセットフラグをクリア
+    isResetRef.current = false;
+
     setUploadState("uploading");
     setErrors([]);
     setErrorMessage(null);
@@ -241,6 +219,13 @@ export function UploadClientForm() {
     setIsUploading(true);
     setFileName(file.name);
     startTimeRef.current = Date.now();
+
+    // ローカル変数でジョブIDを保持
+    let localJobId: string | null = null;
+
+    // AbortControllerを作成
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
       // 1. ジョブを作成
@@ -253,6 +238,8 @@ export function UploadClientForm() {
         throw new Error(jobResult.error ?? "ジョブの作成に失敗しました");
       }
 
+      localJobId = jobResult.jobId;
+      activeJobIdRef.current = jobResult.jobId;
       setCurrentJobId(jobResult.jobId);
 
       // 2. FormDataを直接API Routeに送信（ジョブIDをクエリパラメータで渡す）
@@ -262,6 +249,7 @@ export function UploadClientForm() {
       const response = await fetch(`/api/admin/upload?jobId=${jobResult.jobId}`, {
         method: "POST",
         body: formData,
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -269,65 +257,148 @@ export function UploadClientForm() {
       }
 
       // 3. SSEで進捗を受信
-      await readSseStream(response, (ev) => {
-        if (ev.event === "progress") {
-          setProcessedCount(ev.data.processed ?? 0);
-          return;
-        }
-        if (ev.event === "completed") {
-          setProcessedCount(ev.data.processed ?? 0);
-          return;
-        }
-        if (ev.event === "prepare_start") {
-          setUploadState("preparing");
-          setEmbeddingProcessed(0);
-          setEmbeddingSucceeded(0);
-          setEmbeddingFailed(0);
-          setPreparePhase("embeddings");
-          return;
-        }
-        if (ev.event === "prepare_progress") {
-          if (ev.data.phase === "embeddings") {
-            setPreparePhase("embeddings");
-            setEmbeddingProcessed(ev.data.processed ?? 0);
-            setEmbeddingSucceeded(ev.data.succeeded ?? 0);
-            setEmbeddingFailed(ev.data.failed ?? 0);
-          } else if (ev.data.phase === "typicals") {
-            setPreparePhase("typicals");
-            setTypicalsDone(ev.data.done ?? 0);
-            setTypicalsTotal(ev.data.total ?? 0);
+      const body = response.body;
+      if (!body) {
+        throw new Error("レスポンスボディが空です");
+      }
+
+      const reader = body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      const processChunk = (chunk: string) => {
+        buffer += chunk;
+        while (true) {
+          const idx = buffer.indexOf("\n\n");
+          if (idx === -1) break;
+          const rawEvent = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+
+          const lines = rawEvent.split("\n").filter(Boolean);
+          const eventLine = lines.find((l) => l.startsWith("event:"));
+          const dataLine = lines.find((l) => l.startsWith("data:"));
+          if (!eventLine || !dataLine) continue;
+
+          const event = eventLine.replace("event:", "").trim();
+          const dataJson = dataLine.replace("data:", "").trim();
+
+          try {
+            const data = JSON.parse(dataJson);
+            handleSseEvent({ event, data } as SseEvent, localJobId);
+          } catch {
+            // パースエラーは無視
           }
-          return;
         }
-        if (ev.event === "prepare_done") {
-          setEmbeddingProcessed(ev.data.embeddings.processed);
-          setEmbeddingSucceeded(ev.data.embeddings.succeeded);
-          setEmbeddingFailed(ev.data.embeddings.failed);
-          setTypicalsDone(ev.data.typicals.done);
-          setTypicalsTotal(ev.data.typicals.scheduled);
-          setUploadState("completed");
-          return;
+      };
+
+      try {
+        while (true) {
+          // リセットされた場合は中断
+          if (isResetRef.current) {
+            reader.cancel();
+            break;
+          }
+
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          processChunk(decoder.decode(value, { stream: true }));
         }
-        if (ev.event === "error") {
-          setUploadState("error");
-          setErrorMessage(ev.data.error);
-          if (ev.data.errors) setErrors(ev.data.errors);
-        }
-      });
+        processChunk(decoder.decode());
+      } catch (error) {
+        // AbortやリセットによるエラーはOK
+        if (isResetRef.current) return;
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg.includes("abort") || msg.includes("cancel")) return;
+        throw error;
+      }
     } catch (e) {
+      // リセット後は何もしない
+      if (isResetRef.current) return;
+
+      // AbortError は無視
+      if (e instanceof Error && e.name === "AbortError") return;
+
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      // キャンセル/abort関連のエラーは無視
+      if (errorMsg.includes("abort") || errorMsg.includes("cancel")) return;
+
       setUploadState("error");
-      setErrorMessage(e instanceof Error ? e.message : "アップロード処理に失敗しました");
+      setErrorMessage(errorMsg || "アップロード処理に失敗しました");
     } finally {
       setIsUploading(false);
+      abortControllerRef.current = null;
     }
   };
 
+  // SSEイベントを処理（リセット後やジョブID不一致は無視）
+  const handleSseEvent = (ev: SseEvent, expectedJobId: string | null) => {
+    // リセット後は無視
+    if (isResetRef.current) return;
+    // ジョブIDが変わっていたら無視
+    if (expectedJobId && activeJobIdRef.current !== expectedJobId) return;
+
+    switch (ev.event) {
+      case "progress":
+        setProcessedCount(ev.data.processed ?? 0);
+        break;
+      case "completed":
+        setProcessedCount(ev.data.processed ?? 0);
+        break;
+      case "prepare_start":
+        setUploadState("preparing");
+        setEmbeddingProcessed(0);
+        setEmbeddingSucceeded(0);
+        setEmbeddingFailed(0);
+        setPreparePhase("embeddings");
+        break;
+      case "prepare_progress":
+        if (ev.data.phase === "embeddings") {
+          setPreparePhase("embeddings");
+          setEmbeddingProcessed(ev.data.processed ?? 0);
+          setEmbeddingSucceeded(ev.data.succeeded ?? 0);
+          setEmbeddingFailed(ev.data.failed ?? 0);
+        } else if (ev.data.phase === "typicals") {
+          setPreparePhase("typicals");
+          setTypicalsDone(ev.data.done ?? 0);
+          setTypicalsTotal(ev.data.total ?? 0);
+        }
+        break;
+      case "prepare_done":
+        setEmbeddingProcessed(ev.data.embeddings.processed);
+        setEmbeddingSucceeded(ev.data.embeddings.succeeded);
+        setEmbeddingFailed(ev.data.embeddings.failed);
+        setTypicalsDone(ev.data.typicals.done);
+        setTypicalsTotal(ev.data.typicals.scheduled);
+        setUploadState("completed");
+        break;
+      case "cancelled":
+        setUploadState("cancelled");
+        setErrorMessage("ユーザーによりキャンセルされました");
+        break;
+      case "error":
+        setUploadState("error");
+        setErrorMessage(ev.data.error);
+        if (ev.data.errors) setErrors(ev.data.errors);
+        break;
+    }
+  };
+
+  // 状態を完全にリセット
   const resetUpload = async () => {
-    // 完了/エラー/キャンセルのジョブをdismiss
-    if (currentJobId && (uploadState === "completed" || uploadState === "error" || uploadState === "cancelled")) {
-      await dismissUploadJob(currentJobId);
+    // リセットフラグを立てる（以降のSSEイベント/ポーリングを無視）
+    isResetRef.current = true;
+
+    // 現在のジョブIDを保持
+    const jobIdToDismiss = currentJobId;
+
+    // SSE接続を中断
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
 
+    // 即座にUIをリセット
     setFile(null);
     setUploadState("idle");
     setProcessedCount(0);
@@ -343,15 +414,27 @@ export function UploadClientForm() {
     setCurrentJobId(null);
     setFileName(null);
     setIsCancelling(false);
+    setIsUploading(false);
     startTimeRef.current = null;
+    activeJobIdRef.current = null;
+
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+
+    // バックグラウンドでジョブをdismiss
+    if (jobIdToDismiss) {
+      dismissUploadJob(jobIdToDismiss).catch((e) => {
+        console.error("dismissUploadJob error:", e);
+      });
     }
   };
 
   // 手動で最新状態を取得
   const refreshJobState = async () => {
+    if (isResetRef.current) return;
     if (!currentJobId) return;
+
     const result = await getActiveUploadJob();
     if (result.success && result.job && result.job.id === currentJobId) {
       applyJobState(result.job);
@@ -362,6 +445,7 @@ export function UploadClientForm() {
   const handleCancel = async () => {
     if (!currentJobId || isCancelling) return;
     setIsCancelling(true);
+
     try {
       const result = await cancelUploadJob(currentJobId);
       if (result.success) {

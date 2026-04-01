@@ -4,7 +4,7 @@
 'use server';
 
 import { isAdmin, getAuthedUserId } from '@/lib/supabase/server';
-import { CANCELLED_MESSAGE, type UploadJob } from '@/lib/uploadJobTypes';
+import { CANCELLED_MESSAGE, DISMISSED_MARKER, type UploadJob } from '@/lib/uploadJobTypes';
 
 // 実行中または最近完了したジョブを取得（Service Role版）
 export async function getActiveUploadJob(): Promise<{
@@ -24,12 +24,14 @@ export async function getActiveUploadJob(): Promise<{
     await cleanupStaleJobs();
 
     // 実行中のジョブ（1時間以内）、または過去1時間以内に完了/エラーになったジョブを取得
+    // dismissedジョブは除外
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
     const { data, error } = await supabaseServiceRole
       .from('upload_jobs')
       .select('*')
       .gte('updated_at', oneHourAgo)
+      .or(`error_message.is.null,error_message.neq.${DISMISSED_MARKER}`)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
@@ -162,6 +164,7 @@ export async function cancelUploadJob(jobId: string): Promise<{
       .update({
         status: 'error',
         error_message: CANCELLED_MESSAGE,
+        updated_at: new Date().toISOString(), // 明示的に更新してgetActiveUploadJobで取得可能にする
       })
       .eq('id', jobId)
       .in('status', ['pending', 'processing']);
@@ -194,12 +197,14 @@ export async function dismissUploadJob(jobId: string): Promise<{
     // Service Roleを使用（JWT期限切れの影響を受けない）
     const { supabaseServiceRole } = await import('@/lib/supabase/service-role');
 
-    // 1時間前の日時に更新して非表示にする
-    const oldDate = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-
+    // error_messageにDISMISSED_MARKERを設定してgetActiveUploadJobから除外
+    // statusがerrorでない場合もerrorに変更（completedの場合など）
     const { error } = await supabaseServiceRole
       .from('upload_jobs')
-      .update({ updated_at: oldDate })
+      .update({
+        status: 'error',
+        error_message: DISMISSED_MARKER,
+      })
       .eq('id', jobId);
 
     if (error) {

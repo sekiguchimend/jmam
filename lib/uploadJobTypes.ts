@@ -7,6 +7,9 @@ export type PrepareStatus = 'pending' | 'processing' | 'completed' | 'skipped';
 // キャンセル時のエラーメッセージ
 export const CANCELLED_MESSAGE = 'ユーザーによりキャンセルされました';
 
+// dismiss時のマーカー（ユーザーがやり直しボタンを押した時）
+export const DISMISSED_MARKER = '__DISMISSED__';
+
 export interface UploadJob {
   id: string;
   file_name: string;

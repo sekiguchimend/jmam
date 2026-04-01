@@ -124,12 +124,25 @@ export async function POST(request: Request) {
 
   // SSE接続が切れてもエラーにならないようにする
   let sseConnected = true;
+  // controller.close()の多重呼び出しを防ぐ
+  let controllerClosed = false;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      // 安全にcontrollerを閉じる（多重呼び出し防止）
+      const safeClose = () => {
+        if (controllerClosed) return;
+        controllerClosed = true;
+        try {
+          controller.close();
+        } catch {
+          // 既に閉じられている場合は無視
+        }
+      };
+
       // SSE送信（接続が切れていてもエラーにしない）
       const send = (event: string, data: unknown) => {
-        if (!sseConnected) return;
+        if (!sseConnected || controllerClosed) return;
         try {
           controller.enqueue(encoder.encode(sseEvent(event, data)));
         } catch {
@@ -151,7 +164,7 @@ export async function POST(request: Request) {
         // 認証チェック
         if (!(await isAdmin())) {
           send('error', { error: '管理者権限がありません' });
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -162,14 +175,14 @@ export async function POST(request: Request) {
         if (!(file instanceof File)) {
           send('error', { error: 'ファイルが選択されていません' });
           await updateJob({ status: 'error', error_message: 'ファイルが選択されていません' });
-          controller.close();
+          safeClose();
           return;
         }
 
         if (!file.name.endsWith('.csv')) {
           send('error', { error: 'CSVファイルのみアップロード可能です' });
           await updateJob({ status: 'error', error_message: 'CSVファイルのみアップロード可能です' });
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -177,7 +190,7 @@ export async function POST(request: Request) {
         if (file.size > maxSize) {
           send('error', { error: 'ファイルサイズが100MBを超えています' });
           await updateJob({ status: 'error', error_message: 'ファイルサイズが100MBを超えています' });
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -248,7 +261,7 @@ export async function POST(request: Request) {
             const msg = `必須カラムが見つかりません: ${headerValidation.missing.join(', ')}`;
             send('error', { fileName, error: msg, errors: [msg] });
             await updateJob({ status: 'error', error_message: msg, errors: [msg] });
-            controller.close();
+            safeClose();
             return;
           }
 
@@ -261,7 +274,7 @@ export async function POST(request: Request) {
               const msg = '検証エラーが多数あります。最初の10件を表示します。';
               send('error', { fileName, error: msg, errors });
               await updateJob({ status: 'error', error_message: msg, errors });
-              controller.close();
+              safeClose();
               return;
             }
             continue;
@@ -286,7 +299,7 @@ export async function POST(request: Request) {
             // キャンセル確認
             if (jobId && await isJobCancelled(jobId)) {
               send('cancelled', { status: 'cancelled' });
-              controller.close();
+              safeClose();
               return;
             }
 
@@ -308,14 +321,14 @@ export async function POST(request: Request) {
         // 最終キャンセル確認
         if (jobId && await isJobCancelled(jobId)) {
           send('cancelled', { status: 'cancelled' });
-          controller.close();
+          safeClose();
           return;
         }
 
         if (!headers) {
           send('error', { fileName: 'upload.csv', error: 'データが存在しません' });
           await updateJob({ status: 'error', error_message: 'データが存在しません' });
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -366,7 +379,7 @@ export async function POST(request: Request) {
           // キャンセル確認
           if (await checkCancelled()) {
             send('cancelled', { status: 'cancelled' });
-            controller.close();
+            safeClose();
             return;
           }
 
@@ -392,7 +405,7 @@ export async function POST(request: Request) {
         }
 
         if (cancelled) {
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -407,7 +420,7 @@ export async function POST(request: Request) {
           // キャンセル確認（10件ごと）
           if (typicalDone % 10 === 0 && await checkCancelled()) {
             send('cancelled', { status: 'cancelled' });
-            controller.close();
+            safeClose();
             return;
           }
 
@@ -432,7 +445,7 @@ export async function POST(request: Request) {
         }
 
         if (cancelled) {
-          controller.close();
+          safeClose();
           return;
         }
 
@@ -450,13 +463,13 @@ export async function POST(request: Request) {
           completed_at: new Date().toISOString(),
         });
 
-        controller.close();
+        safeClose();
       } catch (error) {
         console.error('upload route error:', error);
         const errorMsg = error instanceof Error ? error.message : 'アップロード処理中にエラーが発生しました';
 
         // SSEでエラーを送信
-        if (sseConnected) {
+        if (sseConnected && !controllerClosed) {
           try {
             controller.enqueue(encoder.encode(sseEvent('error', { error: errorMsg })));
           } catch {
@@ -476,7 +489,7 @@ export async function POST(request: Request) {
           }
         }
 
-        controller.close();
+        safeClose();
       }
     },
   });
