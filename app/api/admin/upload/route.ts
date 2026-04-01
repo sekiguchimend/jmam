@@ -233,6 +233,7 @@ export async function POST(request: Request) {
         const records = iterateCsvRecordsFromBytes(byteStream, encoding);
 
         let headers: string[] | null = null;
+        let headerColumnCount = 0;
         let recordNo = 0;
         let headerAttempts = 0;
 
@@ -242,16 +243,21 @@ export async function POST(request: Request) {
         let processedCount = 0;
         const errors: string[] = [];
 
+        // 不完全なレコード（改行を含むフィールドがクォートされていない場合用）
+        let pendingRecord = '';
+        let pendingRecordStartNo = 0;
+
         // CSV解析
         for await (const record of records) {
           recordNo += 1;
-          if (!record.trim()) continue;
+          if (!record.trim() && !pendingRecord) continue;
 
           if (!headers) {
             const candidate = parseCSVLine(record);
             const headerValidation = validateHeaders(candidate);
             if (headerValidation.valid) {
               headers = candidate;
+              headerColumnCount = candidate.length;
               continue;
             }
 
@@ -265,8 +271,72 @@ export async function POST(request: Request) {
             return;
           }
 
-          const values = parseCSVLine(record);
-          const result = parseRow(headers, values, recordNo);
+          // 不完全なレコードがあれば結合
+          let currentRecord: string;
+          let currentRecordNo: number;
+          if (pendingRecord) {
+            currentRecord = pendingRecord + '\n' + record;
+            currentRecordNo = pendingRecordStartNo;
+          } else {
+            currentRecord = record;
+            currentRecordNo = recordNo;
+          }
+
+          const values = parseCSVLine(currentRecord);
+
+          // カラム数がヘッダーより少ない場合、次の行と結合するために保持
+          if (values.length < headerColumnCount) {
+            if (!pendingRecord) {
+              pendingRecordStartNo = recordNo;
+            }
+            pendingRecord = currentRecord;
+            continue;
+          }
+
+          // カラム数が一致したのでpendingをクリア
+          pendingRecord = '';
+
+          // カラム数がヘッダーより多い場合、余分なカラムを削除して調整を試みる
+          let adjustedValues = values;
+          if (values.length > headerColumnCount) {
+            const excessCount = values.length - headerColumnCount;
+
+            // 余分なカラムが3つ以下の場合のみ調整を試みる
+            if (excessCount <= 3) {
+              // case_idカラム（Ⅱ MC 題材コード）のインデックスを取得
+              const codeIdx = headers.map(h => h.replace(/　/g, ' ').replace(/\s+/g, ' ').trim()).indexOf('Ⅱ MC 題材コード');
+
+              // 先頭から余分なカラム数分を削除して試す
+              const trimmedFromLeft = values.slice(excessCount);
+              const caseIdCandidate = trimmedFromLeft[codeIdx]?.trim() ?? '';
+
+              // case_idが数字のみで構成されているかチェック（正常なcase_idは数字）
+              if (/^\d+$/.test(caseIdCandidate)) {
+                adjustedValues = trimmedFromLeft;
+                console.log(`[INFO] Record ${currentRecordNo}: 左から${excessCount}カラム削除で調整成功 (case_id=${caseIdCandidate})`);
+              } else {
+                // 末尾から削除を試す
+                const trimmedFromRight = values.slice(0, headerColumnCount);
+                const caseIdCandidateRight = trimmedFromRight[codeIdx]?.trim() ?? '';
+
+                if (/^\d+$/.test(caseIdCandidateRight)) {
+                  adjustedValues = trimmedFromRight;
+                  console.log(`[INFO] Record ${currentRecordNo}: 右から${excessCount}カラム削除で調整成功 (case_id=${caseIdCandidateRight})`);
+                } else {
+                  // どちらでも数字のcase_idが得られない場合、左から削除を優先
+                  adjustedValues = trimmedFromLeft;
+                  console.warn(`[WARN] Record ${currentRecordNo}: カラム調整したがcase_idが数字ではありません (candidate=${caseIdCandidate})`);
+                }
+              }
+            } else {
+              // 余分なカラムが多すぎる場合はスキップ
+              console.warn(`[WARN] Record ${currentRecordNo}: カラム数不一致が大きすぎます（expected=${headerColumnCount}, actual=${values.length}）、スキップします`);
+              errors.push(`${currentRecordNo}行目: カラム数が一致しません（${values.length}カラム、期待値${headerColumnCount}）`);
+              continue;
+            }
+          }
+
+          const result = parseRow(headers, adjustedValues, currentRecordNo);
 
           if (result.error) {
             errors.push(result.error);

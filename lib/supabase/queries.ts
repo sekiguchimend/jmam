@@ -542,7 +542,15 @@ export async function insertResponses(responses: ResponseInsert[], accessToken?:
 
   if (responses.length === 0) return;
 
-  const { error } = await supabase.from('responses').upsert(responses satisfies ResponseInsert[], {
+  // バッチ内の重複を除去（同じcase_id+response_idは最後のレコードを使用）
+  const uniqueMap = new Map<string, ResponseInsert>();
+  for (const r of responses) {
+    const key = `${r.case_id}|${r.response_id}`;
+    uniqueMap.set(key, r);
+  }
+  const uniqueResponses = Array.from(uniqueMap.values());
+
+  const { error } = await supabase.from('responses').upsert(uniqueResponses satisfies ResponseInsert[], {
     onConflict: 'case_id,response_id',
   });
   if (error) {
@@ -1125,7 +1133,15 @@ export async function insertResponsesServiceRole(responses: ResponseInsert[]): P
   if (responses.length === 0) return;
   const { supabaseServiceRole } = await import('./service-role');
 
-  const { error } = await supabaseServiceRole.from('responses').upsert(responses satisfies ResponseInsert[], {
+  // バッチ内の重複を除去（同じcase_id+response_idは最後のレコードを使用）
+  const uniqueMap = new Map<string, ResponseInsert>();
+  for (const r of responses) {
+    const key = `${r.case_id}|${r.response_id}`;
+    uniqueMap.set(key, r);
+  }
+  const uniqueResponses = Array.from(uniqueMap.values());
+
+  const { error } = await supabaseServiceRole.from('responses').upsert(uniqueResponses satisfies ResponseInsert[], {
     onConflict: 'case_id,response_id',
   });
   if (error) {

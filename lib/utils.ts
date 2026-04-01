@@ -114,8 +114,25 @@ export async function* iterateCsvRecordsFromBytes(
 // 日付変換（YYYY-MM-DD形式）
 export function parseDate(dateStr: string): string | null {
   try {
-    const date = new Date(dateStr);
+    if (!dateStr || typeof dateStr !== 'string') return null;
+
+    const trimmed = dateStr.trim();
+    if (!trimmed) return null;
+
+    // 数字のみの場合は無効（例: "265109" のようなcase_idが誤って入った場合）
+    if (/^\d+$/.test(trimmed)) return null;
+
+    // 一般的な日付形式かどうかを確認（YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY など）
+    // 少なくとも区切り文字（/、-、.）を含む必要がある
+    if (!/[\/\-\.]/.test(trimmed)) return null;
+
+    const date = new Date(trimmed);
     if (isNaN(date.getTime())) return null;
+
+    // 年が妥当な範囲かチェック（1900〜2100）
+    const year = date.getFullYear();
+    if (year < 1900 || year > 2100) return null;
+
     return date.toISOString().split('T')[0];
   } catch {
     return null;
