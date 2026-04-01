@@ -15,8 +15,8 @@ const getCachedDashboardData = cache(async () => {
     fetchDatasetStats(),
   ]);
   // stats から合計レコード数を計算（getTotalResponseCount の代わり）
-  // 同じ解答が問1・問2で2レコードずつあるため /2 して実際の件数にする
-  const totalCount = Math.floor(stats.reduce((sum, stat) => sum + stat.recordCount, 0) / 2);
+  // responsesテーブルは1解答=1レコード（/2 は不要）
+  const totalCount = stats.reduce((sum, stat) => sum + stat.recordCount, 0);
   return { cases, stats, totalCount };
 });
 
