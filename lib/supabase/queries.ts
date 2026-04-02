@@ -1128,22 +1128,13 @@ export async function upsertCaseServiceRole(caseData: CaseInsert): Promise<void>
   }
 }
 
-// 解答データをバッチupsert（Service Role版）
+// 解答データをバッチinsert（Service Role版）
+// 重複除去なし：CSVの全行をそのまま挿入
 export async function insertResponsesServiceRole(responses: ResponseInsert[]): Promise<void> {
   if (responses.length === 0) return;
   const { supabaseServiceRole } = await import('./service-role');
 
-  // バッチ内の重複を除去（同じcase_id+response_idは最後のレコードを使用）
-  const uniqueMap = new Map<string, ResponseInsert>();
-  for (const r of responses) {
-    const key = `${r.case_id}|${r.response_id}`;
-    uniqueMap.set(key, r);
-  }
-  const uniqueResponses = Array.from(uniqueMap.values());
-
-  const { error } = await supabaseServiceRole.from('responses').upsert(uniqueResponses satisfies ResponseInsert[], {
-    onConflict: 'case_id,response_id',
-  });
+  const { error } = await supabaseServiceRole.from('responses').insert(responses satisfies ResponseInsert[]);
   if (error) {
     console.error('insertResponsesServiceRole error:', error);
     throw new Error(`解答データの登録に失敗しました: ${error.message ?? 'unknown error'}`);
