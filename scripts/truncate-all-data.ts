@@ -24,7 +24,7 @@ async function truncateAllData() {
   console.log('========================================');
 
   // 削除前のカウント
-  const tables = ['typical_examples', 'response_embeddings', 'embedding_queue', 'responses', 'questions', 'cases'];
+  const tables = ['typical_examples', 'response_embeddings', 'embedding_queue', 'responses', 'questions', 'case_assignments', 'cases'];
 
   console.log('\n【削除前のレコード数】');
   for (const table of tables) {
@@ -58,6 +58,10 @@ async function truncateAllData() {
   // questions
   const { error: e5 } = await supabase.from('questions').delete().neq('case_id', '___NEVER_MATCH___');
   console.log(`  questions: ${e5 ? `エラー - ${e5.message}` : '削除完了'}`);
+
+  // case_assignments（casesへの外部キー制約あり）
+  const { error: e6a } = await supabase.from('case_assignments').delete().neq('case_id', '___NEVER_MATCH___');
+  console.log(`  case_assignments: ${e6a ? `エラー - ${e6a.message}` : '削除完了'}`);
 
   // cases
   const { error: e6 } = await supabase.from('cases').delete().neq('case_id', '___NEVER_MATCH___');

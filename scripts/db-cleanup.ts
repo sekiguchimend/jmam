@@ -68,6 +68,7 @@ async function showStatus() {
   const tables = [
     'upload_jobs',
     'cases',
+    'case_assignments',
     'responses',
     'response_embeddings',
     'embedding_queue',
@@ -179,12 +180,13 @@ async function cleanupAll() {
   console.log('  - typical_examples');
   console.log('  - response_embeddings');
   console.log('  - responses');
+  console.log('  - case_assignments');
   console.log('  - cases');
   console.log('\n⚠️  admin_users は削除しません');
 
   // 現在の件数
   console.log('\n現在のデータ件数:');
-  const tables = ['upload_jobs', 'embedding_queue', 'typical_examples', 'response_embeddings', 'responses', 'cases'];
+  const tables = ['upload_jobs', 'embedding_queue', 'typical_examples', 'response_embeddings', 'responses', 'case_assignments', 'cases'];
   for (const table of tables) {
     const count = await getTableCount(table);
     console.log(`  ${table}: ${count}件`);
@@ -204,13 +206,14 @@ async function cleanupAll() {
 
   console.log('\n削除中...');
 
-  // 依存関係の順序で削除
+  // 依存関係の順序で削除（case_assignmentsはcasesへの外部キー制約あり）
   const deleteOrder = [
     'upload_jobs',
     'embedding_queue',
     'typical_examples',
     'response_embeddings',
     'responses',
+    'case_assignments',
     'cases',
   ];
 

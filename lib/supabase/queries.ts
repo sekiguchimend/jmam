@@ -498,7 +498,16 @@ export async function upsertCase(caseData: CaseInsert, accessToken?: string): Pr
   const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('管理者トークンが見つかりません（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
-  const { error } = await supabase.from('cases').upsert(caseData satisfies CaseInsert, { onConflict: 'case_id' });
+
+  // upsert時にcreated_atも更新する（再アップロード時に日付を更新するため）
+  const now = new Date().toISOString();
+  const dataWithTimestamp = {
+    ...caseData,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const { error } = await supabase.from('cases').upsert(dataWithTimestamp, { onConflict: 'case_id' });
 
   if (error) {
     console.error('upsertCase error:', error);
@@ -564,7 +573,7 @@ export async function insertResponses(responses: ResponseInsert[], accessToken?:
 export async function deleteResponsesByCaseId(caseId: string, _accessToken?: string): Promise<number> {
   const { supabaseServiceRole } = await import('./service-role');
 
-  // 関連テーブルを先に削除（外部キー制約がないので手動で削除）
+  // 関連テーブルを先に削除（外部キー制約があるので順序が重要）
   const { error: e1 } = await supabaseServiceRole.from('typical_examples').delete().eq('case_id', caseId);
   if (e1) console.error('delete typical_examples error:', e1);
 
@@ -589,6 +598,10 @@ export async function deleteResponsesByCaseId(caseId: string, _accessToken?: str
   const { error: e8 } = await supabaseServiceRole.from('user_score_records').delete().eq('case_id', caseId);
   if (e8) console.error('delete user_score_records error:', e8);
 
+  // case_assignmentsを削除（casesへの外部キー制約あり）
+  const { error: e10 } = await supabaseServiceRole.from('case_assignments').delete().eq('case_id', caseId);
+  if (e10) console.error('delete case_assignments error:', e10);
+
   // 解答データを削除
   const { data, error } = await supabaseServiceRole
     .from('responses')
@@ -603,7 +616,10 @@ export async function deleteResponsesByCaseId(caseId: string, _accessToken?: str
 
   // ケースマスタも削除
   const { error: e9 } = await supabaseServiceRole.from('cases').delete().eq('case_id', caseId);
-  if (e9) console.error('delete cases error:', e9);
+  if (e9) {
+    console.error('delete cases error:', e9);
+    throw new Error(`ケースの削除に失敗しました: ${e9.message}`);
+  }
 
   console.log(`[DELETE] case_id=${caseId}: responses=${data?.length ?? 0}件削除, cases=1件削除`);
   return data?.length ?? 0;
@@ -1120,7 +1136,16 @@ export async function deleteQuestion(
 // ケースをupsert（Service Role版）
 export async function upsertCaseServiceRole(caseData: CaseInsert): Promise<void> {
   const { supabaseServiceRole } = await import('./service-role');
-  const { error } = await supabaseServiceRole.from('cases').upsert(caseData satisfies CaseInsert, { onConflict: 'case_id' });
+
+  // upsert時にcreated_atも更新する（再アップロード時に日付を更新するため）
+  const now = new Date().toISOString();
+  const dataWithTimestamp = {
+    ...caseData,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const { error } = await supabaseServiceRole.from('cases').upsert(dataWithTimestamp, { onConflict: 'case_id' });
 
   if (error) {
     console.error('upsertCaseServiceRole error:', error);
