@@ -6,10 +6,11 @@
 
 import {
   findSimilarResponsesByEuclidean,
+  fetchSampleResponsesFromOtherCases,
   getCases,
   getCaseById
 } from '@/lib/supabase';
-import { generatePredictionFromSimilar, generateFreeFormAnswer } from '@/lib/gemini';
+import { generatePredictionFromSimilar, generateFreeFormAnswer, generatePredictionWithStyleReference } from '@/lib/gemini';
 import type { Scores, PredictionResponse, Case, Response, PersonalityTraits, FreeQuestionResponse } from '@/types';
 import { hasAccessToken, hasUserAccessToken } from '@/lib/supabase/server';
 import { recordUserScores } from '@/actions/userScore';
@@ -63,19 +64,42 @@ export async function predictAnswer(
 
     // 2. 6指標のユークリッド距離で類似解答者を検索
     const similarResults = await findSimilarResponsesByEuclidean(caseId, scores, 5);
+
+    let prediction: PredictionResponse;
+    let similarResponses: Response[];
+
     if (similarResults.length === 0) {
-      return { success: false, error: '参考となる解答データが見つかりません' };
+      // フォールバック: 他のケースから回答サンプルを取得（形式・口調の参考のみ）
+      console.log(`[predictAnswer] ケース ${caseId} に類似解答者なし、他のケースから形式参考用サンプルを取得`);
+
+      const styleReferenceResponses = await fetchSampleResponsesFromOtherCases(caseId, 5);
+
+      if (styleReferenceResponses.length === 0) {
+        // 他のケースにも解答がない場合はエラー
+        return { success: false, error: '参考となる解答データがシステムにまだ登録されていません' };
+      }
+
+      // 形式・口調のみ参考にして予測解答を生成（内容は反映しない）
+      prediction = await generatePredictionWithStyleReference(
+        situationText,
+        styleReferenceResponses,
+        scores,
+        personalityTraits
+      );
+
+      // similarResponsesは空（他のケースのため表示しない）
+      similarResponses = [];
+    } else {
+      similarResponses = similarResults.map((r) => r.response);
+
+      // 3. LLMで予測解答を生成（類似解答者の解答をfew-shotとして使用）
+      prediction = await generatePredictionFromSimilar(
+        situationText,
+        similarResponses,
+        scores,
+        personalityTraits
+      );
     }
-
-    const similarResponses = similarResults.map((r) => r.response);
-
-    // 3. LLMで予測解答を生成（類似解答者の解答をfew-shotとして使用）
-    const prediction = await generatePredictionFromSimilar(
-      situationText,
-      similarResponses,
-      scores,
-      personalityTraits
-    );
 
     // 4. スコア履歴を保存（失敗しても予測は成功扱い）
     await recordUserScores({ caseId, scores });

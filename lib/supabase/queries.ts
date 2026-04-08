@@ -130,6 +130,73 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+// 他のケースから回答サンプルを取得（形式・口調の参考用）
+// 同じケースに解答データがない場合のフォールバック用
+export async function fetchSampleResponsesFromOtherCases(
+  excludeCaseId: string,
+  limit: number = 5
+): Promise<Response[]> {
+  const supabase = await createSupabaseServerClient();
+
+  // スコアが高め（問題把握・対策立案が3.0以上）の良質な解答を優先的に取得
+  // 複数ケースからバラバラに取得してバリエーションを持たせる
+  const { data, error } = await supabase
+    .from('responses')
+    .select('id, response_id, case_id, answer_q1, answer_q2, answer_q3, answer_q4, answer_q5, answer_q6, answer_q7, answer_q8, score_problem, score_solution, score_role, score_leadership, score_collaboration, score_development')
+    .neq('case_id', excludeCaseId)
+    .not('answer_q1', 'is', null)
+    .gte('score_problem', 2.5)
+    .gte('score_solution', 2.5)
+    .order('score_problem', { ascending: false })
+    .limit(limit * 3); // 余分に取得してから選別
+
+  if (error) {
+    console.error('fetchSampleResponsesFromOtherCases error:', error);
+    return [];
+  }
+
+  if (!data || data.length === 0) {
+    // 条件を緩めて再取得
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('responses')
+      .select('id, response_id, case_id, answer_q1, answer_q2, answer_q3, answer_q4, answer_q5, answer_q6, answer_q7, answer_q8, score_problem, score_solution, score_role, score_leadership, score_collaboration, score_development')
+      .neq('case_id', excludeCaseId)
+      .not('answer_q1', 'is', null)
+      .limit(limit);
+
+    if (fallbackError || !fallbackData) {
+      return [];
+    }
+    return fallbackData as Response[];
+  }
+
+  // 異なるケースからバランスよく選択（同じケースばかりにならないように）
+  const caseIdSet = new Set<string>();
+  const selectedResponses: Response[] = [];
+
+  for (const r of data as Response[]) {
+    if (selectedResponses.length >= limit) break;
+    // 同じケースからは最大2件まで
+    const countFromSameCase = selectedResponses.filter(s => s.case_id === r.case_id).length;
+    if (countFromSameCase < 2) {
+      selectedResponses.push(r);
+      caseIdSet.add(r.case_id);
+    }
+  }
+
+  // まだ足りない場合は残りを追加
+  if (selectedResponses.length < limit) {
+    for (const r of data as Response[]) {
+      if (selectedResponses.length >= limit) break;
+      if (!selectedResponses.some(s => s.id === r.id)) {
+        selectedResponses.push(r);
+      }
+    }
+  }
+
+  return selectedResponses;
+}
+
 // 6指標のユークリッド距離で類似解答を検索
 // ケース内の全解答からスコアが最も近い人を取得
 // トップタイ（同距離）が複数ある場合はエンベディング重心で最も典型的なものを選ぶ

@@ -5,7 +5,7 @@
 import type { PredictionResponse, Scores, PersonalityTraits } from '@/types';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // q2 用のテキスト結合ヘルパー
 function combineQ2Answers(r: { answer_q2?: string | null; answer_q3?: string | null; answer_q4?: string | null; answer_q5?: string | null; answer_q6?: string | null; answer_q7?: string | null; answer_q8?: string | null }): string {
@@ -234,7 +234,10 @@ ${formatSimilarExamples()}
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemini API error:', errorText);
+      console.error('[Gemini API] ===== ERROR =====');
+      console.error('[Gemini API] URL:', GEMINI_API_URL);
+      console.error('[Gemini API] Status:', response.status);
+      console.error('[Gemini API] Error Response:', errorText);
       throw new Error(`Gemini API error: ${response.status}`);
     }
 
@@ -270,6 +273,254 @@ ${formatSimilarExamples()}
     }
   } catch (error) {
     console.error('generatePredictionFromSimilar error:', error);
+    return generateMockPrediction(targetScores);
+  }
+}
+
+// 他のケースの解答を「形式・口調のみ」参考にして予測解答を生成（データ0件時のフォールバック用）
+// 内容は反映せず、スコアに基づいてAIが生成
+export async function generatePredictionWithStyleReference(
+  situationText: string,
+  styleReferenceResponses: { answer_q1: string | null; answer_q2: string | null; answer_q3?: string | null; answer_q4?: string | null; answer_q5?: string | null; answer_q6?: string | null; answer_q7?: string | null; answer_q8?: string | null; score_problem: number | null; score_solution: number | null; score_role: number | null; score_leadership: number | null; score_collaboration: number | null; score_development: number | null }[],
+  targetScores: Scores,
+  personalityTraits?: PersonalityTraits
+): Promise<PredictionResponse> {
+  // 参考解答のフォーマット（内容ではなく形式・口調の例として）
+  const formatStyleExamples = () => {
+    if (!styleReferenceResponses.length) return '（参考例なし）';
+    return styleReferenceResponses.slice(0, 3).map((r, i) => {
+      return `【参考例${i + 1}】
+設問1の解答例: ${r.answer_q1 || '（なし）'}
+設問2の解答例: ${combineQ2Answers(r)}`;
+    }).join('\n\n');
+  };
+
+  // 目標スコアが高い場合の追加指示
+  const generateHighScoreGuidance = () => {
+    const guidance: string[] = [];
+
+    if (targetScores.problem >= 3.5) {
+      guidance.push(`【問題把握で${targetScores.problem}点を達成するには】
+- 問題間の関連性や因果関係を分析（単なる列挙は不可）
+- 根本原因（なぜこの問題が起きているか）を明示
+- 業務面と人（心情・モチベーション）の両面から問題を捉える
+- 維持管理と改革の両視点を含める
+- 優先順位を明確に示す`);
+    }
+
+    if (targetScores.solution >= 3.5) {
+      guidance.push(`【対策立案で${targetScores.solution}点を達成するには】
+- 具体的アクションステップ（誰が、何を、いつ、どのように）を明示
+- 短期・中期・長期の対策を整理
+- 優先順位と実施スケジュールを示す
+- リスクと対応策を含める`);
+    }
+
+    if (targetScores.role >= 3.5) {
+      guidance.push(`【役割理解で${targetScores.role}点を達成するには】★重要★
+※役割理解 = (主導 + 連携 + 育成) ÷ 3 で計算
+- 「私は〜する」「私が〜」という一人称表現を使用
+- 組織における自分の立場と責任を明示
+- 上司への報告・相談、部下への指示・支援、関係部門との調整を具体的に記述
+- 「〜すべき」ではなく「私が〜を実行する」という当事者意識`);
+    }
+
+    if (targetScores.leadership >= 3.5) {
+      guidance.push(`【主導で${targetScores.leadership}点を達成するには】
+- 「私が率先して〜」「私が先頭に立って〜」という表現
+- 困難でも最後までやり遂げる姿勢
+- 自ら模範を示す具体的行動
+- メンバーの信頼を得る具体的アプローチ`);
+    }
+
+    if (targetScores.collaboration >= 3.5) {
+      guidance.push(`【連携で${targetScores.collaboration}点を達成するには】
+- 上司、関係部門、メンバーとの連携方法を具体的に記述
+- 「〜と相談」「〜に協力依頼」「〜と情報共有」など具体的アクション
+- 利害関係の調整方法を明示
+- 部門を超えた連携視点`);
+    }
+
+    if (targetScores.development >= 3.5) {
+      guidance.push(`【育成で${targetScores.development}点を達成するには】
+- 「私がメンバーを育成する責任がある」という認識
+- 個々のメンバーの強み・弱み・成長ニーズを把握
+- 具体的育成計画（OJT、面談、研修など）
+- 期待と現状のギャップを踏まえた段階的アプローチ`);
+    }
+
+    return guidance.length > 0
+      ? `\n## 高スコア達成のための必須要件\n${guidance.join('\n\n')}\n`
+      : '';
+  };
+
+  // 性格特徴（エゴグラム）に基づく文体指示を生成
+  const generatePersonalityGuidance = () => {
+    if (!personalityTraits) return '';
+
+    const traits: string[] = [];
+
+    if (personalityTraits.cp) {
+      traits.push(`【CP（批判的な親）の特徴を反映】
+- 規律を重視し、「〜すべきである」「〜してはならない」という断定的・指示的な表現を使う
+- 正義感を持ち、問題に対して厳格な姿勢で臨む`);
+    }
+
+    if (personalityTraits.np) {
+      traits.push(`【NP（養育的な親）の特徴を反映】
+- 思いやりを持ち、「〜を支援する」「〜をサポートする」という支援的な表現を使う
+- メンバーの気持ちに寄り添い、心理的安全性を重視する`);
+    }
+
+    if (personalityTraits.a) {
+      traits.push(`【A（大人）の特徴を反映】
+- 論理的・客観的に分析し、感情的な表現を避ける
+- データや事実に基づいた冷静な判断を示す`);
+    }
+
+    if (personalityTraits.fc) {
+      traits.push(`【FC（自由な子供）の特徴を反映】
+- 創造的・革新的なアイデアを積極的に提案する
+- 「〜したい」「〜に挑戦する」という意欲的・前向きな表現を使う`);
+    }
+
+    if (personalityTraits.ac) {
+      traits.push(`【AC（順応した子供）の特徴を反映】
+- 協調性を重視し、「〜かもしれない」「〜と思われる」という控えめな表現を使う
+- 周囲の意見を尊重し、合意形成を大切にする姿勢`);
+    }
+
+    return traits.length > 0
+      ? `\n## 文体の性格特徴（エゴグラム）\n${traits.join('\n\n')}\n`
+      : '';
+  };
+
+  const prompt = `あなたは職場改善のスコア評価に精通した専門家です。
+
+以下のシチュエーションについて、指定された目標スコアに相当する解答を生成してください。
+
+**重要**: 参考例として示す解答は「文体・形式・口調・長さ」の参考のみに使用してください。
+参考例の**内容は一切反映しないでください**。シチュエーションと目標スコアに基づいて独自の解答を生成すること。
+
+## シチュエーション
+${situationText || '（シチュエーション情報なし）'}
+
+## 目標スコア
+- 問題把握: ${targetScores.problem}（満点5.0）
+- 対策立案: ${targetScores.solution}（満点5.0）
+- 役割理解: ${targetScores.role}（※主導・連携・育成の平均として自動計算）
+- 主導: ${targetScores.leadership}（満点4.0）
+- 連携: ${targetScores.collaboration}（満点4.0）
+- 育成: ${targetScores.development}（満点4.0）
+${generateHighScoreGuidance()}${generatePersonalityGuidance()}## 文体・形式の参考例（※内容は参考にしない！形式のみ参考）
+以下は他のケースの解答例です。**内容は参考にせず、文体・形式・口調・長さの参考のみ**として使用してください。
+${formatStyleExamples()}
+
+## 解答生成の指示（重要）
+
+### 文体・表現ルール（厳守）
+- **丁寧語（〜です・〜ます）は絶対に使用しない。常体で簡潔に記述する**
+- 手書き解答を前提とし、長文化しない
+- **解答冒頭に設問をなぞる宣言文は入れない**
+- 内容から直接書き始める
+- **文頭の接続詞は使用しない**（「まず」「次に」「そのため」などは禁止）
+
+### 分量制約（重要）
+- 解答欄の物理的な狭さを前提とし、必要最低限の情報のみ記述する
+- 一文あたりの情報量を高め、冗長な補足は行わない
+
+### 設問1（問題把握）の解答
+- 問題の構造・関連性・根本原因を分析的に記述する
+- 「なぜそれが問題なのか」まで踏み込む
+- 業務面と人の問題の両方を含める
+
+### 設問2（対策立案・主導・連携・育成）の解答
+- **必ず「私は〜する」「私が〜」という一人称で記述する**
+- 具体的なアクションを示す
+- 上司・関係部門・メンバーそれぞれへの働きかけを記述
+
+## 出力形式
+以下のJSON形式で出力してください。
+
+\`\`\`json
+{
+  "q1Answer": "設問1への予測解答（問題の分析と構造化）",
+  "q1Reason": "設問1の解答の理由（箇条書き3点まで）",
+  "q2Answer": "設問2への予測解答（必ず一人称「私は〜」で記述）",
+  "q2Reason": "設問2の解答の理由（箇条書き3点まで）"
+}
+\`\`\``;
+
+  // Gemini API呼び出し
+  if (!GEMINI_API_KEY) {
+    console.warn('GEMINI_API_KEY (or GOOGLE_API_KEY) is not set. Returning mock response.');
+    return generateMockPrediction(targetScores);
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutMs = 30000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        },
+      }),
+    });
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Gemini API] ===== ERROR =====');
+      console.error('[Gemini API] URL:', GEMINI_API_URL);
+      console.error('[Gemini API] Status:', response.status);
+      console.error('[Gemini API] Error Response:', errorText);
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // JSONを抽出してパース
+    const jsonMatch = generatedText.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[1]);
+      return {
+        q1Answer: parsed.q1Answer || '予測解答を生成できませんでした',
+        q1Reason: parsed.q1Reason || undefined,
+        q2Answer: parsed.q2Answer || '予測解答を生成できませんでした',
+        q2Reason: parsed.q2Reason || undefined,
+      };
+    }
+
+    // JSONブロックがない場合は直接パースを試みる
+    try {
+      const parsed = JSON.parse(generatedText);
+      return {
+        q1Answer: parsed.q1Answer || '予測解答を生成できませんでした',
+        q1Reason: parsed.q1Reason || undefined,
+        q2Answer: parsed.q2Answer || '予測解答を生成できませんでした',
+        q2Reason: parsed.q2Reason || undefined,
+      };
+    } catch {
+      return {
+        q1Answer: generatedText.substring(0, 500),
+        q2Answer: '（解答の分離に失敗しました）',
+      };
+    }
+  } catch (error) {
+    console.error('generatePredictionWithStyleReference error:', error);
     return generateMockPrediction(targetScores);
   }
 }
@@ -323,6 +574,11 @@ ${question}
 \`\`\``;
 
   // Gemini API呼び出し
+  console.log('[generateFreeFormAnswer] ===== DEBUG INFO =====');
+  console.log('[generateFreeFormAnswer] GEMINI_API_URL:', GEMINI_API_URL);
+  console.log('[generateFreeFormAnswer] GEMINI_API_KEY exists:', !!GEMINI_API_KEY);
+  console.log('[generateFreeFormAnswer] GEMINI_API_KEY prefix:', GEMINI_API_KEY?.substring(0, 10) + '...');
+
   if (!GEMINI_API_KEY) {
     console.warn('GEMINI_API_KEY (or GOOGLE_API_KEY) is not set. Returning mock response.');
     return {
@@ -333,11 +589,14 @@ ${question}
   }
 
   try {
+    const apiUrl = `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`;
+    console.log('[generateFreeFormAnswer] Full API URL (without key):', GEMINI_API_URL);
+
     const controller = new AbortController();
     const timeoutMs = 30000;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -357,7 +616,10 @@ ${question}
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Gemini API error:', errorText);
+      console.error('[Gemini API] ===== ERROR =====');
+      console.error('[Gemini API] URL:', GEMINI_API_URL);
+      console.error('[Gemini API] Status:', response.status);
+      console.error('[Gemini API] Error Response:', errorText);
       throw new Error(`Gemini API error: ${response.status}`);
     }
 
