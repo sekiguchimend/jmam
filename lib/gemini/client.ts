@@ -315,7 +315,7 @@ ${formatSimilarExamples()}
         }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 8192,
         },
       }),
     });
@@ -331,6 +331,13 @@ ${formatSimilarExamples()}
     }
 
     const data = await response.json();
+
+    // finish_reasonをチェック（MAX_TOKENSの場合は出力が切り詰められている）
+    const finishReason = data.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      console.warn('[generatePredictionFromSimilar] finishReason:', finishReason, '- 出力が途中で切れている可能性があります');
+    }
+
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     // JSONを抽出してパース（複数パターン対応）
@@ -550,7 +557,7 @@ ${formatStyleExamples()}
         }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 8192,
         },
       }),
     });
@@ -566,6 +573,13 @@ ${formatStyleExamples()}
     }
 
     const data = await response.json();
+
+    // finish_reasonをチェック（MAX_TOKENSの場合は出力が切り詰められている）
+    const finishReason = data.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      console.warn('[generatePredictionWithStyleReference] finishReason:', finishReason, '- 出力が途中で切れている可能性があります');
+    }
+
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     // JSONを抽出してパース（複数パターン対応）
@@ -671,7 +685,7 @@ ${question}
         }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 8192,
         },
       }),
     });
@@ -687,6 +701,13 @@ ${question}
     }
 
     const data = await response.json();
+
+    // finish_reasonをチェック（MAX_TOKENSの場合は出力が切り詰められている）
+    const finishReason = data.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      console.warn('[generateFreeFormAnswer] finishReason:', finishReason, '- 出力が途中で切れている可能性があります');
+    }
+
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
     // JSONを抽出してパース
