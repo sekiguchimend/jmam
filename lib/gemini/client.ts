@@ -14,6 +14,95 @@ function combineQ2Answers(r: { answer_q2?: string | null; answer_q3?: string | n
     .join('\n') || '（なし）';
 }
 
+// LLMレスポンスからJSONを抽出してパースするヘルパー（複数パターン対応）
+// テスト用にexport
+export function extractAndParseJson(text: string): { q1Answer?: string; q1Reason?: string; q2Answer?: string; q2Reason?: string } | null {
+  // 結果を検証するヘルパー関数
+  const isValidResult = (parsed: unknown): parsed is { q1Answer?: string; q1Reason?: string; q2Answer?: string; q2Reason?: string } => {
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return false;
+    }
+    const obj = parsed as Record<string, unknown>;
+    // q1Answerまたはq2Answerのいずれかが存在する必要がある
+    return typeof obj.q1Answer === 'string' || typeof obj.q2Answer === 'string';
+  };
+
+  // パターン1: ```json ... ``` (標準的なマークダウンコードブロック)
+  const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+  if (jsonBlockMatch) {
+    try {
+      const parsed = JSON.parse(jsonBlockMatch[1]);
+      if (isValidResult(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // パースエラーは無視して次のパターンへ
+    }
+  }
+
+  // パターン2: ``` ... ``` (言語指定なしのコードブロック)
+  const codeBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/);
+  if (codeBlockMatch) {
+    try {
+      const parsed = JSON.parse(codeBlockMatch[1]);
+      if (isValidResult(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // パースエラーは無視して次のパターンへ
+    }
+  }
+
+  // パターン3: テキスト全体を直接JSONとしてパース
+  try {
+    const parsed = JSON.parse(text);
+    if (isValidResult(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // パースエラーは無視して次のパターンへ
+  }
+
+  // パターン4: テキスト中の { から始まるJSONオブジェクトを抽出
+  // q1Answer と q2Answer を含むJSONオブジェクトを探す
+  const jsonObjectMatch = text.match(/\{[\s\S]*?"q1Answer"[\s\S]*?"q2Answer"[\s\S]*?\}/);
+  if (jsonObjectMatch) {
+    try {
+      // 抽出した文字列がネストした { } を含む場合に対応するため、
+      // 最初の { から最後の } までを取得
+      const startIdx = text.indexOf('{');
+      const endIdx = text.lastIndexOf('}');
+      if (startIdx !== -1 && endIdx > startIdx) {
+        const jsonStr = text.substring(startIdx, endIdx + 1);
+        const parsed = JSON.parse(jsonStr);
+        if (isValidResult(parsed)) {
+          return parsed;
+        }
+      }
+    } catch {
+      // パースエラーは無視して次のパターンへ
+    }
+  }
+
+  // パターン5: 最初の { から最後の } までを抽出してパース（最も緩いパターン）
+  const startIdx = text.indexOf('{');
+  const endIdx = text.lastIndexOf('}');
+  if (startIdx !== -1 && endIdx > startIdx) {
+    try {
+      const jsonStr = text.substring(startIdx, endIdx + 1);
+      const parsed = JSON.parse(jsonStr);
+      if (isValidResult(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // パースエラーは無視
+    }
+  }
+
+  // すべてのパターンで失敗
+  return null;
+}
+
 // 類似解答者の解答を参考にLLMで新たな解答を生成（ユークリッド距離ベース）
 export async function generatePredictionFromSimilar(
   situationText: string,
@@ -244,33 +333,20 @@ ${formatSimilarExamples()}
     const data = await response.json();
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    // JSONを抽出してパース
-    const jsonMatch = generatedText.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[1]);
+    // JSONを抽出してパース（複数パターン対応）
+    const parsedResult = extractAndParseJson(generatedText);
+    if (parsedResult) {
       return {
-        q1Answer: parsed.q1Answer || '予測解答を生成できませんでした',
-        q1Reason: parsed.q1Reason || undefined,
-        q2Answer: parsed.q2Answer || '予測解答を生成できませんでした',
-        q2Reason: parsed.q2Reason || undefined,
+        q1Answer: parsedResult.q1Answer || '予測解答を生成できませんでした',
+        q1Reason: parsedResult.q1Reason || undefined,
+        q2Answer: parsedResult.q2Answer || '予測解答を生成できませんでした',
+        q2Reason: parsedResult.q2Reason || undefined,
       };
     }
 
-    // JSONブロックがない場合は直接パースを試みる
-    try {
-      const parsed = JSON.parse(generatedText);
-      return {
-        q1Answer: parsed.q1Answer || '予測解答を生成できませんでした',
-        q1Reason: parsed.q1Reason || undefined,
-        q2Answer: parsed.q2Answer || '予測解答を生成できませんでした',
-        q2Reason: parsed.q2Reason || undefined,
-      };
-    } catch {
-      return {
-        q1Answer: generatedText.substring(0, 500),
-        q2Answer: '（解答の分離に失敗しました）',
-      };
-    }
+    // パース失敗時はエラーログを出力
+    console.error('[generatePredictionFromSimilar] JSON parse failed. Raw text:', generatedText.substring(0, 500));
+    return generateMockPrediction(targetScores);
   } catch (error) {
     console.error('generatePredictionFromSimilar error:', error);
     return generateMockPrediction(targetScores);
@@ -492,33 +568,20 @@ ${formatStyleExamples()}
     const data = await response.json();
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-    // JSONを抽出してパース
-    const jsonMatch = generatedText.match(/```json\s*([\s\S]*?)\s*```/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[1]);
+    // JSONを抽出してパース（複数パターン対応）
+    const parsedResult = extractAndParseJson(generatedText);
+    if (parsedResult) {
       return {
-        q1Answer: parsed.q1Answer || '予測解答を生成できませんでした',
-        q1Reason: parsed.q1Reason || undefined,
-        q2Answer: parsed.q2Answer || '予測解答を生成できませんでした',
-        q2Reason: parsed.q2Reason || undefined,
+        q1Answer: parsedResult.q1Answer || '予測解答を生成できませんでした',
+        q1Reason: parsedResult.q1Reason || undefined,
+        q2Answer: parsedResult.q2Answer || '予測解答を生成できませんでした',
+        q2Reason: parsedResult.q2Reason || undefined,
       };
     }
 
-    // JSONブロックがない場合は直接パースを試みる
-    try {
-      const parsed = JSON.parse(generatedText);
-      return {
-        q1Answer: parsed.q1Answer || '予測解答を生成できませんでした',
-        q1Reason: parsed.q1Reason || undefined,
-        q2Answer: parsed.q2Answer || '予測解答を生成できませんでした',
-        q2Reason: parsed.q2Reason || undefined,
-      };
-    } catch {
-      return {
-        q1Answer: generatedText.substring(0, 500),
-        q2Answer: '（解答の分離に失敗しました）',
-      };
-    }
+    // パース失敗時はエラーログを出力
+    console.error('[generatePredictionWithStyleReference] JSON parse failed. Raw text:', generatedText.substring(0, 500));
+    return generateMockPrediction(targetScores);
   } catch (error) {
     console.error('generatePredictionWithStyleReference error:', error);
     return generateMockPrediction(targetScores);
