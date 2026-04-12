@@ -3,9 +3,8 @@
 // SE-03: ブラウザからDBへ直接アクセスさせない（サーバー専用モジュール）
 import 'server-only';
 
-import { createSupabaseServerClient } from './server';
 import { createAuthedAnonServerClient } from './authed-anon-server';
-import { getAccessToken } from './server';
+import { getAccessToken, getAnyAccessToken } from './server';
 import type { Case, Response, Scores, DatasetStats, TypicalExample, Question } from '@/types';
 import type { Database, QuestionInsert } from '@/types/database';
 
@@ -21,7 +20,9 @@ type TypicalExampleInsert = Database['public']['Tables']['typical_examples']['In
 
 // ケース問題一覧を取得
 export async function getCases(): Promise<Case[]> {
-  const supabase = await createSupabaseServerClient();
+  const token = await getAnyAccessToken();
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
   const { data, error } = await supabase
     .from('cases')
     .select('case_id, case_name, situation_text')
@@ -36,7 +37,9 @@ export async function getCases(): Promise<Case[]> {
 
 // 特定のケースを取得
 export async function getCaseById(caseId: string): Promise<Case | null> {
-  const supabase = await createSupabaseServerClient();
+  const token = await getAnyAccessToken();
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
   const { data, error } = await supabase
     .from('cases')
     .select('case_id, case_name, situation_text')
@@ -62,7 +65,9 @@ export async function findSimilarResponses(
   scores: Scores,
   limit: number = 5
 ): Promise<Response[]> {
-  const supabase = await createSupabaseServerClient();
+  const token = await getAnyAccessToken();
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
   const tolerance = 0.5; // スコア許容範囲
 
   const { data, error } = await supabase
@@ -136,7 +141,9 @@ export async function fetchSampleResponsesFromOtherCases(
   excludeCaseId: string,
   limit: number = 5
 ): Promise<Response[]> {
-  const supabase = await createSupabaseServerClient();
+  const token = await getAnyAccessToken();
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
 
   // スコアが高め（問題把握・対策立案が3.0以上）の良質な解答を優先的に取得
   // 複数ケースからバラバラに取得してバリエーションを持たせる
