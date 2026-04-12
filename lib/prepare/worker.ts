@@ -12,11 +12,11 @@ import {
   insertResponseEmbeddings,
   upsertTypicalExamples,
 } from '@/lib/supabase';
+import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { embedText } from '@/lib/gemini';
 import { toScoreBucket } from '@/lib/scoring';
 import { kmeansCosine } from '@/lib/ml/kmeans';
 import { cosineDistance, type Vector } from '@/lib/ml/vector';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const EMBEDDING_MODEL = 'models/gemini-embedding-001';
 export const EMBEDDING_DIM = 3072;
@@ -292,7 +292,7 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
   const { adminToken, caseId, question, scoreBucket } = params;
   const maxClusters = Math.max(1, Math.min(params.maxClusters ?? 3, 6));
 
-  const embeddings = await fetchEmbeddingsForBucket(caseId, question, scoreBucket, 5000);
+  const embeddings = await fetchEmbeddingsForBucket(caseId, question, scoreBucket, 5000, adminToken);
   const vectors = embeddings.map((e) => parseVector(e.embedding)).filter((v) => v.length === EMBEDDING_DIM);
   const n = vectors.length;
   if (n === 0) {
@@ -321,7 +321,8 @@ export async function rebuildTypicalExamplesForBucketWithToken(params: {
     case_id: embeddings[r.idx].case_id,
     response_id: embeddings[r.idx].response_id,
   }));
-  const supabase = await createSupabaseServerClient();
+  // RLS: responses の SELECT は authenticated なので認証必須
+  const supabase = createAuthedAnonServerClient(adminToken);
   const or = buildOrFilter(repPairs);
   const { data, error } = await supabase
     .from('responses')

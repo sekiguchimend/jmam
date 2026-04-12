@@ -4,7 +4,7 @@
 import 'server-only';
 
 import { createAuthedAnonServerClient } from './authed-anon-server';
-import { getAccessToken, getAnyAccessToken } from './server';
+import { getAccessToken } from './server';
 import type { Case, Response, Scores, DatasetStats, TypicalExample, Question } from '@/types';
 import type { Database, QuestionInsert } from '@/types/database';
 
@@ -19,10 +19,12 @@ type TypicalExampleInsert = Database['public']['Tables']['typical_examples']['In
 // ============================================
 
 // ケース問題一覧を取得
-export async function getCases(): Promise<Case[]> {
-  const token = await getAnyAccessToken();
+// RLS: cases の SELECT は authenticated なので認証必須
+export async function getCases(accessToken?: string): Promise<Case[]> {
+  const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('認証が必要です（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
+
   const { data, error } = await supabase
     .from('cases')
     .select('case_id, case_name, situation_text')
@@ -36,10 +38,12 @@ export async function getCases(): Promise<Case[]> {
 }
 
 // 特定のケースを取得
-export async function getCaseById(caseId: string): Promise<Case | null> {
-  const token = await getAnyAccessToken();
+// RLS: cases の SELECT は authenticated なので認証必須
+export async function getCaseById(caseId: string, accessToken?: string): Promise<Case | null> {
+  const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('認証が必要です（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
+
   const { data, error } = await supabase
     .from('cases')
     .select('case_id, case_name, situation_text')
@@ -60,14 +64,17 @@ export async function getCaseById(caseId: string): Promise<Case | null> {
 
 // 類似スコアの解答を検索（RAG用）
 // idx_responses_on_scores インデックスを活用
+// RLS: responses の SELECT は authenticated なので認証必須
 export async function findSimilarResponses(
   caseId: string,
   scores: Scores,
-  limit: number = 5
+  limit: number = 5,
+  accessToken?: string
 ): Promise<Response[]> {
-  const token = await getAnyAccessToken();
+  const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('認証が必要です（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
+
   const tolerance = 0.5; // スコア許容範囲
 
   const { data, error } = await supabase
@@ -137,11 +144,13 @@ function cosineSimilarity(a: number[], b: number[]): number {
 
 // 他のケースから回答サンプルを取得（形式・口調の参考用）
 // 同じケースに解答データがない場合のフォールバック用
+// RLS: responses の SELECT は authenticated なので認証必須
 export async function fetchSampleResponsesFromOtherCases(
   excludeCaseId: string,
-  limit: number = 5
+  limit: number = 5,
+  accessToken?: string
 ): Promise<Response[]> {
-  const token = await getAnyAccessToken();
+  const token = accessToken ?? (await getAccessToken());
   if (!token) throw new Error('認証が必要です（再ログインしてください）');
   const supabase = createAuthedAnonServerClient(token);
 
@@ -207,12 +216,16 @@ export async function fetchSampleResponsesFromOtherCases(
 // 6指標のユークリッド距離で類似解答を検索
 // ケース内の全解答からスコアが最も近い人を取得
 // トップタイ（同距離）が複数ある場合はエンベディング重心で最も典型的なものを選ぶ
+// RLS: responses, response_embeddings の SELECT は authenticated なので認証必須
 export async function findSimilarResponsesByEuclidean(
   caseId: string,
   scores: Scores,
-  limit: number = 5
+  limit: number = 5,
+  accessToken?: string
 ): Promise<{ response: Response; distance: number }[]> {
-  const supabase = await createSupabaseServerClient();
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
 
   // ケースで絞って必要なカラムだけ取得（answer_q2〜q8は設問2の解答）
   const { data, error } = await supabase
@@ -392,13 +405,18 @@ export async function findSimilarResponsesByEuclidean(
 }
 
 // 拡張検索：スコアが近い順に取得（許容範囲を段階的に広げる）
+// RLS: responses の SELECT は authenticated なので認証必須
 export async function findSimilarResponsesWithFallback(
   caseId: string,
   scores: Scores,
   minResults: number = 3,
-  maxResults: number = 10
+  maxResults: number = 10,
+  accessToken?: string
 ): Promise<Response[]> {
-  const supabase = await createSupabaseServerClient();
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+
   const tolerances = [0.3, 0.5, 1.0, 1.5];
 
   for (const tolerance of tolerances) {
@@ -437,12 +455,17 @@ export async function findSimilarResponsesWithFallback(
 
 // RAG用：高スコア・低スコアの解答を含む包括的なデータ取得
 // AIがパターン分析するために、スコア帯ごとのサンプルを取得
+// RLS: responses の SELECT は authenticated なので認証必須
 export async function findResponsesForRAG(
   caseId: string,
   _scores: Scores,
-  maxPerCategory: number = 5
+  maxPerCategory: number = 5,
+  accessToken?: string
 ): Promise<Response[]> {
-  const supabase = await createSupabaseServerClient();
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+
   const results: Response[] = [];
 
   // 1. 高スコア解答（問題把握・対策立案ともに3.0以上）
@@ -501,8 +524,11 @@ export async function findResponsesForRAG(
 // ============================================
 
 // ケースごとの解答数を取得（DB側でGROUP BY集計して効率化）
-export async function getDatasetStats(): Promise<DatasetStats[]> {
-  const supabase = await createSupabaseServerClient();
+// RLS: cases の SELECT は authenticated なので認証必須
+export async function getDatasetStats(accessToken?: string): Promise<DatasetStats[]> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
 
   // casesテーブルとレスポンスカウントを並行取得
   const [casesResult, countsResult] = await Promise.all([
@@ -549,8 +575,12 @@ export async function getDatasetStats(): Promise<DatasetStats[]> {
 }
 
 // 総解答数を取得
-export async function getTotalResponseCount(): Promise<number> {
-  const supabase = await createSupabaseServerClient();
+// RLS: responses の SELECT は authenticated なので認証必須
+export async function getTotalResponseCount(accessToken?: string): Promise<number> {
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+
   const { count, error } = await supabase
     .from('responses')
     .select('*', { count: 'exact', head: true });
@@ -1062,13 +1092,18 @@ export async function deleteTypicalExamplesForBucket(
   }
 }
 
+// RLS: typical_examples の SELECT は authenticated なので認証必須
 export async function getTypicalExamples(
   caseId: string,
   question: 'q1' | 'q2',
   scoreBucket: number,
-  limit: number = 2
+  limit: number = 2,
+  accessToken?: string
 ): Promise<TypicalExample[]> {
-  const supabase = await createSupabaseServerClient();
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+
   const { data, error } = await supabase
     .from('typical_examples')
     .select('case_id,question,score_bucket,cluster_id,cluster_size,rep_text,rep_score')
@@ -1085,11 +1120,13 @@ export async function getTypicalExamples(
   return (data ?? []) as TypicalExample[];
 }
 
+// RLS: response_embeddings の SELECT は authenticated なので認証必須
 export async function fetchEmbeddingsForBucket(
   caseId: string,
   question: 'q1' | 'q2',
   scoreBucket: number,
-  limit: number = 5000
+  limit: number = 5000,
+  accessToken?: string
 ): Promise<
   {
     case_id: string;
@@ -1100,7 +1137,10 @@ export async function fetchEmbeddingsForBucket(
     embedding: unknown;
   }[]
 > {
-  const supabase = await createSupabaseServerClient();
+  const token = accessToken ?? (await getAccessToken());
+  if (!token) throw new Error('認証が必要です（再ログインしてください）');
+  const supabase = createAuthedAnonServerClient(token);
+
   const { data, error } = await supabase
     .from('response_embeddings')
     .select('case_id,response_id,question,score,score_bucket,embedding')

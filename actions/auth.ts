@@ -16,6 +16,7 @@ import {
   MFA_PENDING_IS_ADMIN_COOKIE,
   MFA_PENDING_REDIRECT_COOKIE,
 } from '@/lib/supabase/server';
+import { supabaseServiceRole } from '@/lib/supabase/service-role';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
@@ -106,7 +107,8 @@ export async function login(formData: FormData): Promise<{
   }
 
   // admin_users に存在すれば管理者、それ以外は一般ユーザーとして扱う
-  const { data: adminUser, error: adminError } = await supabase
+  // RLS: admin_users は管理者JWTが必要なため、Service Role を使用
+  const { data: adminUser, error: adminError } = await supabaseServiceRole
     .from('admin_users')
     .select('id, is_active')
     .eq('id', data.user.id)
@@ -279,8 +281,8 @@ export async function createAdminUser(formData: FormData): Promise<{
   }
 
   // admin_usersテーブルに追加
-  // @ts-expect-error - Supabase SSR type inference issue with Database generics
-  const { error: insertError } = await supabase.from('admin_users').insert({
+  // RLS: admin_users は管理者JWTが必要なため、Service Role を使用
+  const { error: insertError } = await supabaseServiceRole.from('admin_users').insert({
     id: data.user.id,
     email,
     name: name || null,

@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Server Actions のテストでは、外部依存をモック化してバリデーションロジックを検証
 
+// server-only モック
+vi.mock('server-only', () => ({}));
+
 // モック設定
 vi.mock('next/headers', () => ({
   cookies: vi.fn(() => ({
@@ -41,6 +44,21 @@ vi.mock('@/lib/supabase/server', () => ({
 
 vi.mock('@/lib/supabase/authed-anon-server', () => ({
   createAuthedAnonServerClient: vi.fn(),
+}));
+
+vi.mock('@/lib/supabase/service-role', () => ({
+  supabaseServiceRole: {
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          })),
+        })),
+      })),
+      insert: vi.fn().mockResolvedValue({ error: null }),
+    })),
+  },
 }));
 
 vi.mock('@/actions/mfa', () => ({

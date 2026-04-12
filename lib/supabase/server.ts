@@ -97,20 +97,31 @@ export async function getMfaPendingTokens(): Promise<{
 // ========================================
 
 export async function getSession() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { session }, error } = await supabase.auth.getSession();
-  if (error) {
-    console.error('getSession error:', error);
+  // セッション情報はクッキーから直接取得（RLSは使用しない）
+  const token = await getAnyAccessToken();
+  if (!token) return null;
+
+  try {
+    const payload = decodeJwtPayload(token);
+    if (!payload) return null;
+    return {
+      access_token: token,
+      user: {
+        id: payload.sub as string,
+        email: payload.email as string,
+      },
+    };
+  } catch {
     return null;
   }
-  return session;
 }
 
 export async function getUser() {
   const token = await getAccessToken();
   if (!token) return null;
 
-  const supabase = await createSupabaseServerClient();
+  // 認証付きクライアントを使用してユーザー情報を取得
+  const supabase = createAuthedAnonServerClient(token);
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error) {
     console.error('getUser error:', error);
@@ -123,7 +134,8 @@ export async function getUserFromUserToken() {
   const token = await getUserAccessToken();
   if (!token) return null;
 
-  const supabase = await createSupabaseServerClient();
+  // 認証付きクライアントを使用してユーザー情報を取得
+  const supabase = createAuthedAnonServerClient(token);
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error) {
     console.error('getUserFromUserToken error:', error);
@@ -140,11 +152,13 @@ export async function isAdmin(): Promise<boolean> {
   return !!(await getAccessToken());
 }
 
+// RLS: admin_users は認証済み管理者のみアクセス可能
 export async function getAdminUser(): Promise<AdminUser | null> {
   const token = await getAccessToken();
   if (!token) return null;
 
-  const supabase = await createSupabaseServerClient();
+  // 認証付きクライアントを使用（admin_users のRLSは管理者JWTが必要）
+  const supabase = createAuthedAnonServerClient(token);
   const { data: { user }, error: userError } = await supabase.auth.getUser(token);
   if (userError || !user) return null;
 

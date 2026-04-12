@@ -2,7 +2,7 @@
 // 初回のみ管理者ユーザーを作成するためのページ
 
 import Link from "next/link";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { supabaseServiceRole } from "@/lib/supabase/service-role";
 import { redirect } from "next/navigation";
 import { SetupForm } from "./SetupForm";
 
@@ -12,8 +12,8 @@ export const metadata = {
 
 export default async function SetupPage() {
   // 既に管理者が存在する場合はログインページへリダイレクト
-  const supabase = await createSupabaseServerClient();
-  const { count, error } = await supabase
+  // RLS: admin_users は管理者JWTが必要なため、Service Role を使用
+  const { count, error } = await supabaseServiceRole
     .from('admin_users')
     .select('*', { count: 'exact', head: true });
 
