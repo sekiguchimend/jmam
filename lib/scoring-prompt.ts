@@ -1,7 +1,7 @@
 // AI採点アシスタント用の事前プロンプトと説明生成機能
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 /**
  * 採点AIの事前プロンプト（システムプロンプト）
@@ -783,7 +783,7 @@ ${taskSection}`;
         }],
         generationConfig: {
           temperature: 0.3,  // 低温度で一貫性を重視
-          maxOutputTokens: 2000,
+          maxOutputTokens: 8192,
         },
       }),
     });

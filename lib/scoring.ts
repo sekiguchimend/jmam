@@ -807,7 +807,7 @@ export async function predictScoreFromAnswer(params: {
   let explanation: string;
   
   // 低類似度の警告メッセージ
-  const lowSimilarityWarning = isLowSimilarity
+  const similarityNote = isLowSimilarity
     ? `【注意】最も類似度の高い解答でも${(maxSimilarity * 100).toFixed(0)}%であり、参考程度としてください。より正確な評価には、このケースの解答データを増やすことをお勧めします。\n\n`
     : '';
 
@@ -955,7 +955,7 @@ export async function predictScoreFromAnswer(params: {
       };
     }
 
-    explanation = lowSimilarityWarning + aiResult.explanation;
+    explanation = similarityNote + aiResult.explanation;
   } else if (earlyCheckResult) {
     // 早期チェックで弾かれた場合（詳細スコアは最低値1を設定）
     predictedScores = {
@@ -1014,7 +1014,7 @@ export async function predictScoreFromAnswer(params: {
       ...normalizedDetailScores,
     };
 
-    explanation = lowSimilarityWarning + generateExplanation(predictedScores, similarExamples, roundedConfidence);
+    explanation = similarityNote + generateExplanation(predictedScores, similarExamples, roundedConfidence);
   }
 
   return {
@@ -1138,49 +1138,49 @@ export async function predictScoreForNewCase(params: {
 
   if (casesError) {
     console.error('find_similar_cases error:', casesError);
-    throw new Error('類似ケースの検索に失敗しました');
+    // エラーでも続行（AIのみで評価）
   }
 
-  if (!casesData || casesData.length === 0) {
-    throw new Error('類似ケースが見つかりませんでした。ケースのシチュエーションを登録してください。');
-  }
-
-  const similarCases: SimilarCase[] = casesData.map((c: any) => ({
+  // 類似ケースがなくても続行（AIのみで評価）
+  const similarCases: SimilarCase[] = (casesData || []).map((c: any) => ({
     caseId: c.case_id,
     caseName: c.case_name,
     situationText: c.situation_text,
     similarity: Math.round(c.similarity * 100) / 100,
   }));
 
-  // 2. 解答テキストをembedding化
-  const answerEmbeddingResult = await embedText(answerText);
-  const answerEmbedding = answerEmbeddingResult.values;
+  const hasSimilarCases = similarCases.length > 0;
 
-  // 3. 類似ケースのIDを取得
-  const caseIds = similarCases.map((c) => c.caseId);
+  // 2. 解答テキストをembedding化（類似ケースがある場合のみ類似解答検索に使用）
+  let responsesData: any[] = [];
 
-  // 4. 類似ケースから類似解答を検索（全スコア付き）
-  // 注: 型定義と実際の関数シグネチャに不整合がある場合があるためキャスト
-  const { data: responsesData, error: responsesError } = await supabase.rpc('find_similar_responses_cross_cases', {
-    p_embedding: JSON.stringify(answerEmbedding),
-    p_question: question,
-    p_limit: topKResponses,
-  } as any);
+  if (hasSimilarCases) {
+    const answerEmbeddingResult = await embedText(answerText);
+    const answerEmbedding = answerEmbeddingResult.values;
 
-  if (responsesError) {
-    console.error('find_similar_responses_cross_cases error:', responsesError);
-    throw new Error('類似解答の検索に失敗しました');
+    // 3. 類似ケースから類似解答を検索（全スコア付き）
+    const { data, error: responsesError } = await supabase.rpc('find_similar_responses_cross_cases', {
+      p_embedding: JSON.stringify(answerEmbedding),
+      p_question: question,
+      p_limit: topKResponses,
+    } as any);
+
+    if (responsesError) {
+      console.error('find_similar_responses_cross_cases error:', responsesError);
+      // エラーでも続行（AIのみで評価）
+    } else {
+      responsesData = data || [];
+    }
   }
 
-  if (!responsesData || responsesData.length === 0) {
-    throw new Error('類似解答が見つかりませんでした。類似ケースにはまだ解答データがありません。');
-  }
+  const hasSimilarResponses = responsesData.length > 0;
 
   // 5. 詳細スコアを予測し、主要スコアは計算式で算出
   const totalSimilarity = responsesData.reduce((sum: number, r: any) => sum + r.similarity, 0);
 
-  // 詳細スコアを予測（ルックアップ + ハイブリッド手法）
+  // 詳細スコアを予測（ルックアップ + ハイブリッド手法）- 類似解答がある場合のみ
   const predictDetailScoreForNewCase = (field: string): number | null => {
+    if (!hasSimilarResponses) return null; // 類似解答がない場合はnull
     const validData: any[] = responsesData.filter((r: any) => r[field] != null);
     if (validData.length === 0) return null;
 
@@ -1296,19 +1296,38 @@ export async function predictScoreForNewCase(params: {
   };
 
   // 6. 信頼度を計算（参考値）
-  const maxCaseSimilarity = Math.max(...similarCases.map(c => c.similarity));
-  const avgCaseSimilarity = similarCases.reduce((sum, c) => sum + c.similarity, 0) / similarCases.length;
-  
-  const responseSimilarities = responsesData.map((r: any) => r.similarity);
-  const maxResponseSimilarity = Math.max(...responseSimilarities);
-  const avgResponseSimilarity = totalSimilarity / responsesData.length;
-  
-  // 類似度が低い場合の警告用
-  const isLowSimilarity = maxCaseSimilarity < HYBRID_CONFIG.highConfidenceSimilarity;
-  
-  // 信頼度（新規ケースのため参考値）
-  const rawConfidence = (maxCaseSimilarity * 0.3 + avgCaseSimilarity * 0.2 + maxResponseSimilarity * 0.3 + avgResponseSimilarity * 0.2);
-  const confidence = isLowSimilarity ? rawConfidence * 0.8 : rawConfidence;
+  let maxCaseSimilarity = 0;
+  let avgCaseSimilarity = 0;
+  let maxResponseSimilarity = 0;
+  let avgResponseSimilarity = 0;
+  let confidence: number;
+  let isLowSimilarity = true;
+
+  if (hasSimilarCases) {
+    maxCaseSimilarity = Math.max(...similarCases.map(c => c.similarity));
+    avgCaseSimilarity = similarCases.reduce((sum, c) => sum + c.similarity, 0) / similarCases.length;
+  }
+
+  if (hasSimilarResponses) {
+    const responseSimilarities = responsesData.map((r: any) => r.similarity);
+    maxResponseSimilarity = Math.max(...responseSimilarities);
+    avgResponseSimilarity = totalSimilarity / responsesData.length;
+  }
+
+  if (hasSimilarCases && hasSimilarResponses) {
+    // 類似データがある場合: 従来の信頼度計算
+    isLowSimilarity = maxCaseSimilarity < HYBRID_CONFIG.highConfidenceSimilarity;
+    const rawConfidence = (maxCaseSimilarity * 0.3 + avgCaseSimilarity * 0.2 + maxResponseSimilarity * 0.3 + avgResponseSimilarity * 0.2);
+    confidence = isLowSimilarity ? rawConfidence * 0.8 : rawConfidence;
+  } else if (hasSimilarCases) {
+    // 類似ケースのみある場合
+    isLowSimilarity = true;
+    confidence = maxCaseSimilarity * 0.5; // 低めの信頼度
+  } else {
+    // 類似データがない場合: AI単独評価のため低めの信頼度
+    isLowSimilarity = true;
+    confidence = 0.5; // 固定の低い信頼度
+  }
 
   // 6.5. 早期品質チェック（API呼び出し前の高速フィルタ）
   const earlyCheck = performEarlyQualityCheck(answerText);
@@ -1369,11 +1388,16 @@ export async function predictScoreForNewCase(params: {
 
   // 8. AI統合評価（スコア＋説明文を生成）
   let explanation: string;
-  
-  // 低類似度の警告メッセージ
-  const lowSimilarityWarning = isLowSimilarity
-    ? `【注意】最も類似度の高い解答でも${(maxResponseSimilarity * 100).toFixed(0)}%であり、参考程度としてください。\n\n`
-    : '';
+
+  // 類似データの有無に応じた注意メッセージ
+  let similarityNote = '';
+  if (!hasSimilarCases && !hasSimilarResponses) {
+    similarityNote = '【参考情報なし】類似ケース・解答データがないため、AIが評価基準に基づいて直接評価しています。\n\n';
+  } else if (!hasSimilarResponses) {
+    similarityNote = '【参考解答なし】類似解答データがないため、AIが評価基準に基づいて直接評価しています。\n\n';
+  } else if (isLowSimilarity) {
+    similarityNote = `【注意】最も類似度の高い解答でも${(maxResponseSimilarity * 100).toFixed(0)}%であり、参考程度としてください。\n\n`;
+  }
 
   // 早期チェック警告メッセージ
   const earlyCheckWarning = earlyCheckResult
@@ -1522,7 +1546,7 @@ export async function predictScoreForNewCase(params: {
       };
     }
 
-    explanation = lowSimilarityWarning + aiResult.explanation;
+    explanation = similarityNote + aiResult.explanation;
   } else if (earlyCheckResult) {
     // 早期チェックで弾かれた場合（詳細スコアは最低値1を設定）
     predictedScores = {
@@ -1581,7 +1605,7 @@ export async function predictScoreForNewCase(params: {
       ...normalizedDetailScores,
     };
 
-    explanation = lowSimilarityWarning + generateNewCaseExplanation(predictedScores, similarCases, similarExamples.slice(0, 3), roundedConfidence);
+    explanation = similarityNote + generateNewCaseExplanation(predictedScores, similarCases, similarExamples.slice(0, 3), roundedConfidence);
   }
 
   return {
@@ -1605,17 +1629,29 @@ function generateNewCaseExplanation(
 ): string {
   const representativeScore = scores.problem || scores.solution || 0;
   const scoreLevel = representativeScore >= 3.5 ? '高評価' : representativeScore >= 2.5 ? '中程度' : '低評価';
-  const topCase = similarCases[0];
 
+  // 類似ケースがない場合
+  if (similarCases.length === 0) {
+    let explanation = `この解答は評価基準に基づいて${scoreLevel}と評価されました。`;
+    explanation += ' 類似ケースがないため、AIが独自に評価しています。';
+    return explanation;
+  }
+
+  const topCase = similarCases[0];
   let explanation = `入力されたシチュエーションは「${topCase.caseName || topCase.caseId}」（類似度${(topCase.similarity * 100).toFixed(0)}%）に最も類似しています。`;
-  explanation += ` この解答は類似ケースの${scoreLevel}解答に近い内容です。`;
+
+  if (examples.length > 0) {
+    explanation += ` この解答は類似ケースの${scoreLevel}解答に近い内容です。`;
+  } else {
+    explanation += ` 類似解答がないため、AIが評価基準に基づいて${scoreLevel}と評価しました。`;
+  }
 
   if (confidence >= 0.7) {
     explanation += ' ケースと解答の両方で高い類似度が得られたため、信頼性の高い予測です。';
   } else if (confidence >= 0.5) {
     explanation += ' 中程度の信頼度です。';
   } else {
-    explanation += ' 類似度がやや低いため、参考程度としてください。';
+    explanation += ' 参考程度としてください。';
   }
 
   return explanation;
