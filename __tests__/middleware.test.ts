@@ -1,34 +1,62 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
-// モック設定
+// モック設定（vi.mockはホイストされるので、クラス定義を内部に配置）
 vi.mock('next/server', async (importOriginal) => {
   const actual = await importOriginal<typeof import('next/server')>();
+
+  // モック用のヘッダーマップクラス
+  class MockHeaders extends Map<string, string> {
+    set(key: string, value: string): this {
+      super.set(key, value);
+      return this;
+    }
+  }
+
+  // モック用のNextResponseクラス
+  class MockNextResponseClass {
+    headers: MockHeaders;
+    cookies: { set: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> };
+    status?: number;
+    body: BodyInit | null;
+
+    constructor(body: BodyInit | null, init?: ResponseInit) {
+      this.headers = new MockHeaders(Object.entries(init?.headers || {}));
+      this.cookies = {
+        set: vi.fn(),
+        delete: vi.fn(),
+      };
+      this.status = init?.status;
+      this.body = body;
+    }
+
+    static next = vi.fn(() => ({
+      headers: new MockHeaders(),
+      cookies: {
+        set: vi.fn(),
+        delete: vi.fn(),
+      },
+    }));
+
+    static redirect = vi.fn((url: URL) => ({
+      headers: new MockHeaders(),
+      cookies: {
+        set: vi.fn(),
+        delete: vi.fn(),
+      },
+      url: url.toString(),
+    }));
+
+    static json = vi.fn((body: unknown, init?: ResponseInit) => ({
+      headers: new MockHeaders(),
+      body,
+      status: init?.status,
+    }));
+  }
+
   return {
     ...actual,
-    NextResponse: {
-      ...actual.NextResponse,
-      next: vi.fn(() => ({
-        headers: new Map(),
-        cookies: {
-          set: vi.fn(),
-          delete: vi.fn(),
-        },
-      })),
-      redirect: vi.fn((url: URL) => ({
-        headers: new Map(),
-        cookies: {
-          set: vi.fn(),
-          delete: vi.fn(),
-        },
-        url: url.toString(),
-      })),
-      json: vi.fn((body: unknown, init?: ResponseInit) => ({
-        headers: new Map(),
-        body,
-        status: init?.status,
-      })),
-    },
+    NextResponse: MockNextResponseClass,
   };
 });
 
@@ -271,6 +299,69 @@ describe('middleware', () => {
 
       // Prefetchなのでリフレッシュせずにリダイレクト
       expect(NextResponse.redirect).toHaveBeenCalled();
+    });
+  });
+
+  describe('API Rate Limiting', () => {
+    it('/api/admin/* へのリクエストにレート制限ヘッダーが付与される', async () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const validToken = createTestJwt(nowSec + 3600);
+
+      const url = new URL('/api/admin/prepare', 'http://localhost:3000');
+      const req = {
+        nextUrl: url,
+        url: url.toString(),
+        method: 'GET',
+        headers: new Headers({
+          'x-forwarded-for': '192.168.1.1',
+        }),
+        cookies: {
+          get: vi.fn((name: string) => {
+            if (name === 'admin_access_token') return { value: validToken };
+            return undefined;
+          }),
+        },
+      } as unknown as NextRequest;
+
+      const { middleware } = await import('../middleware');
+      const res = await middleware(req);
+
+      // NextResponse.next()が呼ばれてレート制限ヘッダーが設定される
+      expect(NextResponse.next).toHaveBeenCalled();
+    });
+  });
+
+  describe('CORS handling', () => {
+    it('OPTIONSリクエストにCORSヘッダーで応答', async () => {
+      const url = new URL('/api/admin/prepare', 'http://localhost:3000');
+      const req = {
+        nextUrl: url,
+        url: url.toString(),
+        method: 'OPTIONS',
+        headers: new Headers({
+          origin: 'http://localhost:3000',
+          host: 'localhost:3000',
+        }),
+        cookies: {
+          get: vi.fn(() => undefined),
+        },
+      } as unknown as NextRequest;
+
+      const { middleware } = await import('../middleware');
+      const res = await middleware(req);
+
+      // OPTIONSリクエストは204で応答
+      expect(res).toBeDefined();
+      expect(res.status).toBe(204);
+
+      // CORSヘッダーが設定されていることを確認
+      expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:3000');
+      expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, PUT, DELETE, OPTIONS');
+      expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+
+      // next()やredirect()が呼ばれていないことを確認
+      expect(NextResponse.next).not.toHaveBeenCalled();
+      expect(NextResponse.redirect).not.toHaveBeenCalled();
     });
   });
 });

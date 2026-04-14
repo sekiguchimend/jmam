@@ -22,6 +22,80 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SECURE_COOKIES = process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true';
 
 // ========================================
+// APIレート制限
+// ========================================
+
+interface RateLimitEntry {
+  count: number;
+  windowStart: number;
+}
+
+// メモリ内でAPIリクエストを追跡（本番環境ではRedis等を推奨）
+const apiRateLimits = new Map<string, RateLimitEntry>();
+
+// レート制限設定
+const API_RATE_LIMIT = 100; // 1分間に100リクエスト
+const API_RATE_WINDOW_MS = 60 * 1000; // 1分間のウィンドウ
+
+function checkApiRateLimit(identifier: string): { allowed: boolean; remaining: number; resetAt: number } {
+  const now = Date.now();
+  const entry = apiRateLimits.get(identifier);
+
+  // 新規または期限切れ
+  if (!entry || now - entry.windowStart > API_RATE_WINDOW_MS) {
+    apiRateLimits.set(identifier, { count: 1, windowStart: now });
+    return { allowed: true, remaining: API_RATE_LIMIT - 1, resetAt: now + API_RATE_WINDOW_MS };
+  }
+
+  // カウント増加
+  entry.count++;
+  apiRateLimits.set(identifier, entry);
+
+  if (entry.count > API_RATE_LIMIT) {
+    return { allowed: false, remaining: 0, resetAt: entry.windowStart + API_RATE_WINDOW_MS };
+  }
+
+  return { allowed: true, remaining: API_RATE_LIMIT - entry.count, resetAt: entry.windowStart + API_RATE_WINDOW_MS };
+}
+
+// 古いエントリを定期的にクリーンアップ
+function cleanupApiRateLimits(): void {
+  const now = Date.now();
+  for (const [key, entry] of apiRateLimits.entries()) {
+    if (now - entry.windowStart > API_RATE_WINDOW_MS * 2) {
+      apiRateLimits.delete(key);
+    }
+  }
+}
+
+// ========================================
+// CORS設定
+// ========================================
+
+function getCorsHeaders(req: NextRequest): Record<string, string> {
+  const origin = req.headers.get('origin');
+  const host = req.headers.get('host');
+
+  // 同一オリジンのみ許可（API保護）
+  // 本番環境では明示的なドメインリストを使用することを推奨
+  const allowedOrigins = [
+    `https://${host}`,
+    `http://${host}`, // 開発環境用
+  ];
+
+  // オリジンが許可リストにあるか確認
+  const isAllowedOrigin = origin && allowedOrigins.some(allowed => origin === allowed || origin.startsWith('http://localhost'));
+
+  return {
+    'Access-Control-Allow-Origin': isAllowedOrigin ? origin : '',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age': '86400', // 24時間プリフライトキャッシュ
+  };
+}
+
+// ========================================
 // JWT（ローカル処理のみ）
 // ========================================
 
@@ -90,6 +164,10 @@ function addSecurityHeaders(res: NextResponse, isDev: boolean): NextResponse {
   res.headers.set('X-Frame-Options', 'DENY');
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // HSTS（本番環境のみ）
+  if (!isDev) {
+    res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   return res;
 }
 
@@ -153,6 +231,24 @@ export async function middleware(req: NextRequest) {
   const isDev = process.env.NODE_ENV !== 'production';
 
   // ------------------------------------------
+  // 定期クリーンアップ（1%の確率で実行）
+  // ------------------------------------------
+  if (Math.random() < 0.01) {
+    cleanupApiRateLimits();
+  }
+
+  // ------------------------------------------
+  // CORS プリフライトリクエスト処理
+  // ------------------------------------------
+  if (req.method === 'OPTIONS' && pathname.startsWith('/api/')) {
+    const corsHeaders = getCorsHeaders(req);
+    return new NextResponse(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
+  // ------------------------------------------
   // Prefetch リクエストは軽量処理
   // ------------------------------------------
   const isPrefetch = req.headers.get('purpose') === 'prefetch' || req.headers.get('x-middleware-prefetch') === '1';
@@ -173,15 +269,57 @@ export async function middleware(req: NextRequest) {
   // API ルート保護 (/api/admin/*)
   // ------------------------------------------
   if (pathname.startsWith('/api/admin')) {
+    // レート制限チェック（IPベース）
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+                     req.headers.get('x-real-ip') ||
+                     'unknown';
+    const rateLimitKey = `api:${clientIp}`;
+    const rateLimit = checkApiRateLimit(rateLimitKey);
+
+    if (!rateLimit.allowed) {
+      const retryAfter = Math.ceil((rateLimit.resetAt - Date.now()) / 1000);
+      return NextResponse.json(
+        { error: 'Too Many Requests', retryAfter },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(retryAfter),
+            'X-RateLimit-Limit': String(API_RATE_LIMIT),
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': String(Math.floor(rateLimit.resetAt / 1000)),
+          },
+        }
+      );
+    }
+
+    // 認証チェック
     if (!adminStatus.valid) {
       // 期限切れならリフレッシュ試行
       if (adminStatus.expired && adminRefresh && !isPrefetch) {
         const refreshed = await tryRefreshAndContinue(adminRefresh, true, isDev);
-        if (refreshed) return refreshed;
+        if (refreshed) {
+          // レート制限ヘッダーを追加
+          refreshed.headers.set('X-RateLimit-Limit', String(API_RATE_LIMIT));
+          refreshed.headers.set('X-RateLimit-Remaining', String(rateLimit.remaining));
+          return refreshed;
+        }
       }
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    return NextResponse.next();
+
+    // 成功時はレート制限ヘッダーを追加
+    const res = NextResponse.next();
+    res.headers.set('X-RateLimit-Limit', String(API_RATE_LIMIT));
+    res.headers.set('X-RateLimit-Remaining', String(rateLimit.remaining));
+    res.headers.set('X-RateLimit-Reset', String(Math.floor(rateLimit.resetAt / 1000)));
+
+    // CORSヘッダーを追加
+    const corsHeaders = getCorsHeaders(req);
+    for (const [key, value] of Object.entries(corsHeaders)) {
+      if (value) res.headers.set(key, value);
+    }
+
+    return res;
   }
 
   // ------------------------------------------

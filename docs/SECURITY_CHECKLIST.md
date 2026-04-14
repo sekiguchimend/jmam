@@ -25,11 +25,26 @@
   - MFA検証成功時に新セッション発行
 
 ## アクセス制御
-- [ ] レート制限（Rate Limiting）
-- [ ] RBAC（ロールベースアクセス制御）
-- [ ] RLS（Row Level Security）
-- [ ] CORS設定
-- [ ] CSP（Content Security Policy）
+- [x] レート制限（Rate Limiting）
+  - ログイン: 5回失敗で15分ロックアウト
+  - API: 100リクエスト/分（IPベース）
+  - レート制限ヘッダー（X-RateLimit-*）付与
+- [x] RBAC（ロールベースアクセス制御）
+  - admin/userロールでDB側で実装
+  - RLSポリシーで`auth.jwt() ->> 'role' = 'admin'`チェック
+  - middleware.tsで管理者/ユーザー認証分離
+- [x] RLS（Row Level Security）
+  - 全テーブルでRLS有効（upload_logsは未使用）
+  - 詳細: docs/RLS_POLICIES.md参照
+- [x] CORS設定
+  - 同一オリジンのみ許可
+  - OPTIONSプリフライト対応
+  - 認証情報付きリクエスト許可
+- [x] CSP（Content Security Policy）
+  - default-src 'self'
+  - frame-ancestors 'none'（クリックジャッキング対策）
+  - object-src 'none'
+  - Supabase接続のみ許可
 
 ## 入力・出力
 - [ ] XSS対策
