@@ -30,6 +30,10 @@ import {
   checkLoginAttempt,
   recordLoginFailure,
   resetLoginAttempts,
+  isValidEmail,
+  sanitizeEmail,
+  sanitizeDisplayName,
+  validateUserInput,
 } from '@/lib/security';
 
 // クッキーの有効期限（7日間）
@@ -51,15 +55,23 @@ export async function login(formData: FormData): Promise<{
   error?: string;
   redirectTo?: string;
 }> {
-  const email = formData.get('email') as string;
+  const rawEmail = formData.get('email') as string;
   const password = formData.get('password') as string;
   const redirectTo = (formData.get('redirect') as string | null) ?? null;
 
-  if (!email) {
+  if (!rawEmail) {
     return { success: false, error: 'メールアドレスを入力してください' };
   }
   if (!password) {
     return { success: false, error: 'パスワードを入力してください' };
+  }
+
+  // メールアドレスをサニタイズ
+  const email = sanitizeEmail(rawEmail);
+
+  // メールアドレス形式の検証
+  if (!isValidEmail(email)) {
+    return { success: false, error: '有効なメールアドレスを入力してください' };
   }
 
   // レート制限チェック（メールアドレスベース）
@@ -285,12 +297,25 @@ export async function createAdminUser(formData: FormData): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const email = formData.get('email') as string;
+  const rawEmail = formData.get('email') as string;
   const password = formData.get('password') as string;
-  const name = formData.get('name') as string;
+  const rawName = formData.get('name') as string;
 
-  if (!email || !password) {
+  if (!rawEmail || !password) {
     return { success: false, error: 'メールアドレスとパスワードを入力してください' };
+  }
+
+  // メールアドレスをサニタイズして検証
+  const email = sanitizeEmail(rawEmail);
+  if (!isValidEmail(email)) {
+    return { success: false, error: '有効なメールアドレスを入力してください' };
+  }
+
+  // 表示名をサニタイズして検証
+  const name = sanitizeDisplayName(rawName);
+  const nameValidation = validateUserInput(name);
+  if (!nameValidation.valid) {
+    return { success: false, error: nameValidation.error ?? '表示名に不正な文字が含まれています' };
   }
 
   // パスワードポリシーチェック
@@ -526,9 +551,13 @@ export async function changeEmail(
   if (!newEmail) {
     return { success: false, error: '新しいメールアドレスを入力してください' };
   }
-  if (!newEmail.includes('@')) {
+
+  // メールアドレスをサニタイズして検証
+  const sanitizedEmail = sanitizeEmail(newEmail);
+  if (!isValidEmail(sanitizedEmail)) {
     return { success: false, error: '有効なメールアドレスを入力してください' };
   }
+
   if (!currentPassword) {
     return { success: false, error: 'パスワードを入力してください' };
   }

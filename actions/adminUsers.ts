@@ -12,6 +12,14 @@ import { supabaseServiceRole } from '@/lib/supabase/service-role';
 import type { Database } from '@/types/database';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { getAuthedUserId } from '@/lib/supabase/server';
+import {
+  isValidEmail,
+  sanitizeEmail,
+  sanitizeDisplayName,
+  validateUserInput,
+  validateRole,
+  validatePassword,
+} from '@/lib/security';
 
 type PostgrestErrorLike = {
   message?: string;
@@ -291,14 +299,42 @@ export async function adminCreateUser(formData: FormData): Promise<{
 }> {
   await ensureAdmin();
 
-  const email = String(formData.get('email') ?? '').trim().toLowerCase();
-  const password = String(formData.get('password') ?? '').trim();
-  const name = String(formData.get('name') ?? '').trim();
-  const role = String(formData.get('role') ?? 'user').trim(); // 'user' | 'admin'
+  // 入力値のサニタイズ
+  const rawEmail = String(formData.get('email') ?? '');
+  const rawPassword = String(formData.get('password') ?? '').trim();
+  const rawName = String(formData.get('name') ?? '');
+  const rawRole = String(formData.get('role') ?? 'user');
 
-  if (!email || !password) {
+  const email = sanitizeEmail(rawEmail);
+  const name = sanitizeDisplayName(rawName);
+  const role = validateRole(rawRole);
+
+  // 必須フィールドチェック
+  if (!email || !rawPassword) {
     return { success: false, error: 'メールアドレスとパスワードを入力してください' };
   }
+
+  // メールアドレス形式の検証
+  if (!isValidEmail(email)) {
+    return { success: false, error: '有効なメールアドレスを入力してください' };
+  }
+
+  // 表示名のXSSパターンチェック
+  const nameValidation = validateUserInput(name);
+  if (!nameValidation.valid) {
+    return { success: false, error: nameValidation.error ?? '表示名に不正な文字が含まれています' };
+  }
+
+  // パスワードポリシーの検証
+  const passwordValidation = validatePassword(rawPassword);
+  if (!passwordValidation.valid) {
+    return {
+      success: false,
+      error: `パスワードの要件を満たしていません: ${passwordValidation.errors.join(', ')}`,
+    };
+  }
+
+  const password = rawPassword;
 
   const token = await getAccessToken();
   if (!token) return { success: false, error: '管理者権限が必要です' };

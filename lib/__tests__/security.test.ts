@@ -14,6 +14,11 @@ import {
   checkLoginAttempt,
   recordLoginFailure,
   resetLoginAttempts,
+  isValidEmail,
+  sanitizeEmail,
+  sanitizeDisplayName,
+  validateUserInput,
+  validateRole,
 } from '../security';
 
 describe('security utilities', () => {
@@ -525,6 +530,198 @@ describe('security utilities', () => {
         expect(result.allowed).toBe(true);
         expect(result.remainingAttempts).toBe(5);
       });
+    });
+  });
+
+  // ========================================
+  // メールアドレス検証
+  // ========================================
+  describe('isValidEmail', () => {
+    describe('有効なメールアドレス', () => {
+      it('標準的なメールアドレスを許可', () => {
+        expect(isValidEmail('user@example.com')).toBe(true);
+        expect(isValidEmail('test.user@example.co.jp')).toBe(true);
+        expect(isValidEmail('user+tag@example.com')).toBe(true);
+      });
+
+      it('数字を含むメールアドレスを許可', () => {
+        expect(isValidEmail('user123@example.com')).toBe(true);
+        expect(isValidEmail('123user@example.com')).toBe(true);
+      });
+
+      it('ハイフン・アンダースコアを含むメールアドレスを許可', () => {
+        expect(isValidEmail('user-name@example.com')).toBe(true);
+        expect(isValidEmail('user_name@example.com')).toBe(true);
+      });
+    });
+
+    describe('無効なメールアドレス', () => {
+      it('null/undefinedを拒否', () => {
+        expect(isValidEmail(null)).toBe(false);
+        expect(isValidEmail(undefined)).toBe(false);
+      });
+
+      it('空文字を拒否', () => {
+        expect(isValidEmail('')).toBe(false);
+        expect(isValidEmail('   ')).toBe(false);
+      });
+
+      it('@がないものを拒否', () => {
+        expect(isValidEmail('userexample.com')).toBe(false);
+      });
+
+      it('@が複数あるものを拒否', () => {
+        expect(isValidEmail('user@@example.com')).toBe(false);
+        expect(isValidEmail('user@test@example.com')).toBe(false);
+      });
+
+      it('ドメイン部にドットがないものを拒否', () => {
+        expect(isValidEmail('user@localhost')).toBe(false);
+      });
+
+      it('TLDが短すぎるものを拒否', () => {
+        expect(isValidEmail('user@example.c')).toBe(false);
+      });
+
+      it('長すぎるメールアドレスを拒否', () => {
+        const longEmail = 'a'.repeat(250) + '@example.com';
+        expect(isValidEmail(longEmail)).toBe(false);
+      });
+    });
+  });
+
+  describe('sanitizeEmail', () => {
+    it('小文字に変換', () => {
+      expect(sanitizeEmail('User@EXAMPLE.com')).toBe('user@example.com');
+    });
+
+    it('前後の空白を除去', () => {
+      expect(sanitizeEmail('  user@example.com  ')).toBe('user@example.com');
+    });
+
+    it('制御文字を除去', () => {
+      expect(sanitizeEmail('user\x00@example.com')).toBe('user@example.com');
+    });
+
+    it('null/undefinedを空文字に変換', () => {
+      expect(sanitizeEmail(null)).toBe('');
+      expect(sanitizeEmail(undefined)).toBe('');
+    });
+  });
+
+  // ========================================
+  // 表示名サニタイズ
+  // ========================================
+  describe('sanitizeDisplayName', () => {
+    it('通常の名前をそのまま返す', () => {
+      expect(sanitizeDisplayName('田中太郎')).toBe('田中太郎');
+      expect(sanitizeDisplayName('John Doe')).toBe('John Doe');
+    });
+
+    it('前後の空白を除去', () => {
+      expect(sanitizeDisplayName('  田中太郎  ')).toBe('田中太郎');
+    });
+
+    it('制御文字を除去', () => {
+      expect(sanitizeDisplayName('田中\x00太郎')).toBe('田中太郎');
+    });
+
+    it('長さを制限', () => {
+      const longName = 'あ'.repeat(150);
+      expect(sanitizeDisplayName(longName).length).toBe(100);
+    });
+
+    it('カスタム長さ制限を適用', () => {
+      expect(sanitizeDisplayName('あいうえおかきくけこ', 5)).toBe('あいうえお');
+    });
+
+    it('null/undefinedを空文字に変換', () => {
+      expect(sanitizeDisplayName(null)).toBe('');
+      expect(sanitizeDisplayName(undefined)).toBe('');
+    });
+  });
+
+  // ========================================
+  // ユーザー入力検証
+  // ========================================
+  describe('validateUserInput', () => {
+    it('通常のテキストを許可', () => {
+      expect(validateUserInput('こんにちは').valid).toBe(true);
+      expect(validateUserInput('Hello World').valid).toBe(true);
+    });
+
+    it('null/undefinedを許可', () => {
+      expect(validateUserInput(null).valid).toBe(true);
+      expect(validateUserInput(undefined).valid).toBe(true);
+    });
+
+    it('XSSパターンを拒否', () => {
+      expect(validateUserInput('<script>alert(1)</script>').valid).toBe(false);
+      expect(validateUserInput('onclick=alert(1)').valid).toBe(false);
+      expect(validateUserInput('javascript:void(0)').valid).toBe(false);
+    });
+
+    it('追加の危険なHTMLタグを拒否', () => {
+      expect(validateUserInput('<iframe src="evil.com">').valid).toBe(false);
+      expect(validateUserInput('<object data="evil.swf">').valid).toBe(false);
+      expect(validateUserInput('<embed src="evil.swf">').valid).toBe(false);
+    });
+
+    it('エラーメッセージを返す', () => {
+      const result = validateUserInput('<script>');
+      expect(result.valid).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+  });
+
+  // ========================================
+  // ロール検証
+  // ========================================
+  describe('validateRole', () => {
+    it('adminを正しく検証', () => {
+      expect(validateRole('admin')).toBe('admin');
+      expect(validateRole('ADMIN')).toBe('admin');
+      expect(validateRole('  admin  ')).toBe('admin');
+    });
+
+    it('userを正しく検証', () => {
+      expect(validateRole('user')).toBe('user');
+      expect(validateRole('USER')).toBe('user');
+    });
+
+    it('不明な値はuserを返す', () => {
+      expect(validateRole('superadmin')).toBe('user');
+      expect(validateRole('guest')).toBe('user');
+      expect(validateRole('')).toBe('user');
+      expect(validateRole(null)).toBe('user');
+      expect(validateRole(undefined)).toBe('user');
+    });
+  });
+
+  // ========================================
+  // 追加のXSSパターン検出
+  // ========================================
+  describe('containsDangerousPatterns - additional patterns', () => {
+    it('iframe/object/embedタグを検出', () => {
+      expect(containsDangerousPatterns('<iframe src="x">')).toBe(true);
+      expect(containsDangerousPatterns('<object data="x">')).toBe(true);
+      expect(containsDangerousPatterns('<embed src="x">')).toBe(true);
+    });
+
+    it('link/meta/styleタグを検出', () => {
+      expect(containsDangerousPatterns('<link rel="stylesheet">')).toBe(true);
+      expect(containsDangerousPatterns('<meta http-equiv="refresh">')).toBe(true);
+      expect(containsDangerousPatterns('<style>body{}</style>')).toBe(true);
+    });
+
+    it('CSS expressionを検出', () => {
+      expect(containsDangerousPatterns('expression(alert(1))')).toBe(true);
+      expect(containsDangerousPatterns('background: expression(alert(1))')).toBe(true);
+    });
+
+    it('CSS url(javascript:)を検出', () => {
+      expect(containsDangerousPatterns('url(javascript:alert(1))')).toBe(true);
+      expect(containsDangerousPatterns("url('javascript:alert(1)')")).toBe(true);
     });
   });
 });

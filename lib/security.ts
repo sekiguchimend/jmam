@@ -167,9 +167,107 @@ export function containsDangerousPatterns(value: string): boolean {
     /on\w+\s*=/i, // onclick=, onerror= など
     /data:/i,
     /vbscript:/i,
+    /<iframe\b/i,
+    /<object\b/i,
+    /<embed\b/i,
+    /<link\b/i,
+    /<meta\b/i,
+    /<style\b/i,
+    /expression\s*\(/i, // CSS expression
+    /url\s*\(\s*['"]?\s*javascript:/i, // CSS url(javascript:)
   ];
 
   return dangerousPatterns.some((pattern) => pattern.test(value));
+}
+
+/**
+ * メールアドレスの形式を検証
+ * RFC 5322に基づく基本的な検証
+ */
+export function isValidEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+
+  const trimmed = email.trim();
+
+  // 基本的な長さチェック
+  if (trimmed.length < 3 || trimmed.length > 254) return false;
+
+  // RFC 5322準拠の基本パターン
+  // ローカル部: 英数字、ドット、ハイフン、アンダースコア、プラス記号
+  // ドメイン部: 英数字、ドット、ハイフン
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+  if (!emailRegex.test(trimmed)) return false;
+
+  // @が1つだけあることを確認
+  const atCount = (trimmed.match(/@/g) || []).length;
+  if (atCount !== 1) return false;
+
+  // ドメイン部にドットが含まれていることを確認
+  const [, domain] = trimmed.split('@');
+  if (!domain || !domain.includes('.')) return false;
+
+  // TLDが少なくとも2文字あることを確認
+  const tld = domain.split('.').pop();
+  if (!tld || tld.length < 2) return false;
+
+  return true;
+}
+
+/**
+ * メールアドレスをサニタイズ
+ * トリム + 小文字変換 + 制御文字除去
+ */
+export function sanitizeEmail(email: string | null | undefined): string {
+  if (!email) return '';
+  return stripControlChars(email.trim().toLowerCase());
+}
+
+/**
+ * ユーザー名（表示名）をサニタイズ
+ * - 制御文字を除去
+ * - 前後の空白をトリム
+ * - 長さを制限（デフォルト100文字）
+ */
+export function sanitizeDisplayName(
+  name: string | null | undefined,
+  maxLength: number = 100
+): string {
+  if (!name) return '';
+  const sanitized = stripControlChars(name.trim());
+  return truncateString(sanitized, maxLength);
+}
+
+/**
+ * ユーザー入力が安全かどうかを検証
+ * XSSパターンを含んでいないかチェック
+ */
+export function validateUserInput(value: string | null | undefined): {
+  valid: boolean;
+  error?: string;
+} {
+  if (value == null) {
+    return { valid: true };
+  }
+
+  if (containsDangerousPatterns(value)) {
+    return {
+      valid: false,
+      error: '入力に使用できない文字列が含まれています',
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * ロール値の検証
+ * 許可されたロールのみを受け入れる
+ */
+export function validateRole(role: string | null | undefined): 'user' | 'admin' {
+  const trimmed = role?.trim().toLowerCase();
+  if (trimmed === 'admin') return 'admin';
+  return 'user';
 }
 
 // ========================================

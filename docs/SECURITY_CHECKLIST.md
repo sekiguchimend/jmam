@@ -47,11 +47,33 @@
   - Supabase接続のみ許可
 
 ## 入力・出力
-- [ ] XSS対策
-- [ ] SQLインジェクション対策
-- [ ] CSRF対策
-- [ ] 入力バリデーション
-- [ ] サニタイズ処理
+- [x] XSS対策
+  - CSP（Content Security Policy）によるスクリプト実行制限
+  - containsDangerousPatterns()による危険パターン検出
+  - HTMLタグ（script, iframe, object, embed, link, meta, style）検出
+  - イベントハンドラ（onclick等）検出
+  - 危険なスキーム（javascript:, data:, vbscript:）検出
+  - CSS expression/url(javascript:)検出
+- [x] SQLインジェクション対策
+  - Supabaseパラメータ化クエリの使用（.eq(), .gte()等）
+  - 直接SQL文字列連結なし
+  - RPC関数もパラメータ化
+- [x] CSRF対策
+  - Next.js Server ActionsによるPOSTのみ許可
+  - Origin/Hostヘッダー自動検証
+  - SameSite=lax Cookieによるクロスサイトリクエスト防止
+  - HttpOnly Cookieによるスクリプトアクセス防止
+- [x] 入力バリデーション
+  - isValidEmail(): RFC 5322準拠のメール検証
+  - validatePassword(): パスワードポリシー検証
+  - validateUserInput(): XSSパターンチェック
+  - validateRole(): ロール値ホワイトリスト検証
+- [x] サニタイズ処理
+  - sanitizeEmail(): メールアドレスサニタイズ
+  - sanitizeDisplayName(): 表示名サニタイズ
+  - sanitizeText(): 汎用テキストサニタイズ
+  - stripControlChars(): 制御文字除去
+  - truncateString(): 長さ制限
 
 ## 通信・データ
 - [ ] HTTPS強制
