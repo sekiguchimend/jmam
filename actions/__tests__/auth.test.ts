@@ -109,7 +109,7 @@ describe('auth actions', () => {
 
   describe('changePassword validation', () => {
     it('現在のパスワードが空の場合はエラー', async () => {
-      const result = await changePassword('', 'newPassword123');
+      const result = await changePassword('', 'NewPassword123');
       expect(result.success).toBe(false);
       expect(result.error).toBe('現在のパスワードを入力してください');
     });
@@ -120,16 +120,28 @@ describe('auth actions', () => {
       expect(result.error).toBe('新しいパスワードを入力してください');
     });
 
-    it('新しいパスワードが8文字未満の場合はエラー', async () => {
-      const result = await changePassword('currentPassword', 'short');
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('新しいパスワードは8文字以上で入力してください');
-    });
-
     it('新旧パスワードが同じ場合はエラー', async () => {
-      const result = await changePassword('samePassword123', 'samePassword123');
+      const result = await changePassword('SamePassword123', 'SamePassword123');
       expect(result.success).toBe(false);
       expect(result.error).toBe('新しいパスワードは現在のパスワードと異なるものを入力してください');
+    });
+
+    it('パスワードポリシーを満たさない場合はエラー', async () => {
+      // 小文字のみ
+      const result1 = await changePassword('currentPassword', 'lowercase');
+      expect(result1.success).toBe(false);
+      expect(result1.error).toContain('パスワードの要件を満たしていません');
+
+      // 数字なし
+      const result2 = await changePassword('currentPassword', 'NoNumbers');
+      expect(result2.success).toBe(false);
+      expect(result2.error).toContain('数字を含めてください');
+    });
+
+    it('よく使われるパスワードはエラー', async () => {
+      const result = await changePassword('currentPassword', 'Password123');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('よく使われるパスワード');
     });
   });
 

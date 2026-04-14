@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   stripControlChars,
   truncateString,
@@ -7,6 +7,13 @@ import {
   getSafeRedirectUrl,
   getCSPHeader,
   containsDangerousPatterns,
+  validatePasswordStrength,
+  validatePassword,
+  isCommonPassword,
+  hasSequentialChars,
+  checkLoginAttempt,
+  recordLoginFailure,
+  resetLoginAttempts,
 } from '../security';
 
 describe('security utilities', () => {
@@ -313,6 +320,210 @@ describe('security utilities', () => {
       it('日本語テキストは検出しない', () => {
         expect(containsDangerousPatterns('これはテストです')).toBe(false);
         expect(containsDangerousPatterns('データを保存する')).toBe(false);
+      });
+    });
+  });
+
+  // ========================================
+  // パスワードポリシー
+  // ========================================
+  describe('validatePasswordStrength', () => {
+    it('空のパスワードはエラー', () => {
+      const result = validatePasswordStrength('');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('パスワードを入力してください');
+    });
+
+    it('8文字未満はエラー', () => {
+      const result = validatePasswordStrength('Abc123');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('8文字以上で入力してください');
+    });
+
+    it('128文字超はエラー', () => {
+      const longPassword = 'Abc123!@' + 'a'.repeat(125);
+      const result = validatePasswordStrength(longPassword);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('128文字以内で入力してください');
+    });
+
+    it('大文字がないとエラー', () => {
+      const result = validatePasswordStrength('abcdefgh1');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('大文字を含めてください');
+    });
+
+    it('小文字がないとエラー', () => {
+      const result = validatePasswordStrength('ABCDEFGH1');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('小文字を含めてください');
+    });
+
+    it('数字がないとエラー', () => {
+      const result = validatePasswordStrength('Abcdefgh');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('数字を含めてください');
+    });
+
+    it('要件を全て満たすパスワードは有効', () => {
+      const result = validatePasswordStrength('Abcdefg1');
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('複雑なパスワードは有効', () => {
+      const result = validatePasswordStrength('MyP@ssw0rd!2024');
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+  });
+
+  describe('isCommonPassword', () => {
+    it('一般的なパスワードを検出', () => {
+      expect(isCommonPassword('password')).toBe(true);
+      expect(isCommonPassword('PASSWORD')).toBe(true);
+      expect(isCommonPassword('password123')).toBe(true);
+      expect(isCommonPassword('12345678')).toBe(true);
+      expect(isCommonPassword('qwerty')).toBe(true);
+      expect(isCommonPassword('admin')).toBe(true);
+    });
+
+    it('一般的なパスワードを含むものを検出', () => {
+      expect(isCommonPassword('mypassword2024')).toBe(true);
+      expect(isCommonPassword('adminuser')).toBe(true);
+    });
+
+    it('安全なパスワードは検出しない', () => {
+      expect(isCommonPassword('Xk9#mPqr2Lz')).toBe(false);
+      expect(isCommonPassword('UniqueP@ss99')).toBe(false);
+    });
+  });
+
+  describe('hasSequentialChars', () => {
+    it('同じ文字の繰り返しを検出', () => {
+      expect(hasSequentialChars('aaa', 3)).toBe(true);
+      expect(hasSequentialChars('111', 3)).toBe(true);
+      expect(hasSequentialChars('passaaaa', 4)).toBe(true);
+    });
+
+    it('連続した文字を検出', () => {
+      expect(hasSequentialChars('abc', 3)).toBe(true);
+      expect(hasSequentialChars('123', 3)).toBe(true);
+      expect(hasSequentialChars('test1234', 4)).toBe(true);
+    });
+
+    it('逆順連続を検出', () => {
+      expect(hasSequentialChars('cba', 3)).toBe(true);
+      expect(hasSequentialChars('321', 3)).toBe(true);
+    });
+
+    it('非連続は検出しない', () => {
+      expect(hasSequentialChars('ace', 3)).toBe(false);
+      expect(hasSequentialChars('135', 3)).toBe(false);
+      expect(hasSequentialChars('Xk9mPq', 3)).toBe(false);
+    });
+
+    it('短い文字列は検出しない', () => {
+      expect(hasSequentialChars('ab', 3)).toBe(false);
+    });
+  });
+
+  describe('validatePassword', () => {
+    it('強度チェックに失敗するとエラー', () => {
+      const result = validatePassword('weak');
+      expect(result.valid).toBe(false);
+    });
+
+    it('一般的なパスワードはエラー', () => {
+      const result = validatePassword('Password123');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('よく使われるパスワードは使用できません');
+    });
+
+    it('連続文字を含むパスワードはエラー', () => {
+      const result = validatePassword('MyPass1234X');
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain('連続した文字（例: 1234, abcd）は使用できません');
+    });
+
+    it('安全なパスワードは有効', () => {
+      const result = validatePassword('Xk9#mPqr2Lz');
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+  });
+
+  // ========================================
+  // ログイン試行制限
+  // ========================================
+  describe('Rate Limiting', () => {
+    const testEmail = 'test-rate-limit@example.com';
+
+    beforeEach(() => {
+      // 各テスト前にリセット
+      resetLoginAttempts(testEmail);
+    });
+
+    describe('checkLoginAttempt', () => {
+      it('初回アクセスは許可', () => {
+        const result = checkLoginAttempt(testEmail);
+        expect(result.allowed).toBe(true);
+        expect(result.remainingAttempts).toBe(5);
+        expect(result.lockedUntil).toBeNull();
+      });
+
+      it('未知のidentifierは許可', () => {
+        const result = checkLoginAttempt('unknown@example.com');
+        expect(result.allowed).toBe(true);
+      });
+    });
+
+    describe('recordLoginFailure', () => {
+      it('失敗を記録すると残り回数が減る', () => {
+        const result1 = recordLoginFailure(testEmail);
+        expect(result1.locked).toBe(false);
+        expect(result1.remainingAttempts).toBe(4);
+
+        const result2 = recordLoginFailure(testEmail);
+        expect(result2.locked).toBe(false);
+        expect(result2.remainingAttempts).toBe(3);
+      });
+
+      it('5回失敗するとロックアウト', () => {
+        for (let i = 0; i < 4; i++) {
+          recordLoginFailure(testEmail);
+        }
+
+        const result = recordLoginFailure(testEmail);
+        expect(result.locked).toBe(true);
+        expect(result.remainingAttempts).toBe(0);
+        expect(result.lockedUntil).not.toBeNull();
+      });
+
+      it('ロックアウト後はアクセス拒否', () => {
+        for (let i = 0; i < 5; i++) {
+          recordLoginFailure(testEmail);
+        }
+
+        const check = checkLoginAttempt(testEmail);
+        expect(check.allowed).toBe(false);
+        expect(check.message).toContain('ログイン試行回数が上限に達しました');
+      });
+    });
+
+    describe('resetLoginAttempts', () => {
+      it('リセット後は再度アクセス可能', () => {
+        for (let i = 0; i < 5; i++) {
+          recordLoginFailure(testEmail);
+        }
+
+        expect(checkLoginAttempt(testEmail).allowed).toBe(false);
+
+        resetLoginAttempts(testEmail);
+
+        const result = checkLoginAttempt(testEmail);
+        expect(result.allowed).toBe(true);
+        expect(result.remainingAttempts).toBe(5);
       });
     });
   });

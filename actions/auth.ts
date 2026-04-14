@@ -24,7 +24,13 @@ import { setMfaPendingCookies } from '@/actions/mfa';
 import { createAuthedAnonServerClient } from '@/lib/supabase/authed-anon-server';
 import { headers } from 'next/headers';
 import type { AuthError } from '@supabase/supabase-js';
-import { getSafeRedirectUrl } from '@/lib/security';
+import {
+  getSafeRedirectUrl,
+  validatePassword,
+  checkLoginAttempt,
+  recordLoginFailure,
+  resetLoginAttempts,
+} from '@/lib/security';
 
 // クッキーの有効期限（7日間）
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -56,6 +62,15 @@ export async function login(formData: FormData): Promise<{
     return { success: false, error: 'パスワードを入力してください' };
   }
 
+  // レート制限チェック（メールアドレスベース）
+  const rateLimitCheck = checkLoginAttempt(email.toLowerCase());
+  if (!rateLimitCheck.allowed) {
+    return {
+      success: false,
+      error: rateLimitCheck.message ?? 'ログイン試行回数が上限に達しました。しばらく時間をおいて再度お試しください。',
+    };
+  }
+
   const supabase = await createSupabaseServerClient();
 
   // 通常ログイン（メール+パスワード）に戻す
@@ -72,7 +87,16 @@ export async function login(formData: FormData): Promise<{
       code: e.code,
       name: e.name,
     });
-    return { success: false, error: 'ログインに失敗しました（メールまたはパスワードをご確認ください）' };
+    // ログイン失敗を記録
+    const failureResult = recordLoginFailure(email.toLowerCase());
+    if (failureResult.locked) {
+      return { success: false, error: 'ログイン試行回数が上限に達しました。15分後に再度お試しください。' };
+    }
+    const remaining = failureResult.remainingAttempts;
+    return {
+      success: false,
+      error: `ログインに失敗しました（メールまたはパスワードをご確認ください）${remaining > 0 ? `。残り${remaining}回` : ''}`,
+    };
   }
 
   if (!data.user || !data.session) {
@@ -157,6 +181,8 @@ export async function login(formData: FormData): Promise<{
 
     // XSS/Open Redirect対策: リダイレクト先を検証
     const resolvedRedirect = getSafeRedirectUrl(redirectTo, isAdmin);
+    // ログイン成功: レート制限をリセット
+    resetLoginAttempts(email.toLowerCase());
     revalidatePath('/', 'layout');
     return { success: true, redirectTo: resolvedRedirect };
   }
@@ -182,6 +208,8 @@ export async function login(formData: FormData): Promise<{
     cookieStore.delete(ADMIN_TOKEN_COOKIE);
     cookieStore.delete(USER_TOKEN_COOKIE);
 
+    // パスワード認証成功: レート制限をリセット
+    resetLoginAttempts(email.toLowerCase());
     return { success: true, redirectTo: '/mfa' };
   }
 
@@ -217,6 +245,8 @@ export async function login(formData: FormData): Promise<{
 
   // XSS/Open Redirect対策: リダイレクト先を検証
   const resolvedRedirect = getSafeRedirectUrl(redirectTo, isAdmin);
+  // ログイン成功: レート制限をリセット
+  resetLoginAttempts(email.toLowerCase());
   revalidatePath('/', 'layout');
   return { success: true, redirectTo: resolvedRedirect };
 }
@@ -261,6 +291,15 @@ export async function createAdminUser(formData: FormData): Promise<{
 
   if (!email || !password) {
     return { success: false, error: 'メールアドレスとパスワードを入力してください' };
+  }
+
+  // パスワードポリシーチェック
+  const passwordValidation = validatePassword(password);
+  if (!passwordValidation.valid) {
+    return {
+      success: false,
+      error: `パスワードの要件を満たしていません: ${passwordValidation.errors.join('、')}`,
+    };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -332,11 +371,17 @@ export async function changePassword(
   if (!newPassword) {
     return { success: false, error: '新しいパスワードを入力してください' };
   }
-  if (newPassword.length < 8) {
-    return { success: false, error: '新しいパスワードは8文字以上で入力してください' };
-  }
   if (currentPassword === newPassword) {
     return { success: false, error: '新しいパスワードは現在のパスワードと異なるものを入力してください' };
+  }
+
+  // パスワードポリシーチェック
+  const passwordValidation = validatePassword(newPassword);
+  if (!passwordValidation.valid) {
+    return {
+      success: false,
+      error: `パスワードの要件を満たしていません: ${passwordValidation.errors.join('、')}`,
+    };
   }
 
   // 開発環境チェック
