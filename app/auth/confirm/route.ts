@@ -18,6 +18,10 @@ import { isAllowedRedirect } from '@/lib/security';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
+// HTTP環境でもクッキーを許可するフラグ（本番HTTPS化までの一時対応）
+const SECURE_COOKIES = process.env.NODE_ENV === 'production' && process.env.ALLOW_INSECURE_COOKIES !== 'true';
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7日間
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const tokenHash = url.searchParams.get('token_hash');
@@ -84,37 +88,14 @@ export async function GET(req: Request) {
   res.cookies.delete(USER_TOKEN_COOKIE);
 
   if (currentLevel !== 'aal2') {
-    // pending cookieへ退避
-    res.cookies.set(MFA_PENDING_ACCESS_TOKEN_COOKIE, data.session.access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 10,
-      path: '/',
-    });
-    res.cookies.set(MFA_PENDING_REFRESH_TOKEN_COOKIE, data.session.refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 10,
-      path: '/',
-    });
-    res.cookies.set(MFA_PENDING_IS_ADMIN_COOKIE, isAdmin ? '1' : '0', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 10,
-      path: '/',
-    });
+    // pending cookieへ退避（MFA検証待ち: 10分間有効）
+    const mfaPendingOpts = { httpOnly: true, secure: SECURE_COOKIES, sameSite: 'lax' as const, maxAge: 60 * 10, path: '/' };
+    res.cookies.set(MFA_PENDING_ACCESS_TOKEN_COOKIE, data.session.access_token, mfaPendingOpts);
+    res.cookies.set(MFA_PENDING_REFRESH_TOKEN_COOKIE, data.session.refresh_token, mfaPendingOpts);
+    res.cookies.set(MFA_PENDING_IS_ADMIN_COOKIE, isAdmin ? '1' : '0', mfaPendingOpts);
     // XSS/Open Redirect対策: リダイレクト先を検証してからクッキーに保存
     if (redirectTo && isAllowedRedirect(redirectTo)) {
-      res.cookies.set(MFA_PENDING_REDIRECT_COOKIE, redirectTo, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 10,
-        path: '/',
-      });
+      res.cookies.set(MFA_PENDING_REDIRECT_COOKIE, redirectTo, mfaPendingOpts);
     } else {
       res.cookies.delete(MFA_PENDING_REDIRECT_COOKIE);
     }
@@ -122,35 +103,12 @@ export async function GET(req: Request) {
   }
 
   // aal2なら本Cookie発行
-  res.cookies.set(USER_TOKEN_COOKIE, data.session.access_token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7,
-    path: '/',
-  });
-  res.cookies.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7,
-    path: '/',
-  });
+  const sessionOpts = { httpOnly: true, secure: SECURE_COOKIES, sameSite: 'lax' as const, maxAge: COOKIE_MAX_AGE, path: '/' };
+  res.cookies.set(USER_TOKEN_COOKIE, data.session.access_token, sessionOpts);
+  res.cookies.set(USER_REFRESH_TOKEN_COOKIE, data.session.refresh_token, sessionOpts);
   if (isAdmin) {
-    res.cookies.set(ADMIN_TOKEN_COOKIE, data.session.access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    });
-    res.cookies.set(ADMIN_REFRESH_TOKEN_COOKIE, data.session.refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 7,
-      path: '/',
-    });
+    res.cookies.set(ADMIN_TOKEN_COOKIE, data.session.access_token, sessionOpts);
+    res.cookies.set(ADMIN_REFRESH_TOKEN_COOKIE, data.session.refresh_token, sessionOpts);
   }
 
   return res;

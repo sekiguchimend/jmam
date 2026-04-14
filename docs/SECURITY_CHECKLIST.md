@@ -77,9 +77,26 @@
 
 ## 通信・データ
 - [ ] HTTPS強制
-- [ ] Cookie属性（HttpOnly, Secure, SameSite）
-- [ ] 機密データ暗号化
-- [ ] 環境変数管理
+  - 本番環境がHTTPのため未実装
+  - HTTPS化後にHSTSヘッダーで強制（middleware.tsに実装済み、条件付き）
+- [x] Cookie属性（HttpOnly, Secure, SameSite）
+  - httpOnly: true（全Cookie）- JavaScriptからのアクセス防止
+  - secure: SECURE_COOKIES（本番HTTPS時にtrue）
+  - sameSite: 'lax'（CSRF対策）
+  - maxAge: 7日間（セッションCookie）/ 10分（MFA pending）
+  - path: '/'
+  - 一貫した設定: middleware.ts, auth.ts, mfa.ts, auth/confirm/route.ts
+- [x] 機密データ暗号化
+  - パスワード: Supabase Authによるbcryptハッシュ化
+  - MFA秘密鍵: Supabase Authによる暗号化管理
+  - セッショントークン: HttpOnly Cookieで保護
+  - DB通信: Supabase TLS/HTTPS
+  - APIキー: 環境変数（サーバーサイドのみ）
+- [x] 環境変数管理
+  - .gitignoreで.env*を除外（.env.example以外）
+  - .env.exampleでテンプレート提供
+  - 機密キー（SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY）はサーバーサイドのみ
+  - NEXT_PUBLIC_*のみクライアント公開
 
 ## インフラ・運用
 - [ ] 依存パッケージ脆弱性
