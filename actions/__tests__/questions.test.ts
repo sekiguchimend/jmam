@@ -102,7 +102,8 @@ describe('questions actions', () => {
       const result = await fetchQuestions('case-123');
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('DB接続エラー');
+      // セキュリティ: 内部エラー詳細は隠蔽され、汎用メッセージが返される
+      expect(result.error).toBe('設問の取得に失敗しました');
     });
   });
 

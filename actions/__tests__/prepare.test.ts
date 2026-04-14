@@ -289,7 +289,8 @@ describe('prepare actions', () => {
       const result = await updateAllScoreDistributions();
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Unexpected error');
+      // セキュリティ: 内部エラー詳細は隠蔽され、汎用メッセージが返される
+      expect(result.error).toBe('エラーが発生しました');
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
     });

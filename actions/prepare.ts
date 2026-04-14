@@ -73,9 +73,10 @@ export async function updateScoreDistribution(params: {
     return { success: true };
   } catch (error) {
     console.error('updateScoreDistribution error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'エラーが発生しました',
+      error: 'エラーが発生しました',
     };
   }
 }
@@ -107,9 +108,10 @@ export async function updateAllScoreDistributions(): Promise<{
     return { success: true };
   } catch (error) {
     console.error('updateAllScoreDistributions error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'エラーが発生しました',
+      error: 'エラーが発生しました',
     };
   }
 }

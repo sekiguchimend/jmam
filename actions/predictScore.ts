@@ -35,9 +35,10 @@ export async function fetchCasesForScorePrediction(): Promise<{
     return { success: true, cases: data || [] };
   } catch (error) {
     console.error('fetchCasesForScorePrediction error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'エラーが発生しました',
+      error: 'エラーが発生しました',
     };
   }
 }
@@ -86,9 +87,10 @@ export async function submitAnswerForScorePrediction(params: {
     return { success: true, prediction };
   } catch (error) {
     console.error('submitAnswerForScorePrediction error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'スコア予測に失敗しました',
+      error: 'スコア予測に失敗しました',
     };
   }
 }

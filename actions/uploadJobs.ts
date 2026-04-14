@@ -48,9 +48,10 @@ export async function getActiveUploadJob(): Promise<{
     return { success: true, job: data as UploadJob };
   } catch (error) {
     console.error('getActiveUploadJob error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'ジョブの取得に失敗しました',
+      error: 'ジョブの取得に失敗しました',
     };
   }
 }
@@ -139,9 +140,10 @@ export async function createUploadJob(params: {
     return { success: true, jobId: data.id };
   } catch (error) {
     console.error('createUploadJob error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'ジョブの作成に失敗しました',
+      error: 'ジョブの作成に失敗しました',
     };
   }
 }
@@ -177,9 +179,10 @@ export async function cancelUploadJob(jobId: string): Promise<{
     return { success: true };
   } catch (error) {
     console.error('cancelUploadJob error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'キャンセルに失敗しました',
+      error: 'キャンセルに失敗しました',
     };
   }
 }
@@ -215,9 +218,10 @@ export async function dismissUploadJob(jobId: string): Promise<{
     return { success: true };
   } catch (error) {
     console.error('dismissUploadJob error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'ジョブのクリアに失敗しました',
+      error: 'ジョブのクリアに失敗しました',
     };
   }
 }

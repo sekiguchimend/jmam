@@ -37,9 +37,10 @@ export async function fetchQuestions(caseId: string): Promise<{
     };
   } catch (error) {
     console.error('fetchQuestions error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : '設問の取得に失敗しました',
+      error: '設問の取得に失敗しました',
     };
   }
 }
@@ -85,9 +86,10 @@ export async function saveQuestion(params: {
     return { success: true };
   } catch (error) {
     console.error('saveQuestion error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : '設問の保存に失敗しました',
+      error: '設問の保存に失敗しました',
     };
   }
 }
@@ -118,9 +120,10 @@ export async function removeQuestion(params: {
     return { success: true };
   } catch (error) {
     console.error('removeQuestion error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : '設問の削除に失敗しました',
+      error: '設問の削除に失敗しました',
     };
   }
 }
@@ -164,9 +167,10 @@ export async function saveCaseSituation(params: {
     return { success: true };
   } catch (error) {
     console.error('saveCaseSituation error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'ケース内容の保存に失敗しました',
+      error: 'ケース内容の保存に失敗しました',
     };
   }
 }

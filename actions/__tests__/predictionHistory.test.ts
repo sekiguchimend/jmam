@@ -392,7 +392,8 @@ describe('predictionHistory actions', () => {
       const result = await adminFetchPredictionHistory();
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('管理者権限が必要');
+      // セキュリティ: 内部エラー詳細は隠蔽され、汎用メッセージが返される
+      expect(result.error).toBe('履歴の取得に失敗しました');
     });
 
     it('正常に全ユーザー履歴を取得', async () => {

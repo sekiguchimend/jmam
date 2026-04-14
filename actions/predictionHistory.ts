@@ -74,7 +74,8 @@ export async function savePredictionHistoryExisting(params: {
     console.error('savePredictionHistoryExisting error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : '履歴の保存に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: '履歴の保存に失敗しました',
     };
   }
 }
@@ -119,7 +120,8 @@ export async function savePredictionHistoryNew(params: {
     console.error('savePredictionHistoryNew error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : '履歴の保存に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: '履歴の保存に失敗しました',
     };
   }
 }
@@ -162,7 +164,8 @@ export async function savePredictionHistoryAnswer(params: {
     console.error('savePredictionHistoryAnswer error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : '履歴の保存に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: '履歴の保存に失敗しました',
     };
   }
 }
@@ -222,7 +225,8 @@ export async function fetchPredictionHistory(params?: {
     console.error('fetchPredictionHistory error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : '履歴の取得に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: '履歴の取得に失敗しました',
     };
   }
 }
@@ -262,7 +266,8 @@ export async function fetchPredictionHistoryById(
     console.error('fetchPredictionHistoryById error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : '履歴の取得に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: '履歴の取得に失敗しました',
     };
   }
 }
@@ -375,7 +380,8 @@ export async function adminFetchPredictionHistory(params?: {
     console.error('adminFetchPredictionHistory error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : '履歴の取得に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: '履歴の取得に失敗しました',
     };
   }
 }

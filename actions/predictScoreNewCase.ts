@@ -78,7 +78,8 @@ export async function submitAnswerForNewCasePrediction(params: {
     console.error('submitAnswerForNewCasePrediction error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'スコア予測に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: 'スコア予測に失敗しました',
     };
   }
 }
@@ -142,7 +143,8 @@ export async function submitAnswerForExistingCasePrediction(params: {
     console.error('submitAnswerForExistingCasePrediction error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'スコア予測に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: 'スコア予測に失敗しました',
     };
   }
 }
@@ -389,7 +391,8 @@ export async function submitCombinedPrediction(params: {
     console.error('submitCombinedPrediction error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'スコア予測に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: 'スコア予測に失敗しました',
     };
   }
 }
@@ -538,7 +541,8 @@ export async function submitCombinedNewCasePrediction(params: {
     console.error('submitCombinedNewCasePrediction error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'スコア予測に失敗しました',
+      // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+      error: 'スコア予測に失敗しました',
     };
   }
 }

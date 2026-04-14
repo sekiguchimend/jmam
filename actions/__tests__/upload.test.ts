@@ -171,7 +171,8 @@ describe('upload actions', () => {
       const result = await deleteDatasetByCaseId('case-123');
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('削除エラー');
+      // セキュリティ: 内部エラー詳細は隠蔽され、汎用メッセージが返される
+      expect(result.error).toBe('データの削除に失敗しました');
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
     });

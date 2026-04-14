@@ -134,7 +134,9 @@ export async function verifyTotp(params: { factorId: string; code: string }): Pr
     code,
   });
   if (verify.error) {
-    return { ok: false, error: verify.error.message };
+    console.error('MFA verify error:', verify.error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+    return { ok: false, error: '認証コードが正しくありません。もう一度お試しください。' };
   }
 
   const aal = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();

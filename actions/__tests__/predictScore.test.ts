@@ -210,7 +210,8 @@ describe('predictScore actions', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('予測処理エラー');
+      // セキュリティ: 内部エラー詳細は隠蔽され、汎用メッセージが返される
+      expect(result.error).toBe('スコア予測に失敗しました');
     });
   });
 });

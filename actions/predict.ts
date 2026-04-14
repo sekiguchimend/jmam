@@ -124,9 +124,10 @@ export async function predictAnswer(
     };
   } catch (error) {
     console.error('predictAnswer error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : '予測処理中にエラーが発生しました'
+      error: '予測処理中にエラーが発生しました'
     };
   }
 }
@@ -163,9 +164,10 @@ export async function predictFreeQuestion(
     };
   } catch (error) {
     console.error('predictFreeQuestion error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : '解答生成中にエラーが発生しました'
+      error: '解答生成中にエラーが発生しました'
     };
   }
 }

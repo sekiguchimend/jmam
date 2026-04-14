@@ -35,21 +35,24 @@ export async function embedText(text: string): Promise<EmbedResult> {
     });
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e);
+    // セキュリティ: 内部エラー詳細はログのみ
     console.error(`[Gemini] ネットワークエラー (textLen=${textLen}): ${errMsg}`);
-    throw new Error(`Embedding API network error: ${errMsg}`);
+    throw new Error('Embedding APIへの接続に失敗しました');
   }
 
   if (!res.ok) {
     const msg = await res.text().catch(() => '');
-    // レート制限やサーバーエラーの詳細をログ出力
+    // セキュリティ: 内部エラー詳細はログのみ、throwには汎用メッセージ
     if (res.status === 429) {
       console.warn(`[Gemini] レート制限 (429): textLen=${textLen}`);
+      throw new Error('APIリクエストが制限されています。しばらく待ってから再試行してください');
     } else if (res.status >= 500) {
       console.error(`[Gemini] サーバーエラー (${res.status}): textLen=${textLen}, msg=${msg.slice(0, 100)}`);
+      throw new Error('Embedding APIでサーバーエラーが発生しました');
     } else {
       console.error(`[Gemini] APIエラー (${res.status}): textLen=${textLen}, msg=${msg.slice(0, 200)}`);
+      throw new Error('Embedding APIでエラーが発生しました');
     }
-    throw new Error(`Embedding API error: ${res.status} ${msg.slice(0, 200)}`);
   }
 
   const data = (await res.json()) as unknown;

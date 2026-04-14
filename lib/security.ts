@@ -542,3 +542,32 @@ export function cleanupLoginAttempts(): void {
     }
   }
 }
+
+// ========================================
+// エラーメッセージ制御
+// ========================================
+
+/**
+ * ユーザーに安全なエラーメッセージを返す
+ * 内部エラー詳細は隠蔽し、汎用メッセージのみを返す
+ * 開発環境では詳細をコンソールに出力
+ *
+ * @param error 発生したエラー
+ * @param defaultMessage ユーザーに表示する汎用メッセージ
+ * @param logPrefix ログ出力時のプレフィックス（オプション）
+ * @returns ユーザー向けの安全なエラーメッセージ
+ */
+export function getSafeErrorMessage(
+  error: unknown,
+  defaultMessage: string,
+  logPrefix?: string
+): string {
+  // 開発環境では詳細をログ出力
+  if (process.env.NODE_ENV === 'development') {
+    const prefix = logPrefix ? `[${logPrefix}] ` : '';
+    console.error(`${prefix}Error:`, error);
+  }
+
+  // ユーザーには常に汎用メッセージを返す
+  return defaultMessage;
+}

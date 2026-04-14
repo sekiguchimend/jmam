@@ -99,10 +99,29 @@
   - NEXT_PUBLIC_*のみクライアント公開
 
 ## インフラ・運用
-- [ ] 依存パッケージ脆弱性
-- [ ] エラーメッセージ制御
-- [ ] ログ監査
-- [ ] セキュリティヘッダー（X-Frame-Options等）
+- [x] 依存パッケージ脆弱性
+  - npm audit fix実行済み（0 vulnerabilities）
+  - Next.js 16.2.3にアップグレード
+  - 定期的なnpm auditの実施を推奨
+- [x] エラーメッセージ制御
+  - 内部エラー詳細はログのみ出力
+  - ユーザーには汎用エラーメッセージのみ表示
+  - getSafeErrorMessage()ユーティリティ追加
+  - 全actionsファイルでerror.messageの直接露出を修正
+- [x] ログ監査
+  - lib/logger.ts: 環境別ログ制御
+  - 機密情報の自動マスキング（password, token, key等）
+  - セキュリティイベントログ（logSecurityEvent）
+  - 監査ログ（logAudit）
+  - 本番環境ではerror以外は抑制
+- [x] セキュリティヘッダー（X-Frame-Options等）
+  - middleware.tsで実装済み
+  - Content-Security-Policy（CSP）
+  - X-Content-Type-Options: nosniff
+  - X-Frame-Options: DENY
+  - Referrer-Policy: strict-origin-when-cross-origin
+  - Permissions-Policy: camera=(), microphone=(), geolocation=()
+  - HSTS（本番環境のみ）
 
 ## API
 - [ ] API認証

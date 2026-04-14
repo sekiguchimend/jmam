@@ -322,12 +322,15 @@ ${formatSimilarExamples()}
     clearTimeout(timer);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[Gemini API] ===== ERROR =====');
-      console.error('[Gemini API] URL:', GEMINI_API_URL);
-      console.error('[Gemini API] Status:', response.status);
-      console.error('[Gemini API] Error Response:', errorText);
-      throw new Error(`Gemini API error: ${response.status}`);
+      // セキュリティ: 内部エラー詳細はログのみ、APIキーやURLは本番ログに出力しない
+      if (process.env.NODE_ENV === 'development') {
+        const errorText = await response.text();
+        console.error('[Gemini API] Error Status:', response.status);
+        console.error('[Gemini API] Error Response:', errorText.slice(0, 200));
+      } else {
+        console.error('[Gemini API] Error Status:', response.status);
+      }
+      throw new Error('予測APIでエラーが発生しました');
     }
 
     const data = await response.json();
@@ -351,8 +354,12 @@ ${formatSimilarExamples()}
       };
     }
 
-    // パース失敗時はエラーログを出力
-    console.error('[generatePredictionFromSimilar] JSON parse failed. Raw text:', generatedText.substring(0, 500));
+    // パース失敗時はエラーログを出力（本番環境では詳細を出力しない）
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[generatePredictionFromSimilar] JSON parse failed. Raw text:', generatedText.substring(0, 200));
+    } else {
+      console.error('[generatePredictionFromSimilar] JSON parse failed');
+    }
     return generateMockPrediction(targetScores);
   } catch (error) {
     console.error('generatePredictionFromSimilar error:', error);
@@ -564,12 +571,15 @@ ${formatStyleExamples()}
     clearTimeout(timer);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[Gemini API] ===== ERROR =====');
-      console.error('[Gemini API] URL:', GEMINI_API_URL);
-      console.error('[Gemini API] Status:', response.status);
-      console.error('[Gemini API] Error Response:', errorText);
-      throw new Error(`Gemini API error: ${response.status}`);
+      // セキュリティ: 内部エラー詳細はログのみ、APIキーやURLは本番ログに出力しない
+      if (process.env.NODE_ENV === 'development') {
+        const errorText = await response.text();
+        console.error('[Gemini API] Error Status:', response.status);
+        console.error('[Gemini API] Error Response:', errorText.slice(0, 200));
+      } else {
+        console.error('[Gemini API] Error Status:', response.status);
+      }
+      throw new Error('予測APIでエラーが発生しました');
     }
 
     const data = await response.json();
@@ -692,12 +702,15 @@ ${question}
     clearTimeout(timer);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[Gemini API] ===== ERROR =====');
-      console.error('[Gemini API] URL:', GEMINI_API_URL);
-      console.error('[Gemini API] Status:', response.status);
-      console.error('[Gemini API] Error Response:', errorText);
-      throw new Error(`Gemini API error: ${response.status}`);
+      // セキュリティ: 内部エラー詳細はログのみ、APIキーやURLは本番ログに出力しない
+      if (process.env.NODE_ENV === 'development') {
+        const errorText = await response.text();
+        console.error('[Gemini API] Error Status:', response.status);
+        console.error('[Gemini API] Error Response:', errorText.slice(0, 200));
+      } else {
+        console.error('[Gemini API] Error Status:', response.status);
+      }
+      throw new Error('予測APIでエラーが発生しました');
     }
 
     const data = await response.json();

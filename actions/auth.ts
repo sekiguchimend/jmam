@@ -337,7 +337,8 @@ export async function createAdminUser(formData: FormData): Promise<{
 
   if (error) {
     console.error('SignUp error:', error);
-    return { success: false, error: `ユーザー作成に失敗しました: ${error.message}` };
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+    return { success: false, error: 'ユーザー作成に失敗しました' };
   }
 
   if (!data.user) {
@@ -356,7 +357,8 @@ export async function createAdminUser(formData: FormData): Promise<{
 
   if (insertError) {
     console.error('Insert admin_user error:', insertError);
-    return { success: false, error: `管理者登録に失敗しました: ${insertError.message}` };
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+    return { success: false, error: '管理者登録に失敗しました' };
   }
 
   return { success: true };

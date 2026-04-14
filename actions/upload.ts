@@ -395,9 +395,10 @@ export async function processCsvUpload(formData: FormData): Promise<UploadResult
     };
   } catch (error) {
     console.error('[processCsvUpload] 例外:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'アップロード処理に失敗しました',
+      error: 'アップロード処理に失敗しました',
     };
   }
 }
@@ -476,9 +477,10 @@ export async function deleteDatasetByCaseId(caseId: string): Promise<{
     return { success: true, deletedCount };
   } catch (error) {
     console.error('deleteDatasetByCaseId error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'データの削除に失敗しました'
+      error: 'データの削除に失敗しました'
     };
   }
 }
@@ -528,9 +530,10 @@ export async function createNewCase(data: {
     return { success: true };
   } catch (error) {
     console.error('createNewCase error:', error);
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'ケースの作成に失敗しました'
+      error: 'ケースの作成に失敗しました'
     };
   }
 }

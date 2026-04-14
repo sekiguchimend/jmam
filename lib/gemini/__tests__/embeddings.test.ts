@@ -98,7 +98,8 @@ describe('embeddings', () => {
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      await expect(embedText('テストテキスト')).rejects.toThrow('Embedding API error: 400');
+      // セキュリティ: 汎用エラーメッセージを期待
+      await expect(embedText('テストテキスト')).rejects.toThrow('Embedding APIでエラーが発生しました');
       expect(consoleSpy).toHaveBeenCalled();
     });
 
@@ -113,7 +114,8 @@ describe('embeddings', () => {
 
       const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      await expect(embedText('テストテキスト')).rejects.toThrow('Embedding API error: 429');
+      // セキュリティ: 汎用エラーメッセージを期待
+      await expect(embedText('テストテキスト')).rejects.toThrow('APIリクエストが制限されています');
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('レート制限')
       );
@@ -130,7 +132,8 @@ describe('embeddings', () => {
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      await expect(embedText('テストテキスト')).rejects.toThrow('Embedding API error: 503');
+      // セキュリティ: 汎用エラーメッセージを期待
+      await expect(embedText('テストテキスト')).rejects.toThrow('Embedding APIでサーバーエラーが発生しました');
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('サーバーエラー')
       );
@@ -143,7 +146,8 @@ describe('embeddings', () => {
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      await expect(embedText('テストテキスト')).rejects.toThrow('Embedding API network error');
+      // セキュリティ: 汎用エラーメッセージを期待
+      await expect(embedText('テストテキスト')).rejects.toThrow('Embedding APIへの接続に失敗しました');
       expect(consoleSpy).toHaveBeenCalled();
     });
 

@@ -421,7 +421,8 @@ export async function adminCreateUser(formData: FormData): Promise<{
     }
 
     console.error('adminCreateUser error:', error);
-    return { success: false, error: `ユーザー作成に失敗しました: ${error.message}` };
+    // セキュリティ: 内部エラー詳細はログのみ、ユーザーには汎用メッセージ
+    return { success: false, error: 'ユーザー作成に失敗しました' };
   }
 
   // 作成時に「管理者」を選んだ場合は admin_users に登録
