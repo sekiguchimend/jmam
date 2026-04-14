@@ -336,7 +336,7 @@ export async function findSimilarResponsesByEuclidean(
       .from('response_embeddings')
       .select('response_id, embedding')
       .eq('case_id', caseId)
-      .eq('question', 'problem')
+      .eq('question', 'q1')
       .in('response_id', responseIds) as { data: { response_id: string; embedding: number[] | null }[] | null; error: unknown };
 
     if (embError || !embeddingData || embeddingData.length === 0) {
