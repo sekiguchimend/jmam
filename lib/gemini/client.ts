@@ -263,6 +263,14 @@ ${formatSimilarExamples()}
 - **文頭の接続詞は使用しない**（「まず」「次に」「そのため」「したがって」などは禁止）
 - 構成を説明するような表現は避ける
 
+### 評価項目の表記禁止（厳守）★重要★
+- **解答テキスト内に評価項目名（問題把握、対策立案、役割理解、主導、連携、育成）を含めない**
+- **「**...:**」「【...】」「（主導・育成）」のような評価項目ラベルは絶対に使用しない**
+- 評価項目は採点の観点であり、解答テキストには一切含めてはならない
+- NG例: 「**メンバー育成とコミュニケーション改善（育成・主導）:**」
+- NG例: 「【連携】上司と相談する」
+- OK例: 「メンバー育成とコミュニケーション改善を図る」（評価項目ラベルなし）
+
 ### 分量の目安（重要）
 - 設問1: 400〜700文字程度（問題の構造と影響を十分に説明できる分量）
 - 設問2: 800〜1500文字程度（具体的なアクションと関係者への働きかけを詳述できる分量）
@@ -347,10 +355,11 @@ ${formatSimilarExamples()}
     // JSONを抽出してパース（複数パターン対応）
     const parsedResult = extractAndParseJson(generatedText);
     if (parsedResult) {
+      // 評価項目パターンをサニタイズ
       return {
-        q1Answer: parsedResult.q1Answer || '予測解答を生成できませんでした',
+        q1Answer: sanitizeAnswerText(parsedResult.q1Answer || '') || '予測解答を生成できませんでした',
         q1Reason: parsedResult.q1Reason || undefined,
-        q2Answer: parsedResult.q2Answer || '予測解答を生成できませんでした',
+        q2Answer: sanitizeAnswerText(parsedResult.q2Answer || '') || '予測解答を生成できませんでした',
         q2Reason: parsedResult.q2Reason || undefined,
       };
     }
@@ -515,6 +524,13 @@ ${formatStyleExamples()}
 - 内容から直接書き始める
 - **文頭の接続詞は使用しない**（「まず」「次に」「そのため」などは禁止）
 
+### 評価項目の表記禁止（厳守）★重要★
+- **解答テキスト内に評価項目名（問題把握、対策立案、役割理解、主導、連携、育成）を含めない**
+- **「**...:**」「【...】」「（主導・育成）」のような評価項目ラベルは絶対に使用しない**
+- 評価項目は採点の観点であり、解答テキストには一切含めてはならない
+- NG例: 「**メンバー育成とコミュニケーション改善（育成・主導）:**」
+- OK例: 「メンバー育成とコミュニケーション改善を図る」（評価項目ラベルなし）
+
 ### 分量の目安（重要）
 - 設問1: 400〜700文字程度（問題の構造と影響を十分に説明できる分量）
 - 設問2: 800〜1500文字程度（具体的なアクションと関係者への働きかけを詳述できる分量）
@@ -598,10 +614,11 @@ ${formatStyleExamples()}
     // JSONを抽出してパース（複数パターン対応）
     const parsedResult = extractAndParseJson(generatedText);
     if (parsedResult) {
+      // 評価項目パターンをサニタイズ
       return {
-        q1Answer: parsedResult.q1Answer || '予測解答を生成できませんでした',
+        q1Answer: sanitizeAnswerText(parsedResult.q1Answer || '') || '予測解答を生成できませんでした',
         q1Reason: parsedResult.q1Reason || undefined,
-        q2Answer: parsedResult.q2Answer || '予測解答を生成できませんでした',
+        q2Answer: sanitizeAnswerText(parsedResult.q2Answer || '') || '予測解答を生成できませんでした',
         q2Reason: parsedResult.q2Reason || undefined,
       };
     }
@@ -613,6 +630,47 @@ ${formatStyleExamples()}
     console.error('generatePredictionWithStyleReference error:', error);
     return generateMockPrediction(targetScores);
   }
+}
+
+// 生成された解答テキストから評価項目パターンを削除するサニタイズ関数
+// 例: "**メンバー育成とコミュニケーション改善（育成・主導）:**" → "メンバー育成とコミュニケーション改善"
+// テスト用にexport
+export function sanitizeAnswerText(text: string): string {
+  if (!text) return text;
+
+  let sanitized = text;
+
+  // パターン1: **...（評価項目）:** 形式を削除
+  // 例: "**メンバー育成とコミュニケーション改善（育成・主導）:**" → "メンバー育成とコミュニケーション改善"
+  sanitized = sanitized.replace(/\*\*([^*]+?)（[^）]*(?:問題把握|対策立案|役割理解|主導|連携|育成)[^）]*）\**:\**/g, '$1');
+
+  // パターン2: **...:** 形式で評価項目を含むもの（括弧なし）
+  // 例: "**主導:** 私が率先して" → "私が率先して"
+  sanitized = sanitized.replace(/\*\*(?:問題把握|対策立案|役割理解|主導|連携|育成)[^:]*:\*\*/g, '');
+
+  // パターン3: 【...】形式の評価項目ラベル
+  // 例: "【主導で3.5点を達成するには】" → ""
+  sanitized = sanitized.replace(/【[^】]*(?:問題把握|対策立案|役割理解|主導|連携|育成)[^】]*】/g, '');
+
+  // パターン4: 行頭の "- " の後の評価項目ラベル
+  // 例: "- 問題把握: ..." → "- ..."
+  sanitized = sanitized.replace(/^(- )(?:問題把握|対策立案|役割理解|主導|連携|育成)[:：]\s*/gm, '$1');
+
+  // パターン5: 単独の評価項目ラベル行を削除
+  // 例: "問題把握:" のみの行
+  sanitized = sanitized.replace(/^(?:問題把握|対策立案|役割理解|主導|連携|育成)[:：]?\s*$/gm, '');
+
+  // パターン6: 文中の（評価項目）表記を削除
+  // 例: "改善を行う（主導・育成）。" → "改善を行う。"
+  sanitized = sanitized.replace(/（[^）]*(?:問題把握|対策立案|役割理解|主導|連携|育成)[^）]*）/g, '');
+
+  // 連続する空行を1つに
+  sanitized = sanitized.replace(/\n{3,}/g, '\n\n');
+
+  // 先頭・末尾の空白行を削除
+  sanitized = sanitized.trim();
+
+  return sanitized;
 }
 
 // 自由形式のマネジメント相談に解答（エンベディングなし）

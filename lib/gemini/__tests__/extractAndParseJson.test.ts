@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractAndParseJson } from '../client';
+import { extractAndParseJson, sanitizeAnswerText } from '../client';
 
 describe('extractAndParseJson', () => {
   // ===========================================
@@ -427,6 +427,246 @@ This response should achieve the target scores because it addresses all key poin
       expect(result).not.toBeNull();
       // 最初のブロックがパースされることを期待
       expect(result?.q1Answer).toBe('最初のブロック');
+    });
+  });
+});
+
+// ===========================================
+// sanitizeAnswerText テスト
+// ===========================================
+describe('sanitizeAnswerText', () => {
+  // ===========================================
+  // パターン1: **...（評価項目）:** 形式
+  // ===========================================
+  describe('Pattern 1: **...（評価項目）:** format', () => {
+    it('should remove **...（育成・主導）:** pattern', () => {
+      const input = '**メンバー育成とコミュニケーション改善（育成・主導）:**\n私がメンバーを育成する。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('メンバー育成とコミュニケーション改善\n私がメンバーを育成する。');
+    });
+
+    it('should remove **...（連携）:** pattern', () => {
+      const input = '**上司との連携強化（連携）:**\n上司に報告する。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('上司との連携強化\n上司に報告する。');
+    });
+
+    it('should remove multiple evaluation item labels', () => {
+      const input = `**問題の分析（問題把握）:**\n問題点を整理する。\n\n**対策の立案（対策立案）:**\n対策を検討する。`;
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('問題の分析\n問題点を整理する。\n\n対策の立案\n対策を検討する。');
+    });
+  });
+
+  // ===========================================
+  // パターン2: **評価項目:** 形式（括弧なし）
+  // ===========================================
+  describe('Pattern 2: **評価項目:** format without parentheses', () => {
+    it('should remove **主導:** pattern', () => {
+      const input = '**主導:** 私が率先して行動する。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('私が率先して行動する。');
+    });
+
+    it('should remove **育成:** pattern', () => {
+      const input = '**育成:** メンバーの成長を支援する。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('メンバーの成長を支援する。');
+    });
+
+    it('should remove **連携:** pattern', () => {
+      const input = '**連携:** 関係部門と協力する。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('関係部門と協力する。');
+    });
+
+    it('should remove **対策立案:** pattern', () => {
+      const input = '**対策立案:** 具体的な施策を検討する。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('具体的な施策を検討する。');
+    });
+  });
+
+  // ===========================================
+  // パターン3: 【...】形式の評価項目ラベル
+  // ===========================================
+  describe('Pattern 3: 【...】format evaluation item labels', () => {
+    it('should remove 【主導で3.5点を達成するには】 pattern', () => {
+      const input = '【主導で3.5点を達成するには】私が先頭に立つ。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('私が先頭に立つ。');
+    });
+
+    it('should remove 【育成】 pattern', () => {
+      const input = '【育成】メンバーの育成計画を立てる。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('メンバーの育成計画を立てる。');
+    });
+
+    it('should remove 【連携・育成】 pattern', () => {
+      const input = '【連携・育成】上司と相談しながらメンバーを育成する。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('上司と相談しながらメンバーを育成する。');
+    });
+  });
+
+  // ===========================================
+  // パターン4: 行頭の "- " の後の評価項目ラベル
+  // ===========================================
+  describe('Pattern 4: Bullet point with evaluation item label', () => {
+    it('should remove "- 問題把握: " pattern', () => {
+      const input = '- 問題把握: 現状の問題を分析する';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('- 現状の問題を分析する');
+    });
+
+    it('should remove "- 連携：" pattern (full-width colon)', () => {
+      const input = '- 連携： 関係部門と協力する';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('- 関係部門と協力する');
+    });
+  });
+
+  // ===========================================
+  // パターン5: 単独の評価項目ラベル行
+  // ===========================================
+  describe('Pattern 5: Standalone evaluation item label line', () => {
+    it('should remove standalone "問題把握:" line', () => {
+      const input = '問題把握:\n現状を把握する。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('現状を把握する。');
+    });
+
+    it('should remove standalone "育成" line', () => {
+      const input = '育成\nメンバーを育てる。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('メンバーを育てる。');
+    });
+  });
+
+  // ===========================================
+  // パターン6: 文中の（評価項目）表記
+  // ===========================================
+  describe('Pattern 6: Inline （評価項目） notation', () => {
+    it('should remove inline （主導・育成） notation', () => {
+      const input = '改善を行う（主導・育成）。次のステップに進む。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('改善を行う。次のステップに進む。');
+    });
+
+    it('should remove inline （連携） notation', () => {
+      const input = '部門間の連携を強化する（連携）。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('部門間の連携を強化する。');
+    });
+
+    it('should remove multiple inline notations', () => {
+      const input = '問題を分析し（問題把握）、対策を立案する（対策立案）。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('問題を分析し、対策を立案する。');
+    });
+  });
+
+  // ===========================================
+  // 複合パターン
+  // ===========================================
+  describe('Combined patterns', () => {
+    it('should handle multiple patterns in one text', () => {
+      const input = `**メンバー育成（育成・主導）:**
+【連携で3点を達成】
+- 問題把握: 現状分析
+改善を行う（連携）。`;
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe(`メンバー育成
+
+- 現状分析
+改善を行う。`);
+    });
+
+    it('should preserve normal text without evaluation items', () => {
+      const input = '私がグルメ堂を訪問し、謝罪と対応策を説明する。水木を同行させ、顧客対応を学ばせる。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('私がグルメ堂を訪問し、謝罪と対応策を説明する。水木を同行させ、顧客対応を学ばせる。');
+    });
+  });
+
+  // ===========================================
+  // エッジケース
+  // ===========================================
+  describe('Edge cases', () => {
+    it('should handle empty string', () => {
+      const result = sanitizeAnswerText('');
+      expect(result).toBe('');
+    });
+
+    it('should handle null-like input', () => {
+      const result = sanitizeAnswerText(null as unknown as string);
+      expect(result).toBeNull();
+    });
+
+    it('should handle undefined-like input', () => {
+      const result = sanitizeAnswerText(undefined as unknown as string);
+      expect(result).toBeUndefined();
+    });
+
+    it('should collapse multiple consecutive newlines', () => {
+      const input = '行1\n\n\n\n\n行2';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('行1\n\n行2');
+    });
+
+    it('should trim leading and trailing whitespace', () => {
+      const input = '  \n\n前後に空白\n\n  ';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('前後に空白');
+    });
+
+    it('should not remove partial matches', () => {
+      // "主導権" は "主導" を含むが、評価項目ラベルではない
+      const input = '主導権を握る。連携プレーを行う。';
+      const result = sanitizeAnswerText(input);
+      expect(result).toBe('主導権を握る。連携プレーを行う。');
+    });
+  });
+
+  // ===========================================
+  // 実際の問題報告ケース
+  // ===========================================
+  describe('Reported issue reproduction', () => {
+    it('should sanitize the exact pattern from bug report', () => {
+      // 報告された問題パターン: **メンバー育成とコミュニケーション改善（育成・主導）:**
+      const input = `**メンバー育成とコミュニケーション改善（育成・主導）:**
+
+私がメンバーとの1on1面談を定期的に実施し、各自の課題や成長ニーズを把握する。`;
+      const result = sanitizeAnswerText(input);
+      expect(result).not.toContain('**');
+      expect(result).not.toContain('（育成・主導）');
+      expect(result).toContain('メンバー育成とコミュニケーション改善');
+      expect(result).toContain('私がメンバーとの1on1面談');
+    });
+
+    it('should handle complex real-world answer with multiple issues', () => {
+      const input = `**課題分析と対策立案（問題把握・対策立案）:**
+
+現状の業務プロセスに問題がある。
+
+**チームリーダーシップ（主導）:**
+
+私が率先して改善活動を推進する（主導・連携）。
+
+【育成】メンバーのスキルアップを支援する。`;
+      const result = sanitizeAnswerText(input);
+
+      // 評価項目ラベルが削除されていることを確認
+      expect(result).not.toContain('**課題分析と対策立案（問題把握・対策立案）:**');
+      expect(result).not.toContain('**チームリーダーシップ（主導）:**');
+      expect(result).not.toContain('【育成】');
+      expect(result).not.toContain('（主導・連携）');
+
+      // 実際の内容は保持されていることを確認
+      expect(result).toContain('現状の業務プロセスに問題がある');
+      expect(result).toContain('私が率先して改善活動を推進する');
+      expect(result).toContain('メンバーのスキルアップを支援する');
     });
   });
 });
