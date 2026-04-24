@@ -387,12 +387,8 @@ ${formatSimilarExamples()}
       };
     }
 
-    // パース失敗時はエラーログを出力（本番環境では詳細を出力しない）
-    if (process.env.NODE_ENV === 'development') {
-      console.error('[generatePredictionFromSimilar] JSON parse failed. Raw text:', generatedText.substring(0, 200));
-    } else {
-      console.error('[generatePredictionFromSimilar] JSON parse failed');
-    }
+    // パース失敗時はエラーログを出力（本番でも内容を出力して原因特定）
+    console.error('[generatePredictionFromSimilar] JSON parse failed. Raw text (first 500 chars):', generatedText.substring(0, 500));
     throw new Error('予測解答の生成に失敗しました。AIの応答を解析できませんでした。');
   } catch (error) {
     console.error('generatePredictionFromSimilar error:', error);
