@@ -309,7 +309,7 @@ ${formatSimilarExamples()}
 
   try {
     const controller = new AbortController();
-    const timeoutMs = 30000; // 30秒（長い解答生成のため）
+    const timeoutMs = 60000; // 60秒（本番環境で遅延があるため）
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
@@ -590,7 +590,7 @@ ${formatStyleExamples()}
 
   try {
     const controller = new AbortController();
-    const timeoutMs = 30000;
+    const timeoutMs = 60000; // 60秒
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
@@ -789,7 +789,7 @@ ${question}
     console.log('[generateFreeFormAnswer] Full API URL (without key):', GEMINI_API_URL);
 
     const controller = new AbortController();
-    const timeoutMs = 30000;
+    const timeoutMs = 60000; // 60秒
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     const response = await fetch(apiUrl, {
