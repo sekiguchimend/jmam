@@ -344,13 +344,36 @@ ${formatSimilarExamples()}
 
     const data = await response.json();
 
+    // Safetyブロックやcandidates空のケースをチェック
+    if (data.promptFeedback?.blockReason) {
+      console.error('[generatePredictionFromSimilar] Prompt blocked by safety filter:', data.promptFeedback.blockReason);
+      throw new Error(`Gemini APIがプロンプトをブロックしました: ${data.promptFeedback.blockReason}`);
+    }
+
+    if (!data.candidates || data.candidates.length === 0) {
+      console.error('[generatePredictionFromSimilar] No candidates returned from Gemini API');
+      console.error('[generatePredictionFromSimilar] Full response:', JSON.stringify(data).substring(0, 500));
+      throw new Error('Gemini APIからの応答がありませんでした。Safetyフィルターでブロックされた可能性があります。');
+    }
+
     // finish_reasonをチェック（MAX_TOKENSの場合は出力が切り詰められている）
     const finishReason = data.candidates?.[0]?.finishReason;
+    if (finishReason === 'SAFETY') {
+      console.error('[generatePredictionFromSimilar] Response blocked by safety filter');
+      throw new Error('Gemini APIの応答がSafetyフィルターでブロックされました。');
+    }
     if (finishReason && finishReason !== 'STOP') {
       console.warn('[generatePredictionFromSimilar] finishReason:', finishReason, '- 出力が途中で切れている可能性があります');
     }
 
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // 空レスポンスのチェック
+    if (!generatedText) {
+      console.error('[generatePredictionFromSimilar] Empty text from Gemini API');
+      console.error('[generatePredictionFromSimilar] Candidate:', JSON.stringify(data.candidates[0]).substring(0, 500));
+      throw new Error('Gemini APIからのテキスト応答が空でした。');
+    }
 
     // JSONを抽出してパース（複数パターン対応）
     const parsedResult = extractAndParseJson(generatedText);
@@ -606,13 +629,36 @@ ${formatStyleExamples()}
 
     const data = await response.json();
 
+    // Safetyブロックやcandidates空のケースをチェック
+    if (data.promptFeedback?.blockReason) {
+      console.error('[generatePredictionWithStyleReference] Prompt blocked by safety filter:', data.promptFeedback.blockReason);
+      throw new Error(`Gemini APIがプロンプトをブロックしました: ${data.promptFeedback.blockReason}`);
+    }
+
+    if (!data.candidates || data.candidates.length === 0) {
+      console.error('[generatePredictionWithStyleReference] No candidates returned from Gemini API');
+      console.error('[generatePredictionWithStyleReference] Full response:', JSON.stringify(data).substring(0, 500));
+      throw new Error('Gemini APIからの応答がありませんでした。Safetyフィルターでブロックされた可能性があります。');
+    }
+
     // finish_reasonをチェック（MAX_TOKENSの場合は出力が切り詰められている）
     const finishReason = data.candidates?.[0]?.finishReason;
+    if (finishReason === 'SAFETY') {
+      console.error('[generatePredictionWithStyleReference] Response blocked by safety filter');
+      throw new Error('Gemini APIの応答がSafetyフィルターでブロックされました。');
+    }
     if (finishReason && finishReason !== 'STOP') {
       console.warn('[generatePredictionWithStyleReference] finishReason:', finishReason, '- 出力が途中で切れている可能性があります');
     }
 
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    // 空レスポンスのチェック
+    if (!generatedText) {
+      console.error('[generatePredictionWithStyleReference] Empty text from Gemini API');
+      console.error('[generatePredictionWithStyleReference] Candidate:', JSON.stringify(data.candidates[0]).substring(0, 500));
+      throw new Error('Gemini APIからのテキスト応答が空でした。');
+    }
 
     // JSONを抽出してパース（複数パターン対応）
     const parsedResult = extractAndParseJson(generatedText);
@@ -626,7 +672,7 @@ ${formatStyleExamples()}
       };
     }
 
-    // パース失敗時はエラーログを出力
+    // パース失敗時はエラーログを出力（generatedTextの先頭を出力）
     console.error('[generatePredictionWithStyleReference] JSON parse failed. Raw text:', generatedText.substring(0, 500));
     throw new Error('予測解答の生成に失敗しました。AIの応答を解析できませんでした。');
   } catch (error) {
