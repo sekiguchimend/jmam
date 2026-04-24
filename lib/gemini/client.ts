@@ -304,8 +304,7 @@ ${formatSimilarExamples()}
 
   // Gemini API呼び出し
   if (!GEMINI_API_KEY) {
-    console.warn('GEMINI_API_KEY (or GOOGLE_API_KEY) is not set. Returning mock response.');
-    return generateMockPrediction(targetScores);
+    throw new Error('GEMINI_API_KEY（または GOOGLE_API_KEY）が設定されていません。環境変数を確認してください。');
   }
 
   try {
@@ -371,10 +370,13 @@ ${formatSimilarExamples()}
     } else {
       console.error('[generatePredictionFromSimilar] JSON parse failed');
     }
-    return generateMockPrediction(targetScores);
+    throw new Error('予測解答の生成に失敗しました。AIの応答を解析できませんでした。');
   } catch (error) {
     console.error('generatePredictionFromSimilar error:', error);
-    return generateMockPrediction(targetScores);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('予測解答の生成中にエラーが発生しました。');
   }
 }
 
@@ -564,8 +566,7 @@ ${formatStyleExamples()}
 
   // Gemini API呼び出し
   if (!GEMINI_API_KEY) {
-    console.warn('GEMINI_API_KEY (or GOOGLE_API_KEY) is not set. Returning mock response.');
-    return generateMockPrediction(targetScores);
+    throw new Error('GEMINI_API_KEY（または GOOGLE_API_KEY）が設定されていません。環境変数を確認してください。');
   }
 
   try {
@@ -627,10 +628,13 @@ ${formatStyleExamples()}
 
     // パース失敗時はエラーログを出力
     console.error('[generatePredictionWithStyleReference] JSON parse failed. Raw text:', generatedText.substring(0, 500));
-    return generateMockPrediction(targetScores);
+    throw new Error('予測解答の生成に失敗しました。AIの応答を解析できませんでした。');
   } catch (error) {
     console.error('generatePredictionWithStyleReference error:', error);
-    return generateMockPrediction(targetScores);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('予測解答の生成中にエラーが発生しました。');
   }
 }
 
@@ -822,46 +826,3 @@ ${question}
   }
 }
 
-// モック予測解答を生成（API未設定時やエラー時用）
-function generateMockPrediction(
-  targetScores: Scores
-): PredictionResponse {
-  const scoreLevel = (targetScores.problem + targetScores.solution) / 2;
-
-  let q1Answer: string;
-  let q2Answer: string;
-
-  if (scoreLevel >= 4.0) {
-    // 高スコア（4.0以上）
-    q1Answer = `特注グラタン仕様違いの納品トラブルは確認ミスではなく、商品開発プロセスの情報共有体制の脆弱さを示す。
-
-水木のメンタル面の問題は大岩の指導方法に起因、根本には「既存のやり方への固執」というチーム全体の文化的課題がある。
-
-部長からの商品開発力強化指示は全社的な競争力強化に向けた変革を求めるもので、抜本的なプロセス改革が必要。`;
-
-    q2Answer = `私がグルメ堂を訪問し謝罪と対応策を説明、水木を同行させ顧客対応を学ばせる。
-
-大岩と1on1面談で指導方法改善を話し合う。水木との週次面談でメンタルケアと成長目標設定、私がメンターとなりスキルアップ計画を作成。
-
-商品開発プロセス見直しを部長に提案、承認後プロジェクトチーム立上げ。営業部との定例ミーティング設定、私が営業部長に働きかけ協力を得る。`;
-  } else if (scoreLevel >= 3.5) {
-    q1Answer = '業務問題（納品トラブル、プロセス非効率）と人的問題（新人メンタル、指導方法）の両面を捉え、根本原因を多角的に分析。組織への影響考慮の上、優先順位を設定。';
-    q2Answer = '私が上司へ報告・相談を行い、関係部門と連携を図る。具体的対策を複数立案、メリット・デメリットを考慮し最適解を選択。メンバー育成計画も実行。';
-  } else if (scoreLevel >= 2.5) {
-    q1Answer = '主要な問題点は認識、原因分析もある程度実施。一部の視点が不足している可能性あり。';
-    q2Answer = '基本的な対策は提案できているが、具体的な実施方法やリスク対応が不足。';
-  } else {
-    q1Answer = '問題把握が表面的、深い原因分析が必要。関係者視点からの検討も求められる。';
-    q2Answer = '対策提案はあるが、具体性・実現可能性の検討が不足。';
-  }
-
-  const q1Reason = '（モック）スコア水準に合わせて、問題の把握深度と根拠の示し方を調整しました。';
-  const q2Reason = '（モック）実行可能性と具体性のバランスがスコア水準に合うように調整しました。';
-
-  return {
-    q1Answer,
-    q1Reason,
-    q2Answer,
-    q2Reason,
-  };
-}
